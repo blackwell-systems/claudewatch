@@ -155,11 +155,26 @@ type CommandFile struct {
 	Content string
 }
 
-// PluginEntry represents a plugin from ~/.claude/plugins/installed_plugins.json.
+// InstalledPlugins represents the top-level structure of ~/.claude/plugins/installed_plugins.json.
+type InstalledPlugins struct {
+	Version int                              `json:"version"`
+	Plugins map[string][]PluginInstallation  `json:"plugins"`
+}
+
+// PluginInstallation represents a single installation record for a plugin.
+type PluginInstallation struct {
+	Scope        string `json:"scope"`
+	InstallPath  string `json:"installPath"`
+	Version      string `json:"version"`
+	InstalledAt  string `json:"installedAt"`
+	LastUpdated  string `json:"lastUpdated"`
+	GitCommitSha string `json:"gitCommitSha"`
+}
+
+// PluginEntry is a flattened view of an installed plugin for use by the suggest engine.
 type PluginEntry struct {
-	Name    string `json:"name"`
-	Enabled bool   `json:"enabled"`
-	Version string `json:"version"`
+	Name    string
+	Version string
 }
 
 // ProjectDir represents a discovered project directory under ~/.claude/projects/.

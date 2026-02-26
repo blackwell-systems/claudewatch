@@ -65,8 +65,20 @@ var (
 var noColor bool
 
 // SetNoColor disables or enables color output globally.
+// When disabled, all package-level styles are reassigned to unstyled renderers.
 func SetNoColor(disabled bool) {
 	noColor = disabled
+	if disabled {
+		plain := lipgloss.NewStyle()
+		StyleHeader = plain
+		StyleSuccess = plain
+		StyleError = plain
+		StyleWarning = plain
+		StyleMuted = plain
+		StyleBold = plain
+		StyleLabel = plain.Width(24)
+		StyleValue = plain.Width(12)
+	}
 }
 
 // IsNoColor returns whether color output is currently disabled.

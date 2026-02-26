@@ -77,10 +77,10 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 		facets = filterFacetsByProject(facets, sessions, metricsProject)
 	}
 
-	// Load agent tasks.
-	agentTasks, err := claude.ParseAgentTasks()
+	// Load agent tasks from session transcripts.
+	agentTasks, err := claude.ParseAgentTasks(cfg.ClaudeHome)
 	if err != nil {
-		// Agent tasks are ephemeral; log but don't fail.
+		// Non-fatal if transcript parsing fails.
 		agentTasks = nil
 	}
 
@@ -239,13 +239,14 @@ func renderTokenEconomics(stats *claude.StatsCache) {
 		return
 	}
 
-	var totalInput, totalOutput, totalCacheRead int64
+	var totalInput, totalOutput, totalCacheRead, totalCacheCreation int64
 	var totalCost float64
 
 	for _, mu := range stats.ModelUsage {
 		totalInput += mu.InputTokens
 		totalOutput += mu.OutputTokens
 		totalCacheRead += mu.CacheReadInputTokens
+		totalCacheCreation += mu.CacheCreationInputTokens
 		totalCost += mu.CostUSD
 	}
 
@@ -260,8 +261,15 @@ func renderTokenEconomics(stats *claude.StatsCache) {
 		output.StyleLabel.Render("Output tokens"),
 		output.StyleValue.Render(formatTokenCount(totalOutput)))
 
-	if totalInput > 0 {
-		cacheRatio := float64(totalCacheRead) / float64(totalInput) * 100.0
+	// Cache hit ratio: cache reads as a percentage of cache-eligible input tokens
+	// (cache reads + non-cached input). Cache creation tokens are excluded because
+	// they represent new entries being written, not cache lookups.
+	totalCacheEligible := totalCacheRead + totalInput
+	if totalCacheEligible > 0 {
+		cacheRatio := float64(totalCacheRead) / float64(totalCacheEligible) * 100.0
+		if cacheRatio > 100.0 {
+			cacheRatio = 100.0
+		}
 		fmt.Printf(" %s %s\n",
 			output.StyleLabel.Render("Cache hit ratio"),
 			output.StyleValue.Render(fmt.Sprintf("%.0f%%", cacheRatio)))
@@ -304,7 +312,7 @@ func renderAgentPerformance(a analyzer.AgentPerformance) {
 	fmt.Println(output.Section("Agent Performance"))
 
 	if a.TotalAgents == 0 {
-		fmt.Printf(" %s\n\n", output.StyleMuted.Render("No agent tasks found (data in /tmp is ephemeral)"))
+		fmt.Printf(" %s\n\n", output.StyleMuted.Render("No agent tasks found in session transcripts"))
 		return
 	}
 
@@ -315,11 +323,17 @@ func renderAgentPerformance(a analyzer.AgentPerformance) {
 		output.StyleLabel.Render("Success rate"),
 		output.StyleValue.Render(fmt.Sprintf("%.0f%%", a.SuccessRate*100)))
 	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Kill rate"),
+		output.StyleValue.Render(fmt.Sprintf("%.0f%%", a.KillRate*100)))
+	fmt.Printf(" %s %s\n",
 		output.StyleLabel.Render("Background ratio"),
 		output.StyleValue.Render(fmt.Sprintf("%.0f%%", a.BackgroundRatio*100)))
 	fmt.Printf(" %s %s\n",
 		output.StyleLabel.Render("Avg duration"),
 		output.StyleValue.Render(fmt.Sprintf("%.0fs", a.AvgDurationMs/1000)))
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Parallel sessions"),
+		output.StyleValue.Render(fmt.Sprintf("%d", a.ParallelSessions)))
 	fmt.Printf(" %s %s\n",
 		output.StyleLabel.Render("Avg tokens/agent"),
 		output.StyleValue.Render(formatTokenCount(int64(a.AvgTokensPerAgent))))
@@ -347,34 +361,6 @@ func renderAgentPerformance(a analyzer.AgentPerformance) {
 	}
 
 	fmt.Println()
-}
-
-// filterSessionsByProject returns sessions matching the given project path.
-func filterSessionsByProject(sessions []claude.SessionMeta, project string) []claude.SessionMeta {
-	var filtered []claude.SessionMeta
-	for _, s := range sessions {
-		if s.ProjectPath == project {
-			filtered = append(filtered, s)
-		}
-	}
-	return filtered
-}
-
-// filterFacetsByProject returns facets whose session ID matches a session
-// in the provided (already project-filtered) sessions slice.
-func filterFacetsByProject(facets []claude.SessionFacet, sessions []claude.SessionMeta) []claude.SessionFacet {
-	sessionIDs := make(map[string]bool)
-	for _, s := range sessions {
-		sessionIDs[s.SessionID] = true
-	}
-
-	var filtered []claude.SessionFacet
-	for _, f := range facets {
-		if sessionIDs[f.SessionID] {
-			filtered = append(filtered, f)
-		}
-	}
-	return filtered
 }
 
 // formatTokenCount formats large token counts with K/M suffixes.

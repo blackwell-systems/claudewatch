@@ -17,10 +17,13 @@ func AnalyzeAgents(tasks []claude.AgentTask) AgentPerformance {
 
 	var totalDuration int64
 	var totalTokens int
-	var successCount, backgroundCount int
+	var successCount, killedCount, backgroundCount int
 
 	// Group tasks by type for per-type stats.
 	typeGroups := make(map[string][]claude.AgentTask)
+
+	// Track agents per session to detect parallel usage.
+	sessionAgentCount := make(map[string]int)
 
 	for _, task := range tasks {
 		totalDuration += task.DurationMs
@@ -29,18 +32,30 @@ func AnalyzeAgents(tasks []claude.AgentTask) AgentPerformance {
 		if task.Status == "completed" {
 			successCount++
 		}
+		if task.Status == "killed" {
+			killedCount++
+		}
 		if task.Background {
 			backgroundCount++
 		}
 
+		sessionAgentCount[task.SessionID]++
 		typeGroups[task.AgentType] = append(typeGroups[task.AgentType], task)
 	}
 
 	n := float64(len(tasks))
 	perf.SuccessRate = float64(successCount) / n
+	perf.KillRate = float64(killedCount) / n
 	perf.BackgroundRatio = float64(backgroundCount) / n
 	perf.AvgDurationMs = float64(totalDuration) / n
 	perf.AvgTokensPerAgent = float64(totalTokens) / n
+
+	// Count sessions with 2+ agents (parallel agent usage).
+	for _, count := range sessionAgentCount {
+		if count >= 2 {
+			perf.ParallelSessions++
+		}
+	}
 
 	// Compute per-type stats.
 	for agentType, typeTasks := range typeGroups {

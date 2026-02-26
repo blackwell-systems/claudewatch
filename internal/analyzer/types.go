@@ -110,6 +110,9 @@ type AgentPerformance struct {
 	// SuccessRate is the fraction of agents that completed successfully.
 	SuccessRate float64 `json:"success_rate"`
 
+	// KillRate is the fraction of agents that were killed via TaskStop.
+	KillRate float64 `json:"kill_rate"`
+
 	// BackgroundRatio is the fraction of agents that ran in background.
 	BackgroundRatio float64 `json:"background_ratio"`
 
@@ -118,6 +121,9 @@ type AgentPerformance struct {
 
 	// AvgTokensPerAgent is the mean tokens per agent task.
 	AvgTokensPerAgent float64 `json:"avg_tokens_per_agent"`
+
+	// ParallelSessions is the count of sessions with 2+ concurrent agents.
+	ParallelSessions int `json:"parallel_sessions"`
 
 	// ByType maps agent type to per-type performance stats.
 	ByType map[string]AgentTypeStats `json:"by_type"`
@@ -129,4 +135,61 @@ type AgentTypeStats struct {
 	SuccessRate   float64 `json:"success_rate"`
 	AvgDurationMs float64 `json:"avg_duration_ms"`
 	AvgTokens     float64 `json:"avg_tokens"`
+}
+
+// ToolProfile captures per-project tool usage patterns.
+type ToolProfile struct {
+	// ProjectPath is the absolute filesystem path to the project.
+	ProjectPath string `json:"project_path"`
+
+	// ProjectName is the short directory name of the project.
+	ProjectName string `json:"project_name"`
+
+	// TotalSessions is the number of sessions associated with this project.
+	TotalSessions int `json:"total_sessions"`
+
+	// ToolCounts maps tool name to total uses across all sessions.
+	ToolCounts map[string]int `json:"tool_counts"`
+
+	// ToolPerSession maps tool name to average uses per session.
+	ToolPerSession map[string]float64 `json:"tool_per_session"`
+
+	// DominantTool is the most-used tool across all sessions.
+	DominantTool string `json:"dominant_tool"`
+
+	// EditToReadRatio is the ratio of Edit to Read tool calls.
+	// High values suggest productive editing; low values suggest exploration.
+	EditToReadRatio float64 `json:"edit_to_read_ratio"`
+
+	// BashRatio is the ratio of Bash calls to total tool calls.
+	// High values in Go projects suggest frequent builds/tests.
+	BashRatio float64 `json:"bash_ratio"`
+}
+
+// ToolAnalysis is the top-level result of per-project tool usage analysis.
+type ToolAnalysis struct {
+	// Projects contains tool profiles for each project with session data.
+	Projects []ToolProfile `json:"projects"`
+
+	// Anomalies lists projects where tool usage deviates from expected norms.
+	Anomalies []ToolAnomaly `json:"anomalies"`
+}
+
+// ToolAnomaly describes a project where tool usage deviates significantly
+// from what is expected for its language or project type.
+type ToolAnomaly struct {
+	// ProjectName is the short directory name of the project.
+	ProjectName string `json:"project_name"`
+
+	// Tool is the tool name involved in the anomaly.
+	Tool string `json:"tool"`
+
+	// Expected is the expected ratio or count based on project type.
+	Expected float64 `json:"expected"`
+
+	// Actual is the observed ratio or count.
+	Actual float64 `json:"actual"`
+
+	// Message is a human-readable explanation of the anomaly.
+	Message string `json:"message"`
 }

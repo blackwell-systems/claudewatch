@@ -5,7 +5,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -132,6 +131,5 @@ func countRecentCommits(projectPath string) int {
 		return 0
 	}
 	lines := strings.Split(trimmed, "\n")
-	count, _ := strconv.Atoi(strconv.Itoa(len(lines)))
-	return count
+	return len(lines)
 }

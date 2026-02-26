@@ -2,10 +2,17 @@ package output
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
-
-	"github.com/charmbracelet/lipgloss"
 )
+
+// ansiRegex matches ANSI escape sequences used for terminal styling.
+var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// visualLen returns the display width of a string, excluding ANSI escape codes.
+func visualLen(s string) int {
+	return len(ansiRegex.ReplaceAllString(s, ""))
+}
 
 // Table is a simple styled table renderer.
 type Table struct {
@@ -18,7 +25,7 @@ type Table struct {
 func NewTable(headers ...string) *Table {
 	widths := make([]int, len(headers))
 	for i, h := range headers {
-		widths[i] = len(h)
+		widths[i] = visualLen(h)
 	}
 	return &Table{
 		headers: headers,
@@ -34,8 +41,8 @@ func (t *Table) AddRow(values ...string) {
 		if i < len(values) {
 			row[i] = values[i]
 		}
-		if len(row[i]) > t.widths[i] {
-			t.widths[i] = len(row[i])
+		if vl := visualLen(row[i]); vl > t.widths[i] {
+			t.widths[i] = vl
 		}
 	}
 	t.rows = append(t.rows, row)
@@ -47,10 +54,6 @@ func (t *Table) Render() string {
 		return ""
 	}
 
-	headerStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(ColorPrimary)
-
 	var sb strings.Builder
 
 	// Header row.
@@ -58,7 +61,7 @@ func (t *Table) Render() string {
 		if i > 0 {
 			sb.WriteString("  ")
 		}
-		sb.WriteString(headerStyle.Render(pad(h, t.widths[i])))
+		sb.WriteString(StyleHeader.Render(pad(h, t.widths[i])))
 	}
 	sb.WriteString("\n")
 
@@ -95,10 +98,11 @@ func (t *Table) Print() {
 	fmt.Print(t.Render())
 }
 
-// pad right-pads a string to the given width.
+// pad right-pads a string to the given visual width, accounting for ANSI escapes.
 func pad(s string, width int) string {
-	if len(s) >= width {
+	vl := visualLen(s)
+	if vl >= width {
 		return s
 	}
-	return s + strings.Repeat(" ", width-len(s))
+	return s + strings.Repeat(" ", width-vl)
 }

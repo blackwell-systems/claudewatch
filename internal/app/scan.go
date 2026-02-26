@@ -237,7 +237,8 @@ func formatRelativeTime(timestamp string) string {
 	}
 }
 
-// filterSessionsByProject returns sessions whose ProjectPath matches the given path.
+// filterSessionsByProject returns sessions whose ProjectPath matches the given path,
+// sorted by StartTime ascending so the last element is the most recent.
 func filterSessionsByProject(sessions []claude.SessionMeta, projectPath string) []claude.SessionMeta {
 	normalized := strings.TrimRight(projectPath, "/")
 	var result []claude.SessionMeta
@@ -246,6 +247,9 @@ func filterSessionsByProject(sessions []claude.SessionMeta, projectPath string) 
 			result = append(result, s)
 		}
 	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].StartTime < result[j].StartTime
+	})
 	return result
 }
 

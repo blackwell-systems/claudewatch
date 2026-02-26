@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"sort"
 	"strings"
 	"time"
 
@@ -106,8 +107,8 @@ func recencyWeight(startTime string) float64 {
 	return 1.0 - (daysSince / 30.0)
 }
 
-// filterByProject returns sessions whose ProjectPath matches the given path.
-// Sessions are returned in their original order (typically chronological).
+// filterByProject returns sessions whose ProjectPath matches the given path,
+// sorted by StartTime ascending so the last element is the most recent.
 func filterByProject(sessions []claude.SessionMeta, projectPath string) []claude.SessionMeta {
 	var result []claude.SessionMeta
 	for _, s := range sessions {
@@ -115,6 +116,9 @@ func filterByProject(sessions []claude.SessionMeta, projectPath string) []claude
 			result = append(result, s)
 		}
 	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].StartTime < result[j].StartTime
+	})
 	return result
 }
 

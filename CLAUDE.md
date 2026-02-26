@@ -15,14 +15,14 @@ CLI observability and improvement tracking for AI-assisted development workflows
 - **Output**: lipgloss for styled tables and progress bars
 - **Data flow**: parsers (claude/) → analyzers (analyzer/) → suggest engine → store → output
 
-**Key design principle**: Parse pre-computed session metadata (session-meta/*.json, facets/*.json) rather than full 70K+ token transcripts.
+**Key design principle**: Use the lightest data source that answers the question. Pre-computed metadata (session-meta, facets) for session-level metrics. Full JSONL transcripts for agent lifecycle extraction — the only source of multi-agent workflow data.
 
 ## Internal Packages
 
 | Package | Purpose |
 |---------|---------|
 | `app/` | Cobra command handlers (scan, metrics, gaps, suggest, track, log) |
-| `claude/` | Data parsers: history, stats-cache, session-meta, facets, settings, projects, agents |
+| `claude/` | Data parsers: history, stats-cache, session-meta, facets, settings, projects, agents, **session transcripts** |
 | `scanner/` | Project discovery, readiness scoring algorithm |
 | `analyzer/` | Friction, velocity, satisfaction, efficiency, agent metrics computation |
 | `suggest/` | Rule engine for ranked improvement suggestions |
@@ -54,6 +54,28 @@ make test
 2. **No network calls** - Data comes from local files only. Tests must not make HTTP requests.
 3. **Metric types** - Custom metrics can be scale (float), boolean (0/1), counter (cumulative), or duration (seconds). Define in config.yaml under `custom_metrics`.
 4. **Suggest rules** - Implement as `func(ctx *AnalysisContext) []Suggestion`. Register in `suggest.NewEngine()`.
+
+## Multi-Agent Analytics (Active Development)
+
+The differentiating capability of claudewatch: extracting and analyzing multi-agent workflow data from session transcripts.
+
+**Data source**: `~/.claude/projects/<hash>/*.jsonl` — full session transcripts containing Task tool_use/tool_result pairs.
+
+**What we extract**: Agent spans (launch → completion), agent type, duration, kill/success status, background vs foreground, parallelization patterns.
+
+**Metrics computed**:
+- Agent success/kill rate by type (Explore, Plan, general-purpose, etc.)
+- Average agent duration and turns
+- Parallel agent sessions (2+ concurrent agents)
+- Correction rate (user redirects mid-agent)
+- Agent adoption trend over time
+
+**Suggest rules powered by agent data**:
+- `ParallelizationOpportunity` — sequential agents that could run in parallel
+- `AgentTypeEffectiveness` — types with high kill rates
+- `AgentAdoption` — tracking agent usage growth
+
+**Key files**: `claude/transcripts.go` (parser), `claude/agents.go` (integration), `analyzer/agents.go` (metrics).
 
 ## Extending the System
 

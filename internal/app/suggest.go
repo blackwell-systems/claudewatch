@@ -120,10 +120,10 @@ func buildAnalysisContext(cfg *config.Config) (*suggest.AnalysisContext, error) 
 		return nil, fmt.Errorf("parsing plugins: %w", err)
 	}
 
-	// Parse agent tasks.
-	agentTasks, err := claude.ParseAgentTasks()
+	// Parse agent tasks from session transcripts.
+	agentTasks, err := claude.ParseAgentTasks(cfg.ClaudeHome)
 	if err != nil {
-		// Agent tasks are ephemeral; non-fatal if missing.
+		// Non-fatal if transcript parsing fails.
 		agentTasks = nil
 	}
 
@@ -169,12 +169,7 @@ func buildAnalysisContext(cfg *config.Config) (*suggest.AnalysisContext, error) 
 	}
 
 	// Compute plugin count.
-	pluginCount := 0
-	for _, p := range plugins {
-		if p.Enabled {
-			pluginCount++
-		}
-	}
+	pluginCount := len(plugins)
 
 	// Compute agent stats.
 	agentTypeStats := make(map[string]float64)

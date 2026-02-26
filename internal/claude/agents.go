@@ -1,46 +1,35 @@
 package claude
 
-import (
-	"os"
-	"path/filepath"
-)
-
-// ParseAgentTasks scans /tmp/claude-*/tasks/*.output for agent task output files
-// and returns parsed AgentTask entries. These files are ephemeral and may not
-// exist after a system reboot.
-func ParseAgentTasks() ([]AgentTask, error) {
-	pattern := filepath.Join(os.TempDir(), "claude-*", "tasks", "*.output")
-	matches, err := filepath.Glob(pattern)
+// ParseAgentTasks extracts agent tasks from session transcript files stored in
+// claudeDir/projects/*/*.jsonl. This replaces the previous approach of scanning
+// ephemeral /tmp/claude-*/tasks/*.output files.
+func ParseAgentTasks(claudeDir string) ([]AgentTask, error) {
+	spans, err := ParseSessionTranscripts(claudeDir)
 	if err != nil {
 		return nil, err
 	}
 
-	var tasks []AgentTask
-	for _, match := range matches {
-		parsed, err := parseAgentOutputFile(match)
-		if err != nil {
-			// Skip files that fail to parse.
-			continue
+	tasks := make([]AgentTask, 0, len(spans))
+	for _, span := range spans {
+		status := "completed"
+		if span.Killed {
+			status = "killed"
+		} else if !span.Success {
+			status = "failed"
 		}
-		tasks = append(tasks, parsed...)
+
+		tasks = append(tasks, AgentTask{
+			AgentID:     span.ToolUseID,
+			AgentType:   span.AgentType,
+			Description: span.Description,
+			SessionID:   span.SessionID,
+			Status:      status,
+			DurationMs:  span.Duration.Milliseconds(),
+			TotalTokens: 0, // Token counts not available in transcript data.
+			ToolUses:    0, // Tool use counts not available in transcript data.
+			Background:  span.Background,
+			CreatedAt:   span.LaunchedAt.Format("2006-01-02T15:04:05Z"),
+		})
 	}
 	return tasks, nil
-}
-
-// parseAgentOutputFile parses a single agent output file. These are JSONL files
-// containing agent transcript entries. This is a stub that returns the file path
-// as a minimal placeholder; the full parsing logic will extract timestamps,
-// tool uses, token counts, and completion status from the JSONL entries.
-func parseAgentOutputFile(path string) ([]AgentTask, error) {
-	// Verify the file is readable.
-	_, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO: Implement full JSONL parsing of agent output files.
-	// Agent output files contain transcript entries with varying schemas.
-	// Full implementation will extract: agent_id, agent_type, description,
-	// session_id, status, duration, tokens, tool_uses, background flag.
-	return nil, nil
 }
