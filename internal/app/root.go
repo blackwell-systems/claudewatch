@@ -44,6 +44,7 @@ Run 'claudewatch' with no arguments to see a quick dashboard summary.`,
 		fmt.Println("  fix       Generate CLAUDE.md improvements from session data")
 		fmt.Println("  track     Snapshot and compare metrics over time")
 		fmt.Println("  log       Inject custom user-defined metrics")
+		fmt.Println("  watch     Monitor session data and alert on friction spikes")
 		return nil
 	},
 }

@@ -20,6 +20,8 @@ var (
 	fixFlagDryRun bool
 	fixFlagAll    bool
 	fixFlagJSON   bool
+	fixFlagAI     bool
+	fixFlagModel  string
 )
 
 var fixCmd = &cobra.Command{
@@ -39,6 +41,8 @@ func init() {
 	fixCmd.Flags().BoolVar(&fixFlagDryRun, "dry-run", false, "Print proposed additions without applying")
 	fixCmd.Flags().BoolVar(&fixFlagAll, "all", false, "Fix all projects with score < 50")
 	fixCmd.Flags().BoolVar(&fixFlagJSON, "json", false, "Output proposed changes as JSON")
+	fixCmd.Flags().BoolVar(&fixFlagAI, "ai", false, "Use Claude API for project-specific CLAUDE.md generation")
+	fixCmd.Flags().StringVar(&fixFlagModel, "model", "claude-sonnet-4-20250514", "Claude model to use for AI generation")
 	rootCmd.AddCommand(fixCmd)
 }
 
@@ -102,6 +106,21 @@ func runFix(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// resolveAPIKey returns the Anthropic API key from the environment or config.
+// It returns an empty string and an error if AI mode is requested but no key is found.
+func resolveAPIKey(cfg *config.Config) (string, error) {
+	// 1. Environment variable.
+	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
+		return key, nil
+	}
+
+	// 2. Config file (check for api_key via viper — stored in the config struct
+	// is not currently supported, so we only check the environment).
+	// If we later add an api_key field to Config, check it here.
+
+	return "", fmt.Errorf("ANTHROPIC_API_KEY environment variable is not set.\n\n  Set it with: export ANTHROPIC_API_KEY=sk-ant-...")
+}
+
 // fixProject generates and applies fixes for a single project.
 func fixProject(project scanner.Project, cfg *config.Config) error {
 	// Build analysis context.
@@ -110,8 +129,22 @@ func fixProject(project scanner.Project, cfg *config.Config) error {
 		return fmt.Errorf("building fix context: %w", err)
 	}
 
+	// Build fix options.
+	var opts *fixer.FixOptions
+	if fixFlagAI {
+		apiKey, err := resolveAPIKey(cfg)
+		if err != nil {
+			return fmt.Errorf("AI mode requires an API key: %w", err)
+		}
+		opts = &fixer.FixOptions{
+			UseAI:  true,
+			APIKey: apiKey,
+			Model:  fixFlagModel,
+		}
+	}
+
 	// Generate proposed fixes.
-	fix, err := fixer.GenerateFix(ctx)
+	fix, err := fixer.GenerateFix(ctx, opts)
 	if err != nil {
 		return fmt.Errorf("generating fix: %w", err)
 	}

@@ -1,11 +1,12 @@
-// Package fixer provides rule-based generation of CLAUDE.md additions
-// from observed session data. It analyzes friction patterns, tool usage,
-// commit history, and conversation signals to produce concrete, actionable
-// additions to a project's CLAUDE.md file.
+// Package fixer provides rule-based and AI-powered generation of CLAUDE.md
+// additions from observed session data. It analyzes friction patterns, tool
+// usage, commit history, and conversation signals to produce concrete,
+// actionable additions to a project's CLAUDE.md file.
 package fixer
 
 import (
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -31,7 +32,13 @@ type Addition struct {
 // all applicable additions. Each rule is applied independently and may produce
 // zero or more additions. Additions for sections that already exist in the
 // current CLAUDE.md are skipped.
-func GenerateFix(ctx *FixContext) (*ProposedFix, error) {
+//
+// When opts is non-nil and opts.UseAI is true, the function first runs
+// rule-based generation as a baseline, then calls the Claude API for
+// AI-generated additions. AI additions take precedence over rule-based
+// additions for the same section header. If the API call fails, it falls
+// back to rule-based results only.
+func GenerateFix(ctx *FixContext, opts *FixOptions) (*ProposedFix, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("fix context is nil")
 	}
@@ -42,7 +49,7 @@ func GenerateFix(ctx *FixContext) (*ProposedFix, error) {
 		CurrentScore: int(ctx.Project.Score),
 	}
 
-	// Apply all rules in priority order.
+	// Apply all rules in priority order (baseline).
 	rules := []rule{
 		ruleMissingBuildCommands,
 		rulePlanModeWarning,
@@ -58,10 +65,57 @@ func GenerateFix(ctx *FixContext) (*ProposedFix, error) {
 		fix.Additions = append(fix.Additions, additions...)
 	}
 
-	// Merge additions that target the same section header.
+	// Merge rule-based additions that target the same section header.
 	fix.Additions = mergeAdditions(fix.Additions)
 
+	// If AI mode is enabled, generate AI additions and merge them in.
+	if opts != nil && opts.UseAI {
+		aiAdditions, err := GenerateAIFix(ctx, opts.APIKey, opts.Model)
+		if err != nil {
+			// Log the error but fall back to rule-based results.
+			fmt.Fprintf(os.Stderr, "  Warning: AI generation failed, using rule-based results: %v\n", err)
+		} else if len(aiAdditions) > 0 {
+			fix.Additions = mergeAIAdditions(fix.Additions, aiAdditions)
+		}
+	}
+
 	return fix, nil
+}
+
+// mergeAIAdditions combines rule-based and AI-generated additions. For sections
+// that exist in both sets, the AI addition takes precedence. Rule-based additions
+// for sections not covered by AI are preserved.
+func mergeAIAdditions(ruleBased, aiGenerated []Addition) []Addition {
+	// Index AI additions by normalized section header.
+	aiBySection := make(map[string]Addition)
+	aiOrder := make([]string, 0)
+	for _, a := range aiGenerated {
+		key := strings.ToLower(strings.TrimSpace(a.Section))
+		if _, exists := aiBySection[key]; !exists {
+			aiOrder = append(aiOrder, key)
+		}
+		aiBySection[key] = a
+	}
+
+	// Build result: keep rule-based additions unless AI covers the same section.
+	coveredByAI := make(map[string]bool)
+	var result []Addition
+
+	for _, a := range ruleBased {
+		key := strings.ToLower(strings.TrimSpace(a.Section))
+		if _, hasAI := aiBySection[key]; hasAI {
+			coveredByAI[key] = true
+			continue // AI version will be added later.
+		}
+		result = append(result, a)
+	}
+
+	// Add all AI additions (they take precedence for overlapping sections).
+	for _, key := range aiOrder {
+		result = append(result, aiBySection[key])
+	}
+
+	return result
 }
 
 // mergeAdditions combines additions that target the same section header into
