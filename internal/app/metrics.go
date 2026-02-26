@@ -1,0 +1,408 @@
+package app
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"sort"
+
+	"github.com/blackwell-systems/claudewatch/internal/analyzer"
+	"github.com/blackwell-systems/claudewatch/internal/claude"
+	"github.com/blackwell-systems/claudewatch/internal/config"
+	"github.com/blackwell-systems/claudewatch/internal/output"
+	"github.com/spf13/cobra"
+)
+
+var (
+	metricsDays    int
+	metricsProject string
+)
+
+var metricsCmd = &cobra.Command{
+	Use:   "metrics",
+	Short: "Parse session data and display trends",
+	Long: `Analyze Claude Code session data to compute and display productivity,
+efficiency, satisfaction, and agent performance metrics.
+
+Metrics are computed from session-meta, facets, and agent task data.`,
+	RunE: runMetrics,
+}
+
+func init() {
+	metricsCmd.Flags().IntVar(&metricsDays, "days", 30, "Number of days to analyze")
+	metricsCmd.Flags().StringVar(&metricsProject, "project", "", "Filter to a specific project path")
+	metricsCmd.Flags().BoolVar(&flagJSON, "json", false, "Output as JSON")
+	rootCmd.AddCommand(metricsCmd)
+}
+
+// metricsOutput is the JSON-serializable output for the metrics command.
+type metricsOutput struct {
+	Days         int                       `json:"days"`
+	Project      string                    `json:"project,omitempty"`
+	Sessions     int                       `json:"total_sessions"`
+	Velocity     analyzer.VelocityMetrics  `json:"velocity"`
+	Efficiency   analyzer.EfficiencyMetrics `json:"efficiency"`
+	Satisfaction analyzer.SatisfactionScore `json:"satisfaction"`
+	Agents       analyzer.AgentPerformance  `json:"agents"`
+}
+
+func runMetrics(cmd *cobra.Command, args []string) error {
+	cfg, err := config.Load(flagConfig)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	if flagNoColor {
+		output.SetNoColor(true)
+	}
+
+	// Load session meta data.
+	sessions, err := claude.ParseAllSessionMeta(cfg.ClaudeHome)
+	if err != nil {
+		return fmt.Errorf("parsing session meta: %w", err)
+	}
+
+	// Filter by project if specified.
+	if metricsProject != "" {
+		sessions = filterSessionsByProject(sessions, metricsProject)
+	}
+
+	// Load facets.
+	facets, err := claude.ParseAllFacets(cfg.ClaudeHome)
+	if err != nil {
+		return fmt.Errorf("parsing facets: %w", err)
+	}
+
+	if metricsProject != "" {
+		facets = filterFacetsByProject(facets, sessions, metricsProject)
+	}
+
+	// Load agent tasks.
+	agentTasks, err := claude.ParseAgentTasks()
+	if err != nil {
+		// Agent tasks are ephemeral; log but don't fail.
+		agentTasks = nil
+	}
+
+	// Load stats cache for token economics.
+	stats, err := claude.ParseStatsCache(cfg.ClaudeHome)
+	if err != nil {
+		stats = nil
+	}
+
+	// Run analyzers.
+	velocity := analyzer.AnalyzeVelocity(sessions, metricsDays)
+	efficiency := analyzer.AnalyzeEfficiency(sessions)
+	satisfaction := analyzer.AnalyzeSatisfaction(facets)
+	agents := analyzer.AnalyzeAgents(agentTasks)
+
+	// JSON output mode.
+	if flagJSON {
+		out := metricsOutput{
+			Days:         metricsDays,
+			Project:      metricsProject,
+			Sessions:     len(sessions),
+			Velocity:     velocity,
+			Efficiency:   efficiency,
+			Satisfaction: satisfaction,
+			Agents:       agents,
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(out)
+	}
+
+	// Render styled output.
+	renderSessionVolume(velocity, stats)
+	renderProductivity(velocity)
+	renderEfficiency(efficiency)
+	renderSatisfaction(satisfaction)
+	renderTokenEconomics(stats)
+	renderFeatureAdoption(efficiency.FeatureAdoption)
+	renderAgentPerformance(agents)
+
+	return nil
+}
+
+func renderSessionVolume(v analyzer.VelocityMetrics, stats *claude.StatsCache) {
+	fmt.Println(output.Section("Session Volume"))
+
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Total sessions"),
+		output.StyleValue.Render(fmt.Sprintf("%d", v.TotalSessions)))
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Avg duration"),
+		output.StyleValue.Render(fmt.Sprintf("%.0f min", v.AvgDurationMinutes)))
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Avg messages/session"),
+		output.StyleValue.Render(fmt.Sprintf("%.1f", v.AvgMessagesPerSession)))
+
+	if stats != nil {
+		fmt.Printf(" %s %s\n",
+			output.StyleLabel.Render("Total messages (all)"),
+			output.StyleValue.Render(fmt.Sprintf("%d", stats.TotalMessages)))
+	}
+
+	fmt.Println()
+}
+
+func renderProductivity(v analyzer.VelocityMetrics) {
+	fmt.Println(output.Section("Productivity"))
+
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Lines added/session"),
+		output.StyleValue.Render(fmt.Sprintf("%.0f", v.AvgLinesAddedPerSession)))
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Commits/session"),
+		output.StyleValue.Render(fmt.Sprintf("%.1f", v.AvgCommitsPerSession)))
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Files modified/session"),
+		output.StyleValue.Render(fmt.Sprintf("%.1f", v.AvgFilesModifiedPerSession)))
+	fmt.Println()
+}
+
+func renderEfficiency(e analyzer.EfficiencyMetrics) {
+	fmt.Println(output.Section("Efficiency"))
+
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Tool errors/session"),
+		output.StyleValue.Render(fmt.Sprintf("%.1f", e.AvgToolErrorsPerSession)))
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Interruptions/session"),
+		output.StyleValue.Render(fmt.Sprintf("%.1f", e.AvgInterruptionsPerSession)))
+
+	// Show top error categories if any exist.
+	if len(e.ErrorCategoryTotals) > 0 {
+		fmt.Printf("\n %s\n", output.StyleMuted.Render("Error categories:"))
+		sorted := sortMapByValue(e.ErrorCategoryTotals)
+		for _, kv := range sorted {
+			fmt.Printf("   %s %s\n",
+				output.StyleLabel.Render(kv.key),
+				output.StyleValue.Render(fmt.Sprintf("%d", kv.value)))
+		}
+	}
+
+	// Show top tools by usage.
+	if len(e.ToolUsageTotals) > 0 {
+		fmt.Printf("\n %s\n", output.StyleMuted.Render("Tool call distribution:"))
+		sorted := sortMapByValue(e.ToolUsageTotals)
+		limit := 8
+		if len(sorted) < limit {
+			limit = len(sorted)
+		}
+		for _, kv := range sorted[:limit] {
+			fmt.Printf("   %s %s\n",
+				output.StyleLabel.Render(kv.key),
+				output.StyleValue.Render(fmt.Sprintf("%d", kv.value)))
+		}
+	}
+
+	fmt.Println()
+}
+
+func renderSatisfaction(s analyzer.SatisfactionScore) {
+	fmt.Println(output.Section("Satisfaction"))
+
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Weighted score"),
+		output.StyleValue.Render(fmt.Sprintf("%.0f/100", s.WeightedScore)))
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Facets analyzed"),
+		output.StyleValue.Render(fmt.Sprintf("%d", s.TotalFacets)))
+
+	if len(s.SatisfactionCounts) > 0 {
+		fmt.Printf("\n %s\n", output.StyleMuted.Render("Satisfaction distribution:"))
+		for level, count := range s.SatisfactionCounts {
+			fmt.Printf("   %s %s\n",
+				output.StyleLabel.Render(level),
+				output.StyleValue.Render(fmt.Sprintf("%d", count)))
+		}
+	}
+
+	if len(s.OutcomeCounts) > 0 {
+		fmt.Printf("\n %s\n", output.StyleMuted.Render("Outcome distribution:"))
+		for outcome, count := range s.OutcomeCounts {
+			fmt.Printf("   %s %s\n",
+				output.StyleLabel.Render(outcome),
+				output.StyleValue.Render(fmt.Sprintf("%d", count)))
+		}
+	}
+
+	fmt.Println()
+}
+
+func renderTokenEconomics(stats *claude.StatsCache) {
+	fmt.Println(output.Section("Token Economics"))
+
+	if stats == nil {
+		fmt.Printf(" %s\n\n", output.StyleMuted.Render("No stats cache available"))
+		return
+	}
+
+	var totalInput, totalOutput, totalCacheRead int64
+	var totalCost float64
+
+	for _, mu := range stats.ModelUsage {
+		totalInput += mu.InputTokens
+		totalOutput += mu.OutputTokens
+		totalCacheRead += mu.CacheReadInputTokens
+		totalCost += mu.CostUSD
+	}
+
+	totalTokens := totalInput + totalOutput
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Total tokens"),
+		output.StyleValue.Render(formatTokenCount(totalTokens)))
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Input tokens"),
+		output.StyleValue.Render(formatTokenCount(totalInput)))
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Output tokens"),
+		output.StyleValue.Render(formatTokenCount(totalOutput)))
+
+	if totalInput > 0 {
+		cacheRatio := float64(totalCacheRead) / float64(totalInput) * 100.0
+		fmt.Printf(" %s %s\n",
+			output.StyleLabel.Render("Cache hit ratio"),
+			output.StyleValue.Render(fmt.Sprintf("%.0f%%", cacheRatio)))
+	}
+
+	if totalCost > 0 {
+		fmt.Printf(" %s %s\n",
+			output.StyleLabel.Render("Estimated cost"),
+			output.StyleValue.Render(fmt.Sprintf("$%.2f", totalCost)))
+	}
+
+	fmt.Println()
+}
+
+func renderFeatureAdoption(fa analyzer.FeatureAdoption) {
+	fmt.Println(output.Section("Feature Adoption"))
+
+	if fa.TotalSessions == 0 {
+		fmt.Printf(" %s\n\n", output.StyleMuted.Render("No sessions to analyze"))
+		return
+	}
+
+	total := float64(fa.TotalSessions)
+	renderAdoptionLine("Task agents", fa.TaskAgentSessions, total)
+	renderAdoptionLine("MCP", fa.MCPSessions, total)
+	renderAdoptionLine("Web search", fa.WebSearchSessions, total)
+	renderAdoptionLine("Web fetch", fa.WebFetchSessions, total)
+	fmt.Println()
+}
+
+func renderAdoptionLine(name string, count int, total float64) {
+	pct := float64(count) / total * 100.0
+	fmt.Printf(" %s %s %s\n",
+		output.StyleLabel.Render(name),
+		output.StyleValue.Render(fmt.Sprintf("%d sessions", count)),
+		output.StyleMuted.Render(fmt.Sprintf("(%.0f%%)", pct)))
+}
+
+func renderAgentPerformance(a analyzer.AgentPerformance) {
+	fmt.Println(output.Section("Agent Performance"))
+
+	if a.TotalAgents == 0 {
+		fmt.Printf(" %s\n\n", output.StyleMuted.Render("No agent tasks found (data in /tmp is ephemeral)"))
+		return
+	}
+
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Total agents spawned"),
+		output.StyleValue.Render(fmt.Sprintf("%d", a.TotalAgents)))
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Success rate"),
+		output.StyleValue.Render(fmt.Sprintf("%.0f%%", a.SuccessRate*100)))
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Background ratio"),
+		output.StyleValue.Render(fmt.Sprintf("%.0f%%", a.BackgroundRatio*100)))
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Avg duration"),
+		output.StyleValue.Render(fmt.Sprintf("%.0fs", a.AvgDurationMs/1000)))
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Avg tokens/agent"),
+		output.StyleValue.Render(formatTokenCount(int64(a.AvgTokensPerAgent))))
+
+	if len(a.ByType) > 0 {
+		fmt.Printf("\n %s\n", output.StyleMuted.Render("By type:"))
+
+		// Sort types by count descending.
+		type typeEntry struct {
+			name  string
+			stats analyzer.AgentTypeStats
+		}
+		var entries []typeEntry
+		for name, stats := range a.ByType {
+			entries = append(entries, typeEntry{name, stats})
+		}
+		sort.Slice(entries, func(i, j int) bool {
+			return entries[i].stats.Count > entries[j].stats.Count
+		})
+
+		for _, e := range entries {
+			fmt.Printf("   %-20s %3d  (%3.0f%% success)  avg %.0fs\n",
+				e.name, e.stats.Count, e.stats.SuccessRate*100, e.stats.AvgDurationMs/1000)
+		}
+	}
+
+	fmt.Println()
+}
+
+// filterSessionsByProject returns sessions matching the given project path.
+func filterSessionsByProject(sessions []claude.SessionMeta, project string) []claude.SessionMeta {
+	var filtered []claude.SessionMeta
+	for _, s := range sessions {
+		if s.ProjectPath == project {
+			filtered = append(filtered, s)
+		}
+	}
+	return filtered
+}
+
+// filterFacetsByProject returns facets whose session ID matches a session
+// in the provided (already project-filtered) sessions slice.
+func filterFacetsByProject(facets []claude.SessionFacet, sessions []claude.SessionMeta) []claude.SessionFacet {
+	sessionIDs := make(map[string]bool)
+	for _, s := range sessions {
+		sessionIDs[s.SessionID] = true
+	}
+
+	var filtered []claude.SessionFacet
+	for _, f := range facets {
+		if sessionIDs[f.SessionID] {
+			filtered = append(filtered, f)
+		}
+	}
+	return filtered
+}
+
+// formatTokenCount formats large token counts with K/M suffixes.
+func formatTokenCount(tokens int64) string {
+	switch {
+	case tokens >= 1_000_000:
+		return fmt.Sprintf("%.1fM", float64(tokens)/1_000_000)
+	case tokens >= 1_000:
+		return fmt.Sprintf("%.1fK", float64(tokens)/1_000)
+	default:
+		return fmt.Sprintf("%d", tokens)
+	}
+}
+
+// kvPair is a key-value pair for sorted map iteration.
+type kvPair struct {
+	key   string
+	value int
+}
+
+// sortMapByValue returns a slice of key-value pairs sorted by value descending.
+func sortMapByValue(m map[string]int) []kvPair {
+	pairs := make([]kvPair, 0, len(m))
+	for k, v := range m {
+		pairs = append(pairs, kvPair{k, v})
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		return pairs[i].value > pairs[j].value
+	})
+	return pairs
+}
