@@ -358,8 +358,11 @@ func TestParseTimestamp(t *testing.T) {
 	}{
 		{"RFC3339", "2026-01-15T10:00:00Z", false},
 		{"RFC3339Nano", "2026-01-15T10:00:00.123456789Z", false},
+		{"RFC3339 with offset", "2026-01-15T10:00:00+05:00", false},
+		{"datetime without timezone", "2026-01-15T10:00:00", false},
 		{"empty", "", true},
 		{"invalid", "not-a-date", true},
+		{"partial date", "2026-01-15", true},
 	}
 
 	for _, tc := range tests {
@@ -372,5 +375,114 @@ func TestParseTimestamp(t *testing.T) {
 				t.Errorf("expected non-zero time for %q", tc.input)
 			}
 		})
+	}
+}
+
+func TestWalkTranscriptEntries(t *testing.T) {
+	claudeDir := t.TempDir()
+	projDir := filepath.Join(claudeDir, "projects", "proj-walk")
+	if err := os.MkdirAll(projDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	jsonl := strings.Join([]string{
+		`{"type":"assistant","timestamp":"2026-01-15T10:00:00Z","message":{"role":"assistant","content":[{"type":"text","text":"Hello"}]}}`,
+		`{"type":"user","timestamp":"2026-01-15T10:01:00Z","message":{"role":"user","content":[{"type":"text","text":"Hi"}]}}`,
+	}, "\n")
+	writeJSONL(t, projDir, "walk-session.jsonl", jsonl)
+
+	var entries []TranscriptEntry
+	var sessionIDs []string
+	var projectHashes []string
+
+	err := WalkTranscriptEntries(claudeDir, func(entry TranscriptEntry, sessionID string, projectHash string) {
+		entries = append(entries, entry)
+		sessionIDs = append(sessionIDs, sessionID)
+		projectHashes = append(projectHashes, projectHash)
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+	if entries[0].Type != "assistant" {
+		t.Errorf("entries[0].Type = %q, want %q", entries[0].Type, "assistant")
+	}
+	if entries[1].Type != "user" {
+		t.Errorf("entries[1].Type = %q, want %q", entries[1].Type, "user")
+	}
+	if sessionIDs[0] != "walk-session" {
+		t.Errorf("sessionID = %q, want %q", sessionIDs[0], "walk-session")
+	}
+	if projectHashes[0] != "proj-walk" {
+		t.Errorf("projectHash = %q, want %q", projectHashes[0], "proj-walk")
+	}
+}
+
+func TestWalkTranscriptEntries_MissingDir(t *testing.T) {
+	claudeDir := t.TempDir()
+	called := false
+	err := WalkTranscriptEntries(claudeDir, func(entry TranscriptEntry, sessionID string, projectHash string) {
+		called = true
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if called {
+		t.Error("callback should not be called for missing projects dir")
+	}
+}
+
+func TestWalkTranscriptEntries_SkipsMalformedLines(t *testing.T) {
+	claudeDir := t.TempDir()
+	projDir := filepath.Join(claudeDir, "projects", "proj-bad")
+	if err := os.MkdirAll(projDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	jsonl := strings.Join([]string{
+		`not json`,
+		`{"type":"user","timestamp":"2026-01-15T10:00:00Z","message":{"role":"user","content":[]}}`,
+		`{broken`,
+	}, "\n")
+	writeJSONL(t, projDir, "bad-lines.jsonl", jsonl)
+
+	count := 0
+	err := WalkTranscriptEntries(claudeDir, func(entry TranscriptEntry, sessionID string, projectHash string) {
+		count++
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 valid entry, got %d", count)
+	}
+}
+
+func TestWalkTranscriptEntries_SkipsNonJSONLFiles(t *testing.T) {
+	claudeDir := t.TempDir()
+	projDir := filepath.Join(claudeDir, "projects", "proj-mixed")
+	if err := os.MkdirAll(projDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	jsonl := `{"type":"assistant","timestamp":"2026-01-15T10:00:00Z","message":{"role":"assistant","content":[]}}`
+	writeJSONL(t, projDir, "valid.jsonl", jsonl)
+	// Write a non-JSONL file that should be skipped.
+	if err := os.WriteFile(filepath.Join(projDir, "notes.txt"), []byte("ignore me"), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	count := 0
+	err := WalkTranscriptEntries(claudeDir, func(entry TranscriptEntry, sessionID string, projectHash string) {
+		count++
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 entry, got %d", count)
 	}
 }
