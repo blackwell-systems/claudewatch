@@ -45,7 +45,7 @@ claudewatch scan
 
 ### `claudewatch metrics`
 
-Session trends over a given time window: satisfaction scores, friction rate, tool usage breakdown, cache efficiency, and agent performance.
+Session trends over a given time window: satisfaction scores, friction rate, tool usage breakdown, cache efficiency, and agent performance. Also surfaces cost estimation (total cost, cost per session, cost per commit, cache savings), commit patterns (zero-commit rate, weekly trends), conversation quality (correction rate, long message rate), and friction trends (stale, improving, or worsening patterns).
 
 ```bash
 claudewatch metrics
@@ -54,7 +54,7 @@ claudewatch metrics --days 30
 
 ### `claudewatch gaps`
 
-Surface what is missing or underused — projects without CLAUDE.md files, recurring friction patterns across sessions, unconfigured hooks, unused slash commands. Recurring patterns are reported with frequency data, so you can see things like "wrong approach taken in 55% of sessions" rather than vague friction signals.
+Surface what is missing or underused — projects without CLAUDE.md files, recurring friction patterns across sessions, unconfigured hooks, unused slash commands. Recurring patterns are reported with frequency data, so you can see things like "wrong approach taken in 55% of sessions" rather than vague friction signals. Also detects CLAUDE.md quality gaps (score < 50), stale friction patterns persisting across three or more consecutive weeks, and tool usage anomalies.
 
 ```bash
 claudewatch gaps
@@ -62,7 +62,7 @@ claudewatch gaps
 
 ### `claudewatch suggest`
 
-Ranked improvement suggestions with impact scores. Tells you what to fix first and why. Suggestions are grounded in your actual session data — for example: add scope constraints to your CLAUDE.md to reduce unrequested edits, skip plan mode for TUI features based on your kill rate history, or auto-run the linter after Go file edits via hooks to break a recurring debugging loop.
+Ranked improvement suggestions with impact scores. Tells you what to fix first and why. Suggestions are grounded in your actual session data — for example: add scope constraints to your CLAUDE.md to reduce unrequested edits, skip plan mode for TUI features based on your kill rate history, or auto-run the linter after Go file edits via hooks to break a recurring debugging loop. Also generates CLAUDE.md section suggestions correlated with friction reduction, zero-commit rate suggestions, and cost optimization suggestions.
 
 ```bash
 claudewatch suggest
@@ -86,6 +86,34 @@ Inject custom metrics for personal tracking. Supports scale (1-10), boolean, cou
 claudewatch log
 ```
 
+### `claudewatch fix`
+
+Analyze session data for a project and generate CLAUDE.md patches. This is the command that closes the improvement loop: measure → analyze → fix → measure again.
+
+Two modes are available. The default is rule-based: seven data-driven rules inspect friction patterns, tool usage, agent kill rates, and zero-commit rates to generate targeted additions to your CLAUDE.md. The `--ai` flag calls the Claude API to generate project-specific content grounded in actual session data and your project structure — use this when the rule-based output is too generic.
+
+```bash
+claudewatch fix shelfctl              # rule-based, interactive
+claudewatch fix shelfctl --dry-run    # preview without applying
+claudewatch fix shelfctl --ai         # AI-powered generation
+claudewatch fix --all                 # fix all projects scoring < 50
+```
+
+Requires `ANTHROPIC_API_KEY` when using `--ai`. The rule-based mode has no external dependencies.
+
+### `claudewatch watch`
+
+Background daemon that monitors session data and sends desktop notifications when friction spikes or quality signals degrade. Useful for staying ahead of recurring problems rather than discovering them after the fact.
+
+```bash
+claudewatch watch                     # foreground, ctrl-c to stop
+claudewatch watch --daemon            # background with PID file
+claudewatch watch --interval 5m       # custom check interval
+claudewatch watch --stop              # stop background daemon
+```
+
+Notifies on: friction spikes, new stale patterns, agent kill rate increases, zero-commit streaks, and new session completions. Supports macOS and Linux notification APIs.
+
 ## Quick start
 
 ```bash
@@ -101,10 +129,17 @@ claudewatch suggest --limit 5
 # Check session metrics for the past month
 claudewatch metrics --days 30
 
+# Generate and apply CLAUDE.md improvements for a project
+claudewatch fix myproject --dry-run   # preview first
+claudewatch fix myproject             # apply interactively
+
 # Snapshot current state, then compare after making improvements
 claudewatch track
 # ... make improvements ...
 claudewatch track --compare
+
+# Monitor for friction spikes in the background
+claudewatch watch --daemon
 ```
 
 ## Data sources

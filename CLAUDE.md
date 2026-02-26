@@ -6,7 +6,7 @@ CLI observability and improvement tracking for AI-assisted development workflows
 
 **claudewatch** analyzes Claude Code sessions, scores project AI readiness, surfaces friction patterns, and tracks improvement over time. It reads local Claude data files (no network calls), computes metrics, and stores snapshots in a pure-Go SQLite database.
 
-**Commands**: `scan` (inventory + score projects), `metrics` (trends), `gaps` (friction), `suggest` (ranked improvements), `track` (snapshot diffing), `log` (custom metrics).
+**Commands**: `scan` (inventory + score projects), `metrics` (trends), `gaps` (friction), `suggest` (ranked improvements), `track` (snapshot diffing), `log` (custom metrics), `fix` (generate + apply CLAUDE.md patches), `watch` (background daemon, friction alerts).
 
 ## Architecture
 
@@ -14,6 +14,7 @@ CLI observability and improvement tracking for AI-assisted development workflows
 - **Database**: modernc.org/sqlite (pure Go, no CGO, enables CGO_ENABLED=0 cross-compilation)
 - **Output**: lipgloss for styled tables and progress bars
 - **Data flow**: parsers (claude/) → analyzers (analyzer/) → suggest engine → store → output
+- **Claude API integration**: `fixer/` calls the Anthropic API (opt-in via `--ai` flag, standard `net/http`, no external SDK). Requires `ANTHROPIC_API_KEY`. All other commands remain offline-only.
 
 **Key design principle**: Use the lightest data source that answers the question. Pre-computed metadata (session-meta, facets) for session-level metrics. Full JSONL transcripts for agent lifecycle extraction — the only source of multi-agent workflow data.
 
@@ -21,7 +22,7 @@ CLI observability and improvement tracking for AI-assisted development workflows
 
 | Package | Purpose |
 |---------|---------|
-| `app/` | Cobra command handlers (scan, metrics, gaps, suggest, track, log) |
+| `app/` | Cobra command handlers (scan, metrics, gaps, suggest, track, log, fix, watch) |
 | `claude/` | Data parsers: history, stats-cache, session-meta, facets, settings, projects, agents, **session transcripts** |
 | `scanner/` | Project discovery, readiness scoring algorithm |
 | `analyzer/` | Friction, velocity, satisfaction, efficiency, agent metrics computation |
@@ -29,6 +30,8 @@ CLI observability and improvement tracking for AI-assisted development workflows
 | `store/` | SQLite schema, migrations, snapshots, queries |
 | `config/` | Viper config loading with YAML defaults |
 | `output/` | Table rendering, progress bars, color management |
+| `fixer/` | CLAUDE.md fix generation engine (rule-based + AI-powered via Claude API) |
+| `watcher/` | Background daemon, alert detection, desktop notifications (macOS/Linux) |
 
 ## Build & Test
 

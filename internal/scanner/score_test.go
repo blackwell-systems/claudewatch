@@ -45,8 +45,9 @@ func TestComputeReadiness_PerfectScore(t *testing.T) {
 	// 30 (claude.md) + 10 (size>500) + 10 (.claude) + 5 (local settings)
 	// + 15 (recent session) + 10 (facets) + 10 (commits>20) + 5 (hooks) + 5 (plugin)
 	// = 100
-	if score != 100 {
-		t.Errorf("expected perfect score 100, got %v", score)
+	// recencyWeight uses time.Since() so score may be fractionally below 100.
+	if score < 99 || score > 100 {
+		t.Errorf("expected score near 100, got %v", score)
 	}
 }
 

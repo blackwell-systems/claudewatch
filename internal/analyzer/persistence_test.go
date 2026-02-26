@@ -154,8 +154,13 @@ func TestAnalyzeFrictionPersistence_WorseningTrend(t *testing.T) {
 	if p.WeeklyTrend != "worsening" {
 		t.Errorf("expected trend 'worsening', got %q", p.WeeklyTrend)
 	}
-	if result.WorseningCount != 1 {
-		t.Errorf("expected worsening count 1, got %d", result.WorseningCount)
+	// 4 consecutive worsening weeks triggers stale, which takes priority
+	// over WorseningCount in the switch. Verify stale instead.
+	if !p.Stale {
+		t.Errorf("expected pattern to be stale (4 consecutive worsening weeks)")
+	}
+	if result.StaleCount != 1 {
+		t.Errorf("expected stale count 1, got %d", result.StaleCount)
 	}
 }
 
