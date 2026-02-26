@@ -284,3 +284,96 @@ func CustomMetricRegression(ctx *AnalysisContext) []Suggestion {
 
 	return suggestions
 }
+
+// ClaudeMDSectionSuggestions recommends adding missing CLAUDE.md sections when
+// section correlation data indicates that having certain sections reduces friction.
+func ClaudeMDSectionSuggestions(ctx *AnalysisContext) []Suggestion {
+	var suggestions []Suggestion
+
+	for section, frictionReduction := range ctx.ClaudeMDSectionCorrelation {
+		if frictionReduction <= 0 {
+			continue
+		}
+
+		// Find projects missing this section.
+		for _, p := range ctx.Projects {
+			if !p.HasClaudeMD {
+				continue
+			}
+			// Check if this project is missing the section.
+			for _, missing := range p.ClaudeMDMissingSections {
+				if missing == section {
+					impact := ComputeImpact(p.SessionCount, frictionReduction/100.0, 5.0, 10.0)
+					suggestions = append(suggestions, Suggestion{
+						Category: "quality",
+						Priority: PriorityMedium,
+						Title:    fmt.Sprintf("Add %q section to %s CLAUDE.md", section, p.Name),
+						Description: fmt.Sprintf(
+							"Projects with a %q section show %.0f%% less friction. "+
+								"Adding this section to %s (which has %d sessions) could reduce "+
+								"recurring friction in this project.",
+							section, frictionReduction, p.Name, p.SessionCount,
+						),
+						ImpactScore: impact,
+					})
+					break
+				}
+			}
+		}
+	}
+
+	return suggestions
+}
+
+// ZeroCommitRateSuggestion flags workflows with a high zero-commit rate (>40%).
+func ZeroCommitRateSuggestion(ctx *AnalysisContext) []Suggestion {
+	var suggestions []Suggestion
+
+	if ctx.ZeroCommitRate <= 0.40 || ctx.TotalSessions < 5 {
+		return suggestions
+	}
+
+	suggestions = append(suggestions, Suggestion{
+		Category: "quality",
+		Priority: PriorityHigh,
+		Title:    "High zero-commit rate in sessions",
+		Description: fmt.Sprintf(
+			"%.0f%% of %d sessions produced zero commits. This may indicate exploratory "+
+				"sessions without deliverables, or incomplete workflows that stall before "+
+				"committing. Consider breaking large tasks into smaller commit-sized chunks, "+
+				"using the /commit skill, or reviewing whether these sessions achieve their goals.",
+			ctx.ZeroCommitRate*100, ctx.TotalSessions,
+		),
+		ImpactScore: ComputeImpact(ctx.TotalSessions, ctx.ZeroCommitRate, 5.0, 10.0),
+	})
+
+	return suggestions
+}
+
+// CostOptimizationSuggestion flags low cache savings percentages and suggests
+// enabling or improving prompt caching.
+func CostOptimizationSuggestion(ctx *AnalysisContext) []Suggestion {
+	var suggestions []Suggestion
+
+	if ctx.CacheSavingsPercent >= 20 || ctx.TotalCost <= 0 {
+		return suggestions
+	}
+
+	suggestions = append(suggestions, Suggestion{
+		Category: "configuration",
+		Priority: PriorityMedium,
+		Title:    "Low prompt cache savings",
+		Description: fmt.Sprintf(
+			"Cache savings are only %.0f%% of total cost ($%.2f). "+
+				"Improving prompt caching can significantly reduce costs. "+
+				"Ensure CLAUDE.md files are stable (frequent changes invalidate cache), "+
+				"use consistent system prompts, and consider structuring prompts with "+
+				"static context first followed by dynamic content.",
+			ctx.CacheSavingsPercent, ctx.TotalCost,
+		),
+		ImpactScore: ComputeImpact(ctx.TotalSessions, 0.5, 5.0, 10.0),
+	})
+
+	return suggestions
+}
+

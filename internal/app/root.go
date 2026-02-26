@@ -41,6 +41,7 @@ Run 'claudewatch' with no arguments to see a quick dashboard summary.`,
 		fmt.Println("  metrics   Parse session data and display trends")
 		fmt.Println("  gaps      Surface friction patterns and missing config")
 		fmt.Println("  suggest   Generate ranked improvement recommendations")
+		fmt.Println("  fix       Generate CLAUDE.md improvements from session data")
 		fmt.Println("  track     Snapshot and compare metrics over time")
 		fmt.Println("  log       Inject custom user-defined metrics")
 		return nil

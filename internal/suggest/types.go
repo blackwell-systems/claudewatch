@@ -51,6 +51,19 @@ type AnalysisContext struct {
 
 	// CustomMetricTrends maps metric name to recent trend direction.
 	CustomMetricTrends map[string]string `json:"custom_metric_trends"`
+
+	// ClaudeMDSectionCorrelation maps section name to friction reduction percentage.
+	// Populated from the claudemd analyzer's correlation data.
+	ClaudeMDSectionCorrelation map[string]float64 `json:"claude_md_section_correlation"`
+
+	// ZeroCommitRate is the fraction of sessions with zero commits.
+	ZeroCommitRate float64 `json:"zero_commit_rate"`
+
+	// CacheSavingsPercent is the cache savings as a percentage of total cost.
+	CacheSavingsPercent float64 `json:"cache_savings_percent"`
+
+	// TotalCost is the estimated total cost from the cost analyzer.
+	TotalCost float64 `json:"total_cost"`
 }
 
 // ProjectContext provides project-level data for suggest rules.
@@ -63,8 +76,9 @@ type ProjectContext struct {
 	Interruptions   int     `json:"interruptions"`
 	Score           float64 `json:"score"`
 	HasFacets       bool    `json:"has_facets"`
-	AgentCount      int     `json:"agent_count"`
-	SequentialCount int     `json:"sequential_count"`
+	AgentCount              int      `json:"agent_count"`
+	SequentialCount         int      `json:"sequential_count"`
+	ClaudeMDMissingSections []string `json:"claude_md_missing_sections,omitempty"`
 }
 
 // Rule is a function that examines the analysis context and produces

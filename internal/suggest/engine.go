@@ -20,6 +20,9 @@ func NewEngine() *Engine {
 			AgentTypeEffectiveness,
 			ParallelizationOpportunity,
 			CustomMetricRegression,
+			ClaudeMDSectionSuggestions,
+			ZeroCommitRateSuggestion,
+			CostOptimizationSuggestion,
 		},
 	}
 }

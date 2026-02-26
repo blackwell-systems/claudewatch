@@ -23,7 +23,7 @@ func AnalyzeToolUsage(sessions []claude.SessionMeta, projects []scanner.Project)
 	// Group sessions by project path.
 	sessionsByProject := make(map[string][]claude.SessionMeta)
 	for _, s := range sessions {
-		path := normalizeProjectPath(s.ProjectPath)
+		path := claude.NormalizePath(s.ProjectPath)
 		if path == "" {
 			continue
 		}
@@ -193,13 +193,3 @@ func detectAnomalies(profiles []ToolProfile, projectByPath map[string]scanner.Pr
 	return anomalies
 }
 
-// normalizeProjectPath cleans up a session's project path to a canonical form
-// suitable for matching against discovered project paths.
-func normalizeProjectPath(path string) string {
-	if path == "" {
-		return ""
-	}
-	// Clean the path to remove trailing slashes and resolve .. components.
-	cleaned := filepath.Clean(path)
-	return cleaned
-}

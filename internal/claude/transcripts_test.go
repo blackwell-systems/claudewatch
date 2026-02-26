@@ -364,7 +364,7 @@ func TestParseTimestamp(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ts := parseTimestamp(tc.input)
+			ts := ParseTimestamp(tc.input)
 			if tc.isZero && !ts.IsZero() {
 				t.Errorf("expected zero time for %q", tc.input)
 			}

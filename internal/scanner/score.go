@@ -55,7 +55,7 @@ func ComputeReadiness(p *Project, sessions []claude.SessionMeta, facets []claude
 	}
 
 	// Facets coverage: 10 points if any facet data exists for this project.
-	if len(filterFacetsByProject(facets, sessions, p.Path)) > 0 {
+	if len(FilterFacetsByProject(facets, sessions, p.Path)) > 0 {
 		score += 10
 	}
 
@@ -112,7 +112,7 @@ func recencyWeight(startTime string) float64 {
 func filterByProject(sessions []claude.SessionMeta, projectPath string) []claude.SessionMeta {
 	var result []claude.SessionMeta
 	for _, s := range sessions {
-		if normalizePath(s.ProjectPath) == normalizePath(projectPath) {
+		if claude.NormalizePath(s.ProjectPath) == claude.NormalizePath(projectPath) {
 			result = append(result, s)
 		}
 	}
@@ -122,13 +122,13 @@ func filterByProject(sessions []claude.SessionMeta, projectPath string) []claude
 	return result
 }
 
-// filterFacetsByProject returns facets whose associated session belongs to the
+// FilterFacetsByProject returns facets whose associated session belongs to the
 // given project. It cross-references facets with sessions via SessionID.
-func filterFacetsByProject(facets []claude.SessionFacet, sessions []claude.SessionMeta, projectPath string) []claude.SessionFacet {
+func FilterFacetsByProject(facets []claude.SessionFacet, sessions []claude.SessionMeta, projectPath string) []claude.SessionFacet {
 	// Build a set of session IDs for this project.
 	projectSessionIDs := make(map[string]bool)
 	for _, s := range sessions {
-		if normalizePath(s.ProjectPath) == normalizePath(projectPath) {
+		if claude.NormalizePath(s.ProjectPath) == claude.NormalizePath(projectPath) {
 			projectSessionIDs[s.SessionID] = true
 		}
 	}
@@ -158,7 +158,3 @@ func hasRelevantPlugin(settings *claude.GlobalSettings, language string) bool {
 	return false
 }
 
-// normalizePath removes trailing slashes for consistent path comparison.
-func normalizePath(p string) string {
-	return strings.TrimRight(p, "/")
-}

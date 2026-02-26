@@ -113,7 +113,7 @@ func TestAnalyzeFrictionPersistence_ImprovingTrend(t *testing.T) {
 	if p.WeeklyTrend != "improving" {
 		t.Errorf("expected trend 'improving', got %q", p.WeeklyTrend)
 	}
-	if p.ImprovingCount := result.ImprovingCount; p.ImprovingCount != 1 {
+	if result.ImprovingCount != 1 {
 		t.Errorf("expected improving count 1, got %d", result.ImprovingCount)
 	}
 }

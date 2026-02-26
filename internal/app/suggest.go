@@ -3,9 +3,11 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
+	"github.com/blackwell-systems/claudewatch/internal/analyzer"
 	"github.com/blackwell-systems/claudewatch/internal/claude"
 	"github.com/blackwell-systems/claudewatch/internal/config"
 	"github.com/blackwell-systems/claudewatch/internal/output"
@@ -198,19 +200,19 @@ func buildAnalysisContext(cfg *config.Config) (*suggest.AnalysisContext, error) 
 		var projectToolErrors, projectInterruptions, projectAgents, projectSequential int
 		hasFacets := false
 		for _, s := range sessions {
-			if normalizePath(s.ProjectPath) == normalizePath(p.Path) {
+			if claude.NormalizePath(s.ProjectPath) == claude.NormalizePath(p.Path) {
 				projectToolErrors += s.ToolErrors
 				projectInterruptions += s.UserInterruptions
 			}
 		}
 		for _, f := range facets {
 			sid := f.SessionID
-			if normalizePath(sessionProject[sid]) == normalizePath(p.Path) {
+			if claude.NormalizePath(sessionProject[sid]) == claude.NormalizePath(p.Path) {
 				hasFacets = true
 			}
 		}
 		for _, task := range agentTasks {
-			if normalizePath(sessionProject[task.SessionID]) == normalizePath(p.Path) {
+			if claude.NormalizePath(sessionProject[task.SessionID]) == claude.NormalizePath(p.Path) {
 				projectAgents++
 				if !task.Background {
 					projectSequential++
@@ -235,17 +237,53 @@ func buildAnalysisContext(cfg *config.Config) (*suggest.AnalysisContext, error) 
 	// Custom metric trends: placeholder for now (populated by track command).
 	customMetricTrends := make(map[string]string)
 
+	// CLAUDE.md effectiveness analysis for section correlation data.
+	claudeMDAnalysis := analyzer.AnalyzeClaudeMDEffectiveness(projects, facets)
+
+	// Populate missing sections on project contexts.
+	claudeMDByPath := make(map[string]analyzer.ClaudeMDQuality, len(claudeMDAnalysis.Projects))
+	for _, q := range claudeMDAnalysis.Projects {
+		claudeMDByPath[q.ProjectPath] = q
+	}
+	for i := range projectContexts {
+		if q, ok := claudeMDByPath[projectContexts[i].Path]; ok {
+			projectContexts[i].ClaudeMDMissingSections = q.MissingSections
+		}
+	}
+
+	// Commit analysis for zero-commit rate.
+	commitAnalysis := analyzer.AnalyzeCommits(sessions)
+
+	// Cost analysis for cache savings.
+	var cacheSavingsPercent, totalCost float64
+	statsCache, err := claude.ParseStatsCache(cfg.ClaudeHome)
+	if err == nil && statsCache != nil {
+		totalCommits := 0
+		for _, s := range sessions {
+			totalCommits += s.GitCommits
+		}
+		costEst := analyzer.EstimateCosts(*statsCache, "", len(sessions), totalCommits)
+		cacheSavingsPercent = costEst.CacheSavingsPercent
+		totalCost = costEst.TotalCost
+	} else if err != nil {
+		log.Printf("Warning: could not parse stats cache for cost analysis: %v", err)
+	}
+
 	ctx := &suggest.AnalysisContext{
-		Projects:           projectContexts,
-		TotalSessions:      len(sessions),
-		AvgToolErrors:      avgToolErrors,
-		RecurringFriction:  recurringFriction,
-		HookCount:          hookCount,
-		CommandCount:        len(commands),
-		PluginCount:        pluginCount,
-		AgentSuccessRate:   agentOverallSuccess,
-		AgentTypeStats:     agentTypeStats,
-		CustomMetricTrends: customMetricTrends,
+		Projects:                   projectContexts,
+		TotalSessions:              len(sessions),
+		AvgToolErrors:              avgToolErrors,
+		RecurringFriction:          recurringFriction,
+		HookCount:                  hookCount,
+		CommandCount:               len(commands),
+		PluginCount:                pluginCount,
+		AgentSuccessRate:           agentOverallSuccess,
+		AgentTypeStats:             agentTypeStats,
+		CustomMetricTrends:         customMetricTrends,
+		ClaudeMDSectionCorrelation: claudeMDAnalysis.SectionsCorrelation,
+		ZeroCommitRate:             commitAnalysis.ZeroCommitRate,
+		CacheSavingsPercent:        cacheSavingsPercent,
+		TotalCost:                  totalCost,
 	}
 
 	return ctx, nil
@@ -325,9 +363,4 @@ func stylePriority(priority int, label string) string {
 	default:
 		return output.StyleMuted.Render(label)
 	}
-}
-
-// normalizePath removes trailing slashes for consistent path comparison.
-func normalizePath(p string) string {
-	return strings.TrimRight(p, "/")
 }

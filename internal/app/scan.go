@@ -101,7 +101,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		}
 
 		// Enrich with facets flag.
-		p.HasFacets = len(filterFacetsByProject(facets, sessions, p.Path)) > 0
+		p.HasFacets = len(scanner.FilterFacetsByProject(facets, sessions, p.Path)) > 0
 
 		if score >= scanFlagMinScore {
 			results = append(results, scanResult{Project: *p, Score: score})
@@ -240,30 +240,15 @@ func formatRelativeTime(timestamp string) string {
 // filterSessionsByProject returns sessions whose ProjectPath matches the given path,
 // sorted by StartTime ascending so the last element is the most recent.
 func filterSessionsByProject(sessions []claude.SessionMeta, projectPath string) []claude.SessionMeta {
-	normalized := strings.TrimRight(projectPath, "/")
+	normalized := claude.NormalizePath(projectPath)
 	var result []claude.SessionMeta
 	for _, s := range sessions {
-		if strings.TrimRight(s.ProjectPath, "/") == normalized {
+		if claude.NormalizePath(s.ProjectPath) == normalized {
 			result = append(result, s)
 		}
 	}
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].StartTime < result[j].StartTime
 	})
-	return result
-}
-
-// filterFacetsByProject returns facets whose session ID matches a session in the project.
-func filterFacetsByProject(facets []claude.SessionFacet, sessions []claude.SessionMeta, projectPath string) []claude.SessionFacet {
-	ids := make(map[string]bool)
-	for _, s := range filterSessionsByProject(sessions, projectPath) {
-		ids[s.SessionID] = true
-	}
-	var result []claude.SessionFacet
-	for _, f := range facets {
-		if ids[f.SessionID] {
-			result = append(result, f)
-		}
-	}
 	return result
 }

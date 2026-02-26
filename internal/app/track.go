@@ -92,7 +92,7 @@ func runTrack(cmd *cobra.Command, args []string) error {
 		// Count sessions for this project.
 		count := 0
 		for _, s := range sessions {
-			if normalizePath(s.ProjectPath) == normalizePath(projects[i].Path) {
+			if claude.NormalizePath(s.ProjectPath) == claude.NormalizePath(projects[i].Path) {
 				count++
 			}
 		}

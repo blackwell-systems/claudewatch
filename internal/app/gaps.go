@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -12,6 +13,7 @@ import (
 	"github.com/blackwell-systems/claudewatch/internal/claude"
 	"github.com/blackwell-systems/claudewatch/internal/config"
 	"github.com/blackwell-systems/claudewatch/internal/output"
+	"github.com/blackwell-systems/claudewatch/internal/scanner"
 	"github.com/spf13/cobra"
 )
 
@@ -104,6 +106,18 @@ func runGaps(cmd *cobra.Command, args []string) error {
 	// 5. Project-specific friction.
 	projectFrictionGaps := findProjectFrictionGaps(facets, sessions)
 	gaps = append(gaps, projectFrictionGaps...)
+
+	// 6. CLAUDE.md quality gaps.
+	claudeMDQualityGaps := findClaudeMDQualityGaps(cfg.ScanPaths, facets)
+	gaps = append(gaps, claudeMDQualityGaps...)
+
+	// 7. Stale friction gaps.
+	staleFrictionGaps := findStaleFrictionGaps(facets, sessions)
+	gaps = append(gaps, staleFrictionGaps...)
+
+	// 8. Tool anomaly gaps.
+	toolAnomalyGaps := findToolAnomalyGaps(sessions, cfg.ScanPaths)
+	gaps = append(gaps, toolAnomalyGaps...)
 
 	// Count severities.
 	var critical, warnings, infoCount int
@@ -356,6 +370,80 @@ func findProjectFrictionGaps(facets []claude.SessionFacet, sessions []claude.Ses
 	return gaps
 }
 
+// findClaudeMDQualityGaps runs the CLAUDE.md effectiveness analyzer and flags
+// projects with quality scores below 50.
+func findClaudeMDQualityGaps(scanPaths []string, facets []claude.SessionFacet) []gap {
+	projects, err := scanner.DiscoverProjects(scanPaths)
+	if err != nil {
+		log.Printf("Warning: could not discover projects for CLAUDE.md quality analysis: %v", err)
+		return nil
+	}
+
+	analysis := analyzer.AnalyzeClaudeMDEffectiveness(projects, facets)
+
+	var gaps []gap
+	for _, proj := range analysis.Projects {
+		if proj.QualityScore < 50 {
+			missing := strings.Join(proj.MissingSections, ", ")
+			if missing == "" {
+				missing = "none detected"
+			}
+			gaps = append(gaps, gap{
+				Severity: "warning",
+				Category: "claude_md_quality",
+				Title:    fmt.Sprintf("Low CLAUDE.md quality: %s (score %d/100)", proj.ProjectName, proj.QualityScore),
+				Detail:   fmt.Sprintf("Missing sections: %s", missing),
+				Project:  proj.ProjectPath,
+			})
+		}
+	}
+
+	return gaps
+}
+
+// findStaleFrictionGaps flags friction types that have persisted for 3+ consecutive
+// weeks without improvement.
+func findStaleFrictionGaps(facets []claude.SessionFacet, sessions []claude.SessionMeta) []gap {
+	persistence := analyzer.AnalyzeFrictionPersistence(facets, sessions)
+
+	var gaps []gap
+	for _, p := range persistence.Patterns {
+		if p.Stale {
+			gaps = append(gaps, gap{
+				Severity: "critical",
+				Category: "stale_friction",
+				Title:    fmt.Sprintf("Stale friction: %s", p.FrictionType),
+				Detail:   fmt.Sprintf("%d consecutive weeks without improvement (appeared in %d sessions)", p.ConsecutiveWeeks, p.OccurrenceCount),
+			})
+		}
+	}
+
+	return gaps
+}
+
+// findToolAnomalyGaps runs the tool usage analyzer and flags detected anomalies.
+func findToolAnomalyGaps(sessions []claude.SessionMeta, scanPaths []string) []gap {
+	projects, err := scanner.DiscoverProjects(scanPaths)
+	if err != nil {
+		log.Printf("Warning: could not discover projects for tool anomaly analysis: %v", err)
+		return nil
+	}
+
+	toolAnalysis := analyzer.AnalyzeToolUsage(sessions, projects)
+
+	var gaps []gap
+	for _, anomaly := range toolAnalysis.Anomalies {
+		gaps = append(gaps, gap{
+			Severity: "warning",
+			Category: "tool_anomaly",
+			Title:    fmt.Sprintf("Tool anomaly: %s (%s)", anomaly.ProjectName, anomaly.Tool),
+			Detail:   anomaly.Message,
+		})
+	}
+
+	return gaps
+}
+
 // severityEmoji returns the emoji indicator for a severity level.
 func severityEmoji(severity string) string {
 	switch severity {
@@ -401,14 +489,20 @@ func categoryLabel(cat string) string {
 	switch cat {
 	case "claude_md":
 		return "CLAUDE.md Gaps"
+	case "claude_md_quality":
+		return "CLAUDE.md Quality"
 	case "friction":
 		return "Recurring Friction"
+	case "stale_friction":
+		return "Stale Friction"
 	case "hooks":
 		return "Hook Configuration"
 	case "skills":
 		return "Custom Commands"
 	case "project_friction":
 		return "Project-Specific Friction"
+	case "tool_anomaly":
+		return "Tool Anomalies"
 	default:
 		return strings.ReplaceAll(cat, "_", " ")
 	}

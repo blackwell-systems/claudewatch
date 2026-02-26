@@ -50,13 +50,9 @@ func filterSessionsByDays(sessions []claude.SessionMeta, days int) []claude.Sess
 	var filtered []claude.SessionMeta
 
 	for _, s := range sessions {
-		t, err := time.Parse(time.RFC3339, s.StartTime)
-		if err != nil {
-			// Try alternate format without timezone.
-			t, err = time.Parse("2006-01-02T15:04:05", s.StartTime)
-			if err != nil {
-				continue
-			}
+		t := claude.ParseTimestamp(s.StartTime)
+		if t.IsZero() {
+			continue
 		}
 		if t.After(cutoff) {
 			filtered = append(filtered, s)

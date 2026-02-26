@@ -94,7 +94,7 @@ func AnalyzeCommits(sessions []claude.SessionMeta) CommitAnalysis {
 	var totalCommits int
 
 	for _, s := range sessions {
-		t := parseSessionTime(s.StartTime)
+		t := claude.ParseTimestamp(s.StartTime)
 
 		totalCommits += s.GitCommits
 
@@ -223,15 +223,3 @@ func weekStartMonday(t time.Time) time.Time {
 	return time.Date(monday.Year(), monday.Month(), monday.Day(), 0, 0, 0, 0, time.UTC)
 }
 
-// parseSessionTime parses a session start time string, trying RFC3339 first
-// then falling back to a plain datetime format. Returns the zero time on failure.
-func parseSessionTime(s string) time.Time {
-	t, err := time.Parse(time.RFC3339, s)
-	if err != nil {
-		t, err = time.Parse("2006-01-02T15:04:05", s)
-		if err != nil {
-			return time.Time{}
-		}
-	}
-	return t
-}

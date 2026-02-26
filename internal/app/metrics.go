@@ -3,6 +3,8 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"math"
 	"os"
 	"sort"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/blackwell-systems/claudewatch/internal/claude"
 	"github.com/blackwell-systems/claudewatch/internal/config"
 	"github.com/blackwell-systems/claudewatch/internal/output"
+	"github.com/blackwell-systems/claudewatch/internal/scanner"
 	"github.com/spf13/cobra"
 )
 
@@ -74,7 +77,7 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 	}
 
 	if metricsProject != "" {
-		facets = filterFacetsByProject(facets, sessions, metricsProject)
+		facets = scanner.FilterFacetsByProject(facets, sessions, metricsProject)
 	}
 
 	// Load agent tasks from session transcripts.
@@ -120,6 +123,32 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 	renderTokenEconomics(stats)
 	renderFeatureAdoption(efficiency.FeatureAdoption)
 	renderAgentPerformance(agents)
+
+	// Cost estimation (augments token economics with detailed cost breakdown).
+	if stats != nil {
+		totalCommits := 0
+		for _, s := range sessions {
+			totalCommits += s.GitCommits
+		}
+		costEst := analyzer.EstimateCosts(*stats, "", len(sessions), totalCommits)
+		renderCostEstimation(costEst)
+	}
+
+	// Commit patterns.
+	commitAnalysis := analyzer.AnalyzeCommits(sessions)
+	renderCommitPatterns(commitAnalysis)
+
+	// Conversation quality.
+	convAnalysis, err := analyzer.AnalyzeConversations(cfg.ClaudeHome)
+	if err != nil {
+		log.Printf("Warning: conversation analysis failed: %v", err)
+	} else {
+		renderConversationQuality(convAnalysis)
+	}
+
+	// Friction trends.
+	persistence := analyzer.AnalyzeFrictionPersistence(facets, sessions)
+	renderFrictionTrends(persistence)
 
 	return nil
 }
@@ -391,4 +420,115 @@ func sortMapByValue(m map[string]int) []kvPair {
 		return pairs[i].value > pairs[j].value
 	})
 	return pairs
+}
+
+func renderCostEstimation(est analyzer.CostEstimate) {
+	fmt.Println(output.Section("Cost Estimation"))
+
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Total cost"),
+		output.StyleValue.Render(fmt.Sprintf("$%.2f", est.TotalCost)))
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Cost/session"),
+		output.StyleValue.Render(fmt.Sprintf("$%.2f", est.CostPerSession)))
+
+	if !math.IsInf(est.CostPerCommit, 0) {
+		fmt.Printf(" %s %s\n",
+			output.StyleLabel.Render("Cost/commit"),
+			output.StyleValue.Render(fmt.Sprintf("$%.2f", est.CostPerCommit)))
+	} else {
+		fmt.Printf(" %s %s\n",
+			output.StyleLabel.Render("Cost/commit"),
+			output.StyleMuted.Render("N/A (no commits)"))
+	}
+
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Cache savings"),
+		output.StyleValue.Render(fmt.Sprintf("$%.2f", est.CacheSavings)))
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Savings %"),
+		output.StyleValue.Render(fmt.Sprintf("%.0f%%", est.CacheSavingsPercent)))
+
+	fmt.Println()
+}
+
+func renderCommitPatterns(ca analyzer.CommitAnalysis) {
+	fmt.Println(output.Section("Commit Patterns"))
+
+	if ca.TotalSessions == 0 {
+		fmt.Printf(" %s\n\n", output.StyleMuted.Render("No sessions to analyze"))
+		return
+	}
+
+	zeroCommitPct := ca.ZeroCommitRate * 100
+	zeroCommitLabel := fmt.Sprintf("%.0f%%", zeroCommitPct)
+	if zeroCommitPct > 30 {
+		zeroCommitLabel = output.StyleError.Render(fmt.Sprintf("%.0f%% ⚠", zeroCommitPct))
+	}
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Zero-commit rate"),
+		zeroCommitLabel)
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Avg commits/session"),
+		output.StyleValue.Render(fmt.Sprintf("%.1f", ca.AvgCommitsPerSession)))
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Max commits (session)"),
+		output.StyleValue.Render(fmt.Sprintf("%d", ca.MaxCommitsInSession)))
+
+	fmt.Println()
+}
+
+func renderConversationQuality(ca analyzer.ConversationAnalysis) {
+	fmt.Println(output.Section("Conversation Quality"))
+
+	if len(ca.Sessions) == 0 {
+		fmt.Printf(" %s\n\n", output.StyleMuted.Render("No conversation data available"))
+		return
+	}
+
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Avg correction rate"),
+		output.StyleValue.Render(fmt.Sprintf("%.0f%%", ca.AvgCorrectionRate*100)))
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("High-correction sessions"),
+		output.StyleValue.Render(fmt.Sprintf("%d", ca.HighCorrectionSessions)))
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Avg long message rate"),
+		output.StyleValue.Render(fmt.Sprintf("%.0f%%", ca.AvgLongMsgRate*100)))
+
+	fmt.Println()
+}
+
+func renderFrictionTrends(pa analyzer.PersistenceAnalysis) {
+	fmt.Println(output.Section("Friction Trends"))
+
+	if len(pa.Patterns) == 0 {
+		fmt.Printf(" %s\n\n", output.StyleMuted.Render("No friction persistence data"))
+		return
+	}
+
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Stale friction"),
+		output.StyleValue.Render(fmt.Sprintf("%d", pa.StaleCount)))
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Improving"),
+		output.StyleValue.Render(fmt.Sprintf("%d", pa.ImprovingCount)))
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Worsening"),
+		output.StyleValue.Render(fmt.Sprintf("%d", pa.WorseningCount)))
+
+	// Show top 3 stale patterns.
+	staleShown := 0
+	for _, p := range pa.Patterns {
+		if !p.Stale || staleShown >= 3 {
+			continue
+		}
+		fmt.Printf("\n  %s %s %s\n",
+			output.StyleError.Render("⚠"),
+			output.StyleLabel.Render(p.FrictionType),
+			output.StyleMuted.Render(fmt.Sprintf("(%d consecutive weeks)", p.ConsecutiveWeeks)))
+		staleShown++
+	}
+
+	fmt.Println()
 }

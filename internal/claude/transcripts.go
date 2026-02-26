@@ -106,7 +106,7 @@ func ParseSingleTranscript(path string) ([]AgentSpan, error) {
 	for scanner.Scan() {
 		line := scanner.Bytes()
 
-		var entry transcriptEntry
+		var entry TranscriptEntry
 		if err := json.Unmarshal(line, &entry); err != nil {
 			continue
 		}
@@ -149,30 +149,30 @@ func ParseSingleTranscript(path string) ([]AgentSpan, error) {
 	return spans, nil
 }
 
-// transcriptEntry is the top-level structure of a JSONL line.
-type transcriptEntry struct {
-	Type             string          `json:"type"`
-	Timestamp        string          `json:"timestamp"`
-	SessionID        string          `json:"sessionId"`
-	Message          json.RawMessage `json:"message"`
-	Data             json.RawMessage `json:"data"`
-	ParentToolUseID  string          `json:"parentToolUseID"`
+// TranscriptEntry is the top-level structure of a JSONL line.
+type TranscriptEntry struct {
+	Type            string          `json:"type"`
+	Timestamp       string          `json:"timestamp"`
+	SessionID       string          `json:"sessionId"`
+	Message         json.RawMessage `json:"message"`
+	Data            json.RawMessage `json:"data"`
+	ParentToolUseID string          `json:"parentToolUseID"`
 }
 
-// assistantMessage represents an assistant-role message.
-type assistantMessage struct {
-	Role    string           `json:"role"`
-	Content []contentBlock   `json:"content"`
+// AssistantMessage represents an assistant-role message.
+type AssistantMessage struct {
+	Role    string         `json:"role"`
+	Content []ContentBlock `json:"content"`
 }
 
-// userMessage represents a user-role message.
-type userMessage struct {
-	Role    string           `json:"role"`
-	Content []contentBlock   `json:"content"`
+// UserMessage represents a user-role message.
+type UserMessage struct {
+	Role    string         `json:"role"`
+	Content []ContentBlock `json:"content"`
 }
 
-// contentBlock represents a single content block (tool_use, tool_result, text).
-type contentBlock struct {
+// ContentBlock represents a single content block (tool_use, tool_result, text).
+type ContentBlock struct {
 	Type      string          `json:"type"`
 	ID        string          `json:"id"`
 	Name      string          `json:"name"`
@@ -208,17 +208,17 @@ type pendingTask struct {
 
 // processAssistantEntry handles assistant-type entries, extracting Task
 // launches and TaskStop calls.
-func processAssistantEntry(entry *transcriptEntry, sessionID string, pending map[string]*pendingTask, killedAgentIDs map[string]bool) {
+func processAssistantEntry(entry *TranscriptEntry, sessionID string, pending map[string]*pendingTask, killedAgentIDs map[string]bool) {
 	if entry.Message == nil {
 		return
 	}
 
-	var msg assistantMessage
+	var msg AssistantMessage
 	if err := json.Unmarshal(entry.Message, &msg); err != nil {
 		return
 	}
 
-	ts := parseTimestamp(entry.Timestamp)
+	ts := ParseTimestamp(entry.Timestamp)
 
 	for _, block := range msg.Content {
 		switch {
@@ -265,17 +265,17 @@ func processAssistantEntry(entry *transcriptEntry, sessionID string, pending map
 
 // processUserEntry handles user-type entries, looking for tool_result blocks
 // that complete a pending Task.
-func processUserEntry(entry *transcriptEntry, pending map[string]*pendingTask, spans *[]AgentSpan) {
+func processUserEntry(entry *TranscriptEntry, pending map[string]*pendingTask, spans *[]AgentSpan) {
 	if entry.Message == nil {
 		return
 	}
 
-	var msg userMessage
+	var msg UserMessage
 	if err := json.Unmarshal(entry.Message, &msg); err != nil {
 		return
 	}
 
-	ts := parseTimestamp(entry.Timestamp)
+	ts := ParseTimestamp(entry.Timestamp)
 
 	for _, block := range msg.Content {
 		if block.Type != "tool_result" {
@@ -307,7 +307,7 @@ func processUserEntry(entry *transcriptEntry, pending map[string]*pendingTask, s
 
 // processProgressEntry handles progress-type entries, mapping agentId to
 // the parentToolUseID so we can correlate TaskStop calls.
-func processProgressEntry(entry *transcriptEntry, agentToToolUse map[string]string) {
+func processProgressEntry(entry *TranscriptEntry, agentToToolUse map[string]string) {
 	if entry.Data == nil || entry.ParentToolUseID == "" {
 		return
 	}
@@ -337,7 +337,7 @@ func resultContentLength(raw json.RawMessage, text string) int {
 		return len(s)
 	}
 
-	var blocks []contentBlock
+	var blocks []ContentBlock
 	if err := json.Unmarshal(raw, &blocks); err == nil {
 		total := 0
 		for _, b := range blocks {
@@ -349,8 +349,66 @@ func resultContentLength(raw json.RawMessage, text string) int {
 	return len(raw)
 }
 
-// parseTimestamp parses an ISO 8601 timestamp string.
-func parseTimestamp(s string) time.Time {
+// WalkTranscriptEntries calls fn for every parsed JSONL entry across all
+// session transcripts found under claudeDir/projects/. Each entry is passed
+// along with its session ID (derived from the JSONL filename) and the project
+// hash (the directory name under projects/).
+func WalkTranscriptEntries(claudeDir string, fn func(entry TranscriptEntry, sessionID string, projectHash string)) error {
+	projectsDir := filepath.Join(claudeDir, "projects")
+	projectDirs, err := os.ReadDir(projectsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	for _, projEntry := range projectDirs {
+		if !projEntry.IsDir() {
+			continue
+		}
+		projectHash := projEntry.Name()
+		dirPath := filepath.Join(projectsDir, projectHash)
+
+		files, err := os.ReadDir(dirPath)
+		if err != nil {
+			continue
+		}
+
+		for _, f := range files {
+			if f.IsDir() || !strings.HasSuffix(f.Name(), ".jsonl") {
+				continue
+			}
+
+			filePath := filepath.Join(dirPath, f.Name())
+			sessionID := strings.TrimSuffix(f.Name(), ".jsonl")
+
+			file, err := os.Open(filePath)
+			if err != nil {
+				continue
+			}
+
+			scanner := bufio.NewScanner(file)
+			scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
+
+			for scanner.Scan() {
+				var entry TranscriptEntry
+				if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
+					continue
+				}
+				fn(entry, sessionID, projectHash)
+			}
+			file.Close()
+		}
+	}
+
+	return nil
+}
+
+// ParseTimestamp parses an ISO 8601 timestamp string. It tries RFC3339Nano,
+// RFC3339, and a plain datetime format without timezone. Returns the zero time
+// if the string is empty or cannot be parsed by any supported format.
+func ParseTimestamp(s string) time.Time {
 	if s == "" {
 		return time.Time{}
 	}
@@ -358,7 +416,11 @@ func parseTimestamp(s string) time.Time {
 	if err != nil {
 		t, err = time.Parse(time.RFC3339, s)
 		if err != nil {
-			return time.Time{}
+			// Fallback for datetime strings without a timezone suffix.
+			t, err = time.Parse("2006-01-02T15:04:05", s)
+			if err != nil {
+				return time.Time{}
+			}
 		}
 	}
 	return t
