@@ -5,8 +5,6 @@ package watcher
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"time"
 
@@ -191,17 +189,6 @@ func (w *Watcher) Snapshot() (*WatchState, error) {
 	}
 
 	return state, nil
-}
-
-// sessionMetaDirModTime returns the modification time of the session-meta
-// directory, which can be used as a quick check for new data.
-func sessionMetaDirModTime(claudeDir string) (time.Time, error) {
-	dir := filepath.Join(claudeDir, "usage-data", "session-meta")
-	info, err := os.Stat(dir)
-	if err != nil {
-		return time.Time{}, err
-	}
-	return info.ModTime(), nil
 }
 
 // recentSessions returns sessions sorted by start time descending, limited to n.

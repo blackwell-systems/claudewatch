@@ -90,7 +90,7 @@ func rulePlanModeWarning(ctx *FixContext) []Addition {
 	return []Addition{
 		{
 			Section:    "## Conventions",
-			Content:    fmt.Sprintf("- Do not enter plan mode for this project. Implement directly."),
+			Content:    "- Do not enter plan mode for this project. Implement directly.",
 			Reason:     fmt.Sprintf("Plan agents have %d%% kill rate across %d plan tasks in this project.", killPct, planTotal),
 			Impact:     "Eliminating wasted plan cycles reduces session time and user frustration.",
 			Source:     "plan_mode_warning",
@@ -191,7 +191,7 @@ func ruleMissingTestingSection(ctx *FixContext) []Addition {
 		{
 			Section:    "## Testing",
 			Content:    sb.String(),
-			Reason:     fmt.Sprintf("Test commands detected in session data but not documented in CLAUDE.md."),
+			Reason:     "Test commands detected in session data but not documented in CLAUDE.md.",
 			Impact:     "Documented test commands reduce friction and enable Claude to verify changes.",
 			Source:     "missing_testing_section",
 			Confidence: confidenceFromSessionCount(len(ctx.Sessions)),

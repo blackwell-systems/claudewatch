@@ -278,12 +278,22 @@ func TestScanProjectStructure_TempDir(t *testing.T) {
 	dir := t.TempDir()
 
 	// Create some known files and directories.
-	os.MkdirAll(filepath.Join(dir, "cmd"), 0o755)
-	os.MkdirAll(filepath.Join(dir, "internal"), 0o755)
-	os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/test\n\ngo 1.21\n"), 0o644)
-	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0o644)
+	if err := os.MkdirAll(filepath.Join(dir, "cmd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "internal"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/test\n\ngo 1.21\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	// Hidden files should be skipped.
-	os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("*.o\n"), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("*.o\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	result := scanProjectStructure(dir)
 

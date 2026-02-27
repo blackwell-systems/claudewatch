@@ -129,7 +129,7 @@ func (db *DB) migrateV1() error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	for _, stmt := range statements {
 		if _, err := tx.Exec(stmt); err != nil {

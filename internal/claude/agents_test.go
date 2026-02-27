@@ -46,8 +46,8 @@ func TestParseAgentTasks_CompletedTask(t *testing.T) {
 	if task.SessionID != "session1" {
 		t.Errorf("SessionID = %q, want %q", task.SessionID, "session1")
 	}
-	if !task.Background {
-		// run_in_background was false
+	if task.Background {
+		t.Error("expected Background=false")
 	}
 	if task.DurationMs != 300000 {
 		t.Errorf("DurationMs = %d, want 300000", task.DurationMs)

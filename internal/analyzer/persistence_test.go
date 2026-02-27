@@ -30,16 +30,6 @@ func TestAnalyzeFrictionPersistence_NoMatchingMetas(t *testing.T) {
 	}
 }
 
-// makeTime creates a time from a date string for testing convenience.
-func makeTime(t *testing.T, dateStr string) time.Time {
-	t.Helper()
-	ts, err := time.Parse("2006-01-02", dateStr)
-	if err != nil {
-		t.Fatalf("bad test date %q: %v", dateStr, err)
-	}
-	return ts
-}
-
 func TestAnalyzeFrictionPersistence_SingleSession(t *testing.T) {
 	facets := []claude.SessionFacet{
 		{SessionID: "s1", FrictionCounts: map[string]int{"wrong_approach": 2}},
