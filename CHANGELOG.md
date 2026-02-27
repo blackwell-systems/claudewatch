@@ -2,6 +2,16 @@
 
 All notable changes to claudewatch are documented here.
 
+## [Unreleased]
+
+### Added
+
+- **Expanded JSON output** — `metrics --json` now exports all 13 metric sections including tokens, commits, conversation quality, project confidence, friction trends, cost per outcome, and CLAUDE.md effectiveness. Previously only exported 6 top-level metrics. Enables machine-readable output for time-series analysis, cost dashboards, CI/CD integration, and custom metric queries.
+
+### Fixed
+
+- **Metrics data consistency** — eliminated stats-cache data mixing where metrics sections showed contradictory numbers by combining all-time historical data with time-filtered session data. All metrics now computed from the same filtered session dataset. Resolved token count discrepancies (31M vs 6B cache reads), cost contradictions ($0.00 vs $5,480.20 vs $5.29), and message count mismatches. Cost-per-outcome formatting improved to prevent line wrapping on narrow terminals.
+
 ## [v0.1.0] - 2026-02-26
 
 ### Added

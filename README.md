@@ -232,6 +232,47 @@ claudewatch watch --stop              # stop background daemon
 
 Notifies on: friction spikes, new stale patterns, agent kill rate increases, zero-commit streaks.
 
+### `claudewatch metrics --json`
+
+Machine-readable JSON export for all metrics sections. Use for time-series analysis, cost dashboards, CI/CD integration, or custom queries.
+
+```bash
+claudewatch metrics --json                        # full export
+claudewatch metrics --days 7 --json > week.json   # save to file
+```
+
+**Exported sections:**
+- `velocity` - productivity metrics (commits/session, files modified, lines added)
+- `efficiency` - tool usage, error rates, interruptions
+- `satisfaction` - weighted scores, outcome distribution
+- `agents` - agent performance by type, success/kill rates
+- `tokens` - input/output tokens, ratios, per-session averages
+- `commits` - commit patterns, zero-commit rate, detailed session list
+- `conversation` - correction rate, long message frequency
+- `confidence` - project confidence scores, read/write ratios
+- `friction_trends` - stale/improving/worsening friction patterns
+- `cost_per_outcome` - cost per commit/file/session, goal achievement
+- `effectiveness` - CLAUDE.md before/after effectiveness scoring
+
+**Example queries:**
+
+```bash
+# Track cost trends
+claudewatch metrics --json | jq '.cost_per_outcome.avg_cost_per_commit'
+
+# Find low-confidence projects
+claudewatch metrics --json | jq '.confidence.projects[] | select(.confidence_score < 40)'
+
+# Monitor effectiveness
+claudewatch metrics --json | jq '.effectiveness[] | {project: .project_name, score, verdict}'
+
+# Export for analysis
+claudewatch metrics --days 30 --json > baseline.json
+# ... make CLAUDE.md changes ...
+claudewatch metrics --days 30 --json > after.json
+# Compare in Python/R/Excel
+```
+
 ## Data sources
 
 All data is read from local files. claudewatch never writes to these paths, never modifies them, and never reads anything outside `~/.claude/`.
