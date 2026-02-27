@@ -6,7 +6,7 @@ Get measurably better at AI-assisted development.
 
 claudewatch generates CLAUDE.md improvements from your actual Claude Code session data, then proves whether they worked with before/after effectiveness scoring. It reads local files under `~/.claude/`, finds what's costing you time and money, fixes it, and measures the result. No network calls, no telemetry, everything stays on your machine.
 
-## The problem
+## Why
 
 Every developer using AI tools is guessing at how to get better. You tweak your CLAUDE.md, try different prompting styles, maybe add a hook -- and hope things improve. There's no feedback loop. Did that scope constraint actually reduce unrequested edits? Did the testing section cut your debugging cycles? You have no idea. You can't improve what you can't measure.
 
