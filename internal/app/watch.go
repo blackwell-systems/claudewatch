@@ -7,7 +7,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
-	"syscall"
 	"time"
 
 	"github.com/blackwell-systems/claudewatch/internal/config"
@@ -88,7 +87,7 @@ func runForeground(cfg *config.Config, interval time.Duration) error {
 
 	// Handle SIGINT/SIGTERM for graceful shutdown.
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sigCh, shutdownSignals...)
 	go func() {
 		<-sigCh
 		cancel()
@@ -176,7 +175,7 @@ func runDaemon(cfg *config.Config, interval time.Duration) error {
 
 	// Handle SIGINT/SIGTERM for graceful shutdown.
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sigCh, shutdownSignals...)
 	go func() {
 		<-sigCh
 		cancel()
@@ -202,29 +201,6 @@ func runDaemon(cfg *config.Config, interval time.Duration) error {
 	return err
 }
 
-// stopDaemon reads the PID file and sends SIGTERM to the running daemon.
-func stopDaemon() error {
-	pid, err := readPID()
-	if err != nil {
-		return fmt.Errorf("no daemon running (could not read PID file: %v)", err)
-	}
-
-	if !processExists(pid) {
-		// Clean up stale PID file.
-		os.Remove(pidFilePath())
-		return fmt.Errorf("no daemon running (PID %d is not active, cleaned up stale PID file)", pid)
-	}
-
-	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
-		return fmt.Errorf("failed to stop daemon (PID %d): %w", pid, err)
-	}
-
-	// Remove PID file after successful signal.
-	os.Remove(pidFilePath())
-	fmt.Printf("Stopped daemon (PID %d)\n", pid)
-	return nil
-}
-
 // readPID reads the daemon PID from the PID file.
 func readPID() (int, error) {
 	data, err := os.ReadFile(pidFilePath())
@@ -232,13 +208,6 @@ func readPID() (int, error) {
 		return 0, err
 	}
 	return strconv.Atoi(string(data))
-}
-
-// processExists checks whether a process with the given PID is running.
-func processExists(pid int) bool {
-	// Sending signal 0 checks for process existence without actually signaling.
-	err := syscall.Kill(pid, 0)
-	return err == nil
 }
 
 // writeLog writes a timestamped line to the log file.
