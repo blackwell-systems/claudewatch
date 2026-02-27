@@ -1,4 +1,4 @@
-.PHONY: build test lint vet clean snapshot install
+.PHONY: build test lint vet fmt fix clean snapshot install
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -7,11 +7,17 @@ LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.dat
 build:
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/claudewatch ./cmd/claudewatch
 
-test:
+test: fmt vet
 	go test ./... -v
+
+fmt:
+	gofmt -w .
 
 lint:
 	golangci-lint run ./...
+
+fix: fmt
+	golangci-lint run --fix ./...
 
 vet:
 	go vet ./...

@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   lint:
     name: Lint & Format
@@ -17,22 +20,29 @@ jobs:
         with:
           go-version: "1.24"
 
-      - name: Check formatting
-        run: |
-          unformatted=$(gofmt -l .)
-          if [ -n "$unformatted" ]; then
-            echo "Files not formatted:"
-            echo "$unformatted"
-            exit 1
-          fi
+      - name: Format code
+        run: gofmt -w .
+
+      - name: Run golangci-lint with auto-fix
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --fix
 
       - name: Run go vet
         run: go vet ./...
 
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
+      - name: Check for uncommitted fixes
+        run: |
+          if [ -n "$(git diff --name-only)" ]; then
+            echo "Formatting or lint fixes were applied:"
+            git diff --name-only
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "style: auto-format and lint fixes"
+            git push
+          fi
 
   test:
     name: Test
@@ -40,6 +50,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
 
       - uses: actions/setup-go@v5
         with:
