@@ -192,4 +192,3 @@ func detectAnomalies(profiles []ToolProfile, projectByPath map[string]scanner.Pr
 
 	return anomalies
 }
-

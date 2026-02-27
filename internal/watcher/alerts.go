@@ -232,11 +232,11 @@ func findNewSessions(prev, curr *WatchState) []sessionInfo {
 	for _, s := range curr.sessions {
 		if !prevIDs[s.SessionID] {
 			newSessions = append(newSessions, sessionInfo{
-				SessionID:       s.SessionID,
-				ProjectPath:     s.ProjectPath,
-				DurationMinutes: s.DurationMinutes,
-				GitCommits:      s.GitCommits,
-				ToolCounts:      s.ToolCounts,
+				SessionID:         s.SessionID,
+				ProjectPath:       s.ProjectPath,
+				DurationMinutes:   s.DurationMinutes,
+				GitCommits:        s.GitCommits,
+				ToolCounts:        s.ToolCounts,
 				UserInterruptions: s.UserInterruptions,
 			})
 		}
@@ -246,10 +246,10 @@ func findNewSessions(prev, curr *WatchState) []sessionInfo {
 
 // sessionInfo is a lightweight summary of a session for alert generation.
 type sessionInfo struct {
-	SessionID       string
-	ProjectPath     string
-	DurationMinutes int
-	GitCommits      int
-	ToolCounts      map[string]int
+	SessionID         string
+	ProjectPath       string
+	DurationMinutes   int
+	GitCommits        int
+	ToolCounts        map[string]int
 	UserInterruptions int
 }

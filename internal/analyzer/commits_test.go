@@ -256,10 +256,10 @@ func TestAnalyzeCommits_WeeklyCommitRates(t *testing.T) {
 
 func TestTopNTools(t *testing.T) {
 	tests := []struct {
-		name   string
-		tools  map[string]int
-		n      int
-		want   []string
+		name  string
+		tools map[string]int
+		n     int
+		want  []string
 	}{
 		{
 			name:  "top 3 from 4",

@@ -68,14 +68,14 @@ type AnalysisContext struct {
 
 // ProjectContext provides project-level data for suggest rules.
 type ProjectContext struct {
-	Path            string  `json:"path"`
-	Name            string  `json:"name"`
-	HasClaudeMD     bool    `json:"has_claude_md"`
-	SessionCount    int     `json:"session_count"`
-	ToolErrors      int     `json:"tool_errors"`
-	Interruptions   int     `json:"interruptions"`
-	Score           float64 `json:"score"`
-	HasFacets       bool    `json:"has_facets"`
+	Path                    string   `json:"path"`
+	Name                    string   `json:"name"`
+	HasClaudeMD             bool     `json:"has_claude_md"`
+	SessionCount            int      `json:"session_count"`
+	ToolErrors              int      `json:"tool_errors"`
+	Interruptions           int      `json:"interruptions"`
+	Score                   float64  `json:"score"`
+	HasFacets               bool     `json:"has_facets"`
 	AgentCount              int      `json:"agent_count"`
 	SequentialCount         int      `json:"sequential_count"`
 	ClaudeMDMissingSections []string `json:"claude_md_missing_sections,omitempty"`

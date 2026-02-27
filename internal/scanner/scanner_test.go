@@ -582,11 +582,11 @@ func TestComputeReadiness_ClaudeMDSizeBoundaries(t *testing.T) {
 		size     int64
 		expected float64
 	}{
-		{"size_0", 0, 30},      // 30 for HasClaudeMD, 0 for size
-		{"size_100", 100, 30},  // exactly 100 is not > 100
-		{"size_101", 101, 35},  // 30 + 5
-		{"size_500", 500, 35},  // exactly 500 is not > 500
-		{"size_501", 501, 40},  // 30 + 10
+		{"size_0", 0, 30},     // 30 for HasClaudeMD, 0 for size
+		{"size_100", 100, 30}, // exactly 100 is not > 100
+		{"size_101", 101, 35}, // 30 + 5
+		{"size_500", 500, 35}, // exactly 500 is not > 500
+		{"size_501", 501, 40}, // 30 + 10
 	}
 
 	for _, tc := range tests {
@@ -612,7 +612,7 @@ func TestComputeReadiness_CommitBoundaries(t *testing.T) {
 	}{
 		{"zero_commits", 0, 0},
 		{"one_commit", 1, 2},
-		{"five_commits", 5, 2},   // exactly 5 is not > 5
+		{"five_commits", 5, 2}, // exactly 5 is not > 5
 		{"six_commits", 6, 5},
 		{"twenty_commits", 20, 5}, // exactly 20 is not > 20
 		{"twentyone_commits", 21, 10},

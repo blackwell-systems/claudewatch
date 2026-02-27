@@ -155,9 +155,9 @@ func TestBuildUserPrompt_ProducesNonEmptyString(t *testing.T) {
 		},
 		ExistingClaudeMD: "# Test Project\n\nSome content.",
 		CommitAnalysis: &analyzer.CommitAnalysis{
-			TotalSessions:       1,
-			SessionsWithCommits: 1,
-			ZeroCommitRate:      0,
+			TotalSessions:        1,
+			SessionsWithCommits:  1,
+			ZeroCommitRate:       0,
 			AvgCommitsPerSession: 2.0,
 		},
 		ToolProfile: &analyzer.ToolProfile{

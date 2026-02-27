@@ -21,14 +21,14 @@ func TestAnalyzeOutcomes_Empty(t *testing.T) {
 func TestAnalyzeOutcomes_BasicCosts(t *testing.T) {
 	sessions := []claude.SessionMeta{
 		{
-			SessionID:   "s1",
-			ProjectPath: "/home/user/proj",
-			StartTime:   "2026-01-10T10:00:00Z",
-			InputTokens: 1_000_000, // $3.00
-			OutputTokens: 100_000,  // $1.50
-			GitCommits:   3,
+			SessionID:     "s1",
+			ProjectPath:   "/home/user/proj",
+			StartTime:     "2026-01-10T10:00:00Z",
+			InputTokens:   1_000_000, // $3.00
+			OutputTokens:  100_000,   // $1.50
+			GitCommits:    3,
 			FilesModified: 5,
-			LinesAdded:   200,
+			LinesAdded:    200,
 		},
 	}
 

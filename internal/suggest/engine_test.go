@@ -278,14 +278,14 @@ func TestPriorityOrdering(t *testing.T) {
 func TestEngineRun_FullContext(t *testing.T) {
 	engine := NewEngine()
 	ctx := &AnalysisContext{
-		TotalSessions:  30,
-		AvgToolErrors:  2.0,
-		HookCount:      0,
-		CommandCount:   5,
-		PluginCount:    2,
-		ZeroCommitRate: 0.60,
+		TotalSessions:       30,
+		AvgToolErrors:       2.0,
+		HookCount:           0,
+		CommandCount:        5,
+		PluginCount:         2,
+		ZeroCommitRate:      0.60,
 		CacheSavingsPercent: 5.0,
-		TotalCost:          200.0,
+		TotalCost:           200.0,
 		AgentSuccessRate:    0.50,
 		RecurringFriction:   []string{"timeout", "wrong_file"},
 		AgentTypeStats: map[string]float64{

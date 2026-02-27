@@ -157,4 +157,3 @@ func hasRelevantPlugin(settings *claude.GlobalSettings, language string) bool {
 	}
 	return false
 }
-

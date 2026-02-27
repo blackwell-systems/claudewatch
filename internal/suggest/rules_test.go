@@ -513,8 +513,8 @@ func TestInterruptionPattern_ZeroSessions(t *testing.T) {
 func TestInterruptionPattern_MultipleProjects(t *testing.T) {
 	ctx := &AnalysisContext{
 		Projects: []ProjectContext{
-			{Name: "bad", SessionCount: 2, Interruptions: 10},  // avg=5.0
-			{Name: "good", SessionCount: 10, Interruptions: 5}, // avg=0.5
+			{Name: "bad", SessionCount: 2, Interruptions: 10},      // avg=5.0
+			{Name: "good", SessionCount: 10, Interruptions: 5},     // avg=0.5
 			{Name: "also_bad", SessionCount: 3, Interruptions: 15}, // avg=5.0
 		},
 	}
@@ -738,7 +738,7 @@ func TestCustomMetricRegression_MixedTrends(t *testing.T) {
 
 func TestCustomMetricRegression_NilMap(t *testing.T) {
 	ctx := &AnalysisContext{
-		TotalSessions:     10,
+		TotalSessions:      10,
 		CustomMetricTrends: nil,
 	}
 	suggestions := CustomMetricRegression(ctx)

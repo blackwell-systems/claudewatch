@@ -14,11 +14,11 @@ import (
 )
 
 const (
-	claudeAPIURL   = "https://api.anthropic.com/v1/messages"
+	claudeAPIURL     = "https://api.anthropic.com/v1/messages"
 	claudeAPIVersion = "2023-06-01"
-	defaultModel   = "claude-sonnet-4-20250514"
-	maxTokens      = 4096
-	apiTimeout     = 60 * time.Second
+	defaultModel     = "claude-sonnet-4-20250514"
+	maxTokens        = 4096
+	apiTimeout       = 60 * time.Second
 )
 
 // FixOptions controls whether AI generation is used and with what configuration.
@@ -327,10 +327,10 @@ func readFirstNLines(path string, n int) string {
 
 // claudeAPIRequest is the request body for the Claude Messages API.
 type claudeAPIRequest struct {
-	Model     string              `json:"model"`
-	MaxTokens int                 `json:"max_tokens"`
-	System    string              `json:"system"`
-	Messages  []claudeAPIMessage  `json:"messages"`
+	Model     string             `json:"model"`
+	MaxTokens int                `json:"max_tokens"`
+	System    string             `json:"system"`
+	Messages  []claudeAPIMessage `json:"messages"`
 }
 
 // claudeAPIMessage is a single message in the Claude Messages API request.
@@ -341,10 +341,10 @@ type claudeAPIMessage struct {
 
 // claudeAPIResponse is the response body from the Claude Messages API.
 type claudeAPIResponse struct {
-	ID      string                   `json:"id"`
-	Type    string                   `json:"type"`
-	Content []claudeAPIContentBlock  `json:"content"`
-	Error   *claudeAPIError          `json:"error,omitempty"`
+	ID      string                  `json:"id"`
+	Type    string                  `json:"type"`
+	Content []claudeAPIContentBlock `json:"content"`
+	Error   *claudeAPIError         `json:"error,omitempty"`
 }
 
 // claudeAPIContentBlock is a single content block in the API response.

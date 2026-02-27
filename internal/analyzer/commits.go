@@ -222,4 +222,3 @@ func weekStartMonday(t time.Time) time.Time {
 	monday := t.AddDate(0, 0, -int(weekday-time.Monday))
 	return time.Date(monday.Year(), monday.Month(), monday.Day(), 0, 0, 0, 0, time.UTC)
 }
-

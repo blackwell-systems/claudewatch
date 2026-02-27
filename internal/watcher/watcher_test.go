@@ -32,16 +32,16 @@ func createSessionMetaFile(t *testing.T, dir string, sessionID string, projectPa
 
 	meta := map[string]any{
 		"session_id":              sessionID,
-		"project_path":           projectPath,
-		"start_time":            startTime,
-		"duration_minutes":      15,
-		"user_message_count":    5,
+		"project_path":            projectPath,
+		"start_time":              startTime,
+		"duration_minutes":        15,
+		"user_message_count":      5,
 		"assistant_message_count": 8,
-		"tool_counts":           map[string]int{"Bash": 3, "Read": 5},
-		"languages":             map[string]int{"Go": 4},
-		"git_commits":           commits,
-		"input_tokens":          1000,
-		"output_tokens":         2000,
+		"tool_counts":             map[string]int{"Bash": 3, "Read": 5},
+		"languages":               map[string]int{"Go": 4},
+		"git_commits":             commits,
+		"input_tokens":            1000,
+		"output_tokens":           2000,
 	}
 
 	data, err := json.Marshal(meta)

@@ -376,4 +376,3 @@ func CostOptimizationSuggestion(ctx *AnalysisContext) []Suggestion {
 
 	return suggestions
 }
-

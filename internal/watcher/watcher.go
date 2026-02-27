@@ -16,23 +16,23 @@ import (
 
 // WatchState captures a point-in-time snapshot of Claude session data.
 type WatchState struct {
-	Timestamp      time.Time
-	SessionCount   int
-	FrictionCounts map[string]int // friction type -> count
-	AgentCount     int
-	AgentKillCount int
+	Timestamp       time.Time
+	SessionCount    int
+	FrictionCounts  map[string]int // friction type -> count
+	AgentCount      int
+	AgentKillCount  int
 	ZeroCommitCount int
-	TotalSessions  int
-	StalePatterns  int
-	LastSessionID  string
+	TotalSessions   int
+	StalePatterns   int
+	LastSessionID   string
 
 	// Internal: keep richer data for comparison.
-	frictionByType map[string]int
-	agentKillRate  float64
+	frictionByType   map[string]int
+	agentKillRate    float64
 	agentSuccessRate float64
-	persistence    analyzer.PersistenceAnalysis
-	sessions       []claude.SessionMeta
-	facets         []claude.SessionFacet
+	persistence      analyzer.PersistenceAnalysis
+	sessions         []claude.SessionMeta
+	facets           []claude.SessionFacet
 }
 
 // Alert represents a notable event detected by the watcher.

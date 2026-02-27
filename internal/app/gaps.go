@@ -42,12 +42,12 @@ type gap struct {
 
 // gapsOutput is the JSON-serializable output for the gaps command.
 type gapsOutput struct {
-	Gaps       []gap                    `json:"gaps"`
-	Friction   analyzer.FrictionSummary `json:"friction"`
-	GapCount   int                      `json:"gap_count"`
-	Critical   int                      `json:"critical"`
-	Warnings   int                      `json:"warnings"`
-	InfoCount  int                      `json:"info"`
+	Gaps      []gap                    `json:"gaps"`
+	Friction  analyzer.FrictionSummary `json:"friction"`
+	GapCount  int                      `json:"gap_count"`
+	Critical  int                      `json:"critical"`
+	Warnings  int                      `json:"warnings"`
+	InfoCount int                      `json:"info"`
 }
 
 func runGaps(cmd *cobra.Command, args []string) error {

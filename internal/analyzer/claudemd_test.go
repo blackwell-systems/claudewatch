@@ -172,9 +172,9 @@ func TestAnalyzeClaudeMDEffectiveness_PartialSections(t *testing.T) {
 
 func TestDetectSections(t *testing.T) {
 	tests := []struct {
-		name           string
-		lines          []string
-		wantPresent    map[string]bool
+		name        string
+		lines       []string
+		wantPresent map[string]bool
 	}{
 		{
 			name: "build header",
@@ -258,9 +258,9 @@ func TestDetectSections(t *testing.T) {
 
 func TestComputeQualityScore(t *testing.T) {
 	tests := []struct {
-		name     string
-		quality  ClaudeMDQuality
-		want     int
+		name    string
+		quality ClaudeMDQuality
+		want    int
 	}{
 		{
 			name: "base score only",
@@ -321,8 +321,8 @@ func TestComputeQualityScore(t *testing.T) {
 func TestComputeSectionCorrelations(t *testing.T) {
 	projects := []ClaudeMDQuality{
 		{
-			ProjectName:  "with-build",
-			SessionCount: 5,
+			ProjectName:     "with-build",
+			SessionCount:    5,
 			AvgFrictionRate: 1.0,
 			Sections: []ClaudeMDSection{
 				{Name: "build commands", Present: true},
@@ -330,8 +330,8 @@ func TestComputeSectionCorrelations(t *testing.T) {
 			},
 		},
 		{
-			ProjectName:  "without-build",
-			SessionCount: 5,
+			ProjectName:     "without-build",
+			SessionCount:    5,
 			AvgFrictionRate: 3.0,
 			Sections: []ClaudeMDSection{
 				{Name: "build commands", Present: false},

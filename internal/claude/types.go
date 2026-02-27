@@ -12,16 +12,16 @@ type HistoryEntry struct {
 
 // StatsCache represents the aggregate stats in ~/.claude/stats-cache.json.
 type StatsCache struct {
-	Version                    int                    `json:"version"`
-	LastComputedDate           string                 `json:"lastComputedDate"`
-	DailyActivity              []DailyActivity        `json:"dailyActivity"`
-	DailyModelTokens           []DailyModelTokens     `json:"dailyModelTokens"`
-	ModelUsage                 map[string]ModelUsage   `json:"modelUsage"`
-	TotalSessions              int                    `json:"totalSessions"`
-	TotalMessages              int                    `json:"totalMessages"`
-	LongestSession             LongestSession         `json:"longestSession"`
-	FirstSessionDate           string                 `json:"firstSessionDate"`
-	HourCounts                 map[string]int         `json:"hourCounts"`
+	Version                     int                   `json:"version"`
+	LastComputedDate            string                `json:"lastComputedDate"`
+	DailyActivity               []DailyActivity       `json:"dailyActivity"`
+	DailyModelTokens            []DailyModelTokens    `json:"dailyModelTokens"`
+	ModelUsage                  map[string]ModelUsage `json:"modelUsage"`
+	TotalSessions               int                   `json:"totalSessions"`
+	TotalMessages               int                   `json:"totalMessages"`
+	LongestSession              LongestSession        `json:"longestSession"`
+	FirstSessionDate            string                `json:"firstSessionDate"`
+	HourCounts                  map[string]int        `json:"hourCounts"`
 	TotalSpeculationTimeSavedMs int64                 `json:"totalSpeculationTimeSavedMs"`
 }
 
@@ -41,14 +41,14 @@ type DailyModelTokens struct {
 
 // ModelUsage represents aggregate usage stats for a single model.
 type ModelUsage struct {
-	InputTokens              int64 `json:"inputTokens"`
-	OutputTokens             int64 `json:"outputTokens"`
-	CacheReadInputTokens     int64 `json:"cacheReadInputTokens"`
-	CacheCreationInputTokens int64 `json:"cacheCreationInputTokens"`
-	WebSearchRequests        int   `json:"webSearchRequests"`
+	InputTokens              int64   `json:"inputTokens"`
+	OutputTokens             int64   `json:"outputTokens"`
+	CacheReadInputTokens     int64   `json:"cacheReadInputTokens"`
+	CacheCreationInputTokens int64   `json:"cacheCreationInputTokens"`
+	WebSearchRequests        int     `json:"webSearchRequests"`
 	CostUSD                  float64 `json:"costUSD"`
-	ContextWindow            int   `json:"contextWindow"`
-	MaxOutputTokens          int   `json:"maxOutputTokens"`
+	ContextWindow            int     `json:"contextWindow"`
+	MaxOutputTokens          int     `json:"maxOutputTokens"`
 }
 
 // LongestSession holds metadata about the longest recorded session.
@@ -157,8 +157,8 @@ type CommandFile struct {
 
 // InstalledPlugins represents the top-level structure of ~/.claude/plugins/installed_plugins.json.
 type InstalledPlugins struct {
-	Version int                              `json:"version"`
-	Plugins map[string][]PluginInstallation  `json:"plugins"`
+	Version int                             `json:"version"`
+	Plugins map[string][]PluginInstallation `json:"plugins"`
 }
 
 // PluginInstallation represents a single installation record for a plugin.

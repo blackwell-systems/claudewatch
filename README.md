@@ -12,7 +12,7 @@ Every developer using AI tools is guessing at how to get better. You tweak your 
 
 Claude Code already records rich session data locally -- tool usage, friction events, satisfaction signals, agent lifecycles, commit patterns. claudewatch reads that data and turns it into actionable insights.
 
-**Measure where you are.** `scan` scores every project's AI readiness. `metrics` shows session trends over time -- friction rate, correction rate, cost per outcome, model usage, cache efficiency, agent success rates. Cost-per-outcome connects your token spend to what you actually shipped: cost per commit, cost per file modified, and whether successful sessions cost more or less than failed ones. Model usage analysis shows which models are consuming your budget and flags overspend -- like burning Opus tokens on tasks Sonnet handles fine.
+**Measure where you are.** `scan` scores every project's AI readiness. `metrics` shows session trends over time -- friction rate, correction rate, cost per outcome, model usage, cache efficiency, agent success rates. Cost-per-outcome connects your token spend to what you actually shipped: cost per commit, cost per file modified, and whether successful sessions cost more or less than failed ones. Model usage analysis shows which models are consuming your budget and flags overspend. Project confidence scoring tells you where Claude knows enough to act vs where it's stuck reading -- a proxy for whether your CLAUDE.md gives the AI enough context to be productive.
 
 ```
 $ claudewatch metrics --days 30
@@ -65,6 +65,13 @@ $ claudewatch metrics --days 30
  claude-haiku-4       $0.60  (1% of spend)    0.5M tokens  (3%)
 
  ⚠ Potential savings: $9.40 if Opus usage moved to Sonnet
+
+ Project Confidence
+ ---------------------------------------------------------------
+ shelfctl              score: 74  read: 28%  write: 52%  explore: 15%
+ bubbletea-components  score: 68  read: 35%  write: 42%  explore: 25%
+ crosschain-verifier   score: 31  read: 72%  write: 12%  explore: 80%
+   ⚠ low confidence — Claude spends most time reading, CLAUDE.md may need more context
 ```
 
 **Find what's hurting you.** `gaps` surfaces missing context (no CLAUDE.md, no hooks, no testing section), recurring friction patterns, and stale problems that have persisted for weeks. `suggest` ranks improvements by impact so you know what to fix first.

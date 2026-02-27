@@ -25,7 +25,7 @@ CLI observability and improvement tracking for AI-assisted development workflows
 | `app/` | Cobra command handlers (scan, metrics, gaps, suggest, track, log, fix, watch) |
 | `claude/` | Data parsers: history, stats-cache, session-meta, facets, settings, projects, agents, **session transcripts** |
 | `scanner/` | Project discovery, readiness scoring algorithm |
-| `analyzer/` | Friction, velocity, satisfaction, efficiency, agent metrics, cost-per-outcome, CLAUDE.md effectiveness scoring, model usage analysis, token breakdown |
+| `analyzer/` | Friction, velocity, satisfaction, efficiency, agent metrics, cost-per-outcome, CLAUDE.md effectiveness scoring, model usage analysis, token breakdown, project confidence scoring |
 | `suggest/` | Rule engine for ranked improvement suggestions |
 | `store/` | SQLite schema, migrations, snapshots, queries |
 | `config/` | Viper config loading with YAML defaults |

@@ -172,7 +172,6 @@ func TestAnalyzeConversations_LongMessageDetection(t *testing.T) {
 	}
 }
 
-
 func TestAnalyzeConversations_MalformedJSONL(t *testing.T) {
 	dir := setupTranscriptDir(t)
 	projectDir := filepath.Join(dir, "projects", "abc123")
@@ -261,7 +260,6 @@ func TestIsCorrection(t *testing.T) {
 		})
 	}
 }
-
 
 func TestParseTimestamp_FromConversation(t *testing.T) {
 	tests := []struct {

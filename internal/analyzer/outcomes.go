@@ -27,20 +27,20 @@ type OutcomeAnalysis struct {
 	Sessions []SessionOutcome `json:"sessions"`
 
 	// Aggregates
-	TotalCost            float64 `json:"total_cost"`
-	TotalCommits         int     `json:"total_commits"`
-	TotalFilesModified   int     `json:"total_files_modified"`
-	TotalLinesAdded      int     `json:"total_lines_added"`
-	GoalAchievementRate  float64 `json:"goal_achievement_rate"`
+	TotalCost           float64 `json:"total_cost"`
+	TotalCommits        int     `json:"total_commits"`
+	TotalFilesModified  int     `json:"total_files_modified"`
+	TotalLinesAdded     int     `json:"total_lines_added"`
+	GoalAchievementRate float64 `json:"goal_achievement_rate"`
 
-	AvgCostPerCommit     float64 `json:"avg_cost_per_commit"`
-	AvgCostPerFile       float64 `json:"avg_cost_per_file"`
-	AvgCostPerSession    float64 `json:"avg_cost_per_session"`
-	MedianCostPerCommit  float64 `json:"median_cost_per_commit"`
+	AvgCostPerCommit    float64 `json:"avg_cost_per_commit"`
+	AvgCostPerFile      float64 `json:"avg_cost_per_file"`
+	AvgCostPerSession   float64 `json:"avg_cost_per_session"`
+	MedianCostPerCommit float64 `json:"median_cost_per_commit"`
 
 	// Trend: compare first half vs second half of sessions by time.
-	CostPerCommitTrend   string  `json:"cost_per_commit_trend"`
-	TrendChangePercent   float64 `json:"trend_change_percent"`
+	CostPerCommitTrend string  `json:"cost_per_commit_trend"`
+	TrendChangePercent float64 `json:"trend_change_percent"`
 
 	// Per-project breakdown.
 	ByProject []ProjectOutcome `json:"by_project"`

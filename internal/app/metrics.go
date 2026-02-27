@@ -41,10 +41,10 @@ func init() {
 
 // metricsOutput is the JSON-serializable output for the metrics command.
 type metricsOutput struct {
-	Days         int                       `json:"days"`
-	Project      string                    `json:"project,omitempty"`
-	Sessions     int                       `json:"total_sessions"`
-	Velocity     analyzer.VelocityMetrics  `json:"velocity"`
+	Days         int                        `json:"days"`
+	Project      string                     `json:"project,omitempty"`
+	Sessions     int                        `json:"total_sessions"`
+	Velocity     analyzer.VelocityMetrics   `json:"velocity"`
 	Efficiency   analyzer.EfficiencyMetrics `json:"efficiency"`
 	Satisfaction analyzer.SatisfactionScore `json:"satisfaction"`
 	Agents       analyzer.AgentPerformance  `json:"agents"`
@@ -147,6 +147,10 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 	} else {
 		renderConversationQuality(convAnalysis)
 	}
+
+	// Project confidence (edit-to-read ratio analysis).
+	confidence := analyzer.AnalyzeConfidence(sessions)
+	renderProjectConfidence(confidence)
 
 	// Friction trends.
 	persistence := analyzer.AnalyzeFrictionPersistence(facets, sessions)
@@ -738,6 +742,46 @@ func formatDelta(before, after float64, lowerIsBetter bool) string {
 		return output.StyleMuted.Render(label)
 	}
 	return output.StyleError.Render(label)
+}
+
+func renderProjectConfidence(ca analyzer.ConfidenceAnalysis) {
+	fmt.Println(output.Section("Project Confidence"))
+
+	if len(ca.Projects) == 0 {
+		fmt.Printf(" %s\n\n", output.StyleMuted.Render("Not enough session data for confidence analysis"))
+		return
+	}
+
+	for _, pc := range ca.Projects {
+		scoreStyled := output.StyleValue.Render(fmt.Sprintf("%.0f", pc.ConfidenceScore))
+		if pc.ConfidenceScore < 40 {
+			scoreStyled = output.StyleError.Render(fmt.Sprintf("%.0f", pc.ConfidenceScore))
+		} else if pc.ConfidenceScore >= 70 {
+			scoreStyled = output.StyleSuccess.Render(fmt.Sprintf("%.0f", pc.ConfidenceScore))
+		}
+
+		fmt.Printf(" %-24s score: %s  read: %.0f%%  write: %.0f%%  explore: %.0f%%\n",
+			output.StyleLabel.Render(pc.ProjectName),
+			scoreStyled,
+			pc.AvgReadRatio*100,
+			pc.AvgWriteRatio*100,
+			pc.ExplorationRate*100)
+
+		if pc.ConfidenceScore < 40 {
+			fmt.Printf("   %s %s\n",
+				output.StyleError.Render("⚠"),
+				output.StyleMuted.Render(pc.Signal))
+		}
+	}
+
+	if ca.LowConfidenceCount > 0 {
+		fmt.Printf("\n %s\n",
+			output.StyleMuted.Render(fmt.Sprintf(
+				"%d project(s) with low confidence — consider adding more context to their CLAUDE.md",
+				ca.LowConfidenceCount)))
+	}
+
+	fmt.Println()
 }
 
 // detectClaudeMDChanges finds projects with CLAUDE.md files and returns their
