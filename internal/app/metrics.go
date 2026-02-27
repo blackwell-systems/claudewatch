@@ -39,20 +39,20 @@ func init() {
 
 // metricsOutput is the JSON-serializable output for the metrics command.
 type metricsOutput struct {
-	Days            int                             `json:"days"`
-	Project         string                          `json:"project,omitempty"`
-	Sessions        int                             `json:"total_sessions"`
-	Velocity        analyzer.VelocityMetrics        `json:"velocity"`
-	Efficiency      analyzer.EfficiencyMetrics      `json:"efficiency"`
-	Satisfaction    analyzer.SatisfactionScore      `json:"satisfaction"`
-	Agents          analyzer.AgentPerformance       `json:"agents"`
-	Tokens          tokenUsage                      `json:"tokens"`
-	Commits         analyzer.CommitAnalysis         `json:"commits"`
-	Conversation    *analyzer.ConversationAnalysis  `json:"conversation,omitempty"`
-	Confidence      analyzer.ConfidenceAnalysis     `json:"confidence"`
-	FrictionTrends  analyzer.PersistenceAnalysis    `json:"friction_trends"`
-	CostPerOutcome  analyzer.OutcomeAnalysis        `json:"cost_per_outcome"`
-	Effectiveness   []analyzer.EffectivenessResult  `json:"effectiveness,omitempty"`
+	Days           int                            `json:"days"`
+	Project        string                         `json:"project,omitempty"`
+	Sessions       int                            `json:"total_sessions"`
+	Velocity       analyzer.VelocityMetrics       `json:"velocity"`
+	Efficiency     analyzer.EfficiencyMetrics     `json:"efficiency"`
+	Satisfaction   analyzer.SatisfactionScore     `json:"satisfaction"`
+	Agents         analyzer.AgentPerformance      `json:"agents"`
+	Tokens         tokenUsage                     `json:"tokens"`
+	Commits        analyzer.CommitAnalysis        `json:"commits"`
+	Conversation   *analyzer.ConversationAnalysis `json:"conversation,omitempty"`
+	Confidence     analyzer.ConfidenceAnalysis    `json:"confidence"`
+	FrictionTrends analyzer.PersistenceAnalysis   `json:"friction_trends"`
+	CostPerOutcome analyzer.OutcomeAnalysis       `json:"cost_per_outcome"`
+	Effectiveness  []analyzer.EffectivenessResult `json:"effectiveness,omitempty"`
 }
 
 // tokenUsage captures token metrics computed from session data.
