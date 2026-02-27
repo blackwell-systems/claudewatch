@@ -3,7 +3,6 @@ package app
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -436,36 +435,6 @@ func sortMapByValue(m map[string]int) []kvPair {
 		return pairs[i].value > pairs[j].value
 	})
 	return pairs
-}
-
-func renderCostEstimation(est analyzer.CostEstimate) {
-	fmt.Println(output.Section("Cost Estimation"))
-
-	fmt.Printf(" %s %s\n",
-		output.StyleLabel.Render("Total cost"),
-		output.StyleValue.Render(fmt.Sprintf("$%.2f", est.TotalCost)))
-	fmt.Printf(" %s %s\n",
-		output.StyleLabel.Render("Cost/session"),
-		output.StyleValue.Render(fmt.Sprintf("$%.2f", est.CostPerSession)))
-
-	if !math.IsInf(est.CostPerCommit, 0) {
-		fmt.Printf(" %s %s\n",
-			output.StyleLabel.Render("Cost/commit"),
-			output.StyleValue.Render(fmt.Sprintf("$%.2f", est.CostPerCommit)))
-	} else {
-		fmt.Printf(" %s %s\n",
-			output.StyleLabel.Render("Cost/commit"),
-			output.StyleMuted.Render("N/A (no commits)"))
-	}
-
-	fmt.Printf(" %s %s\n",
-		output.StyleLabel.Render("Cache savings"),
-		output.StyleValue.Render(fmt.Sprintf("$%.2f", est.CacheSavings)))
-	fmt.Printf(" %s %s\n",
-		output.StyleLabel.Render("Savings %"),
-		output.StyleValue.Render(fmt.Sprintf("%.0f%%", est.CacheSavingsPercent)))
-
-	fmt.Println()
 }
 
 func renderCommitPatterns(ca analyzer.CommitAnalysis) {
