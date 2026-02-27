@@ -2,7 +2,7 @@
 
 All notable changes to claudewatch are documented here.
 
-## Unreleased
+## [v0.1.0] - 2026-02-26
 
 ### Added
 
@@ -27,14 +27,16 @@ All notable changes to claudewatch are documented here.
 - ANSI escape codes stripped before measuring table column widths.
 - `SetNoColor` now actually disables styled output.
 - Removed duplicate `normalizePath`, `filterFacetsByProject`, and timestamp parsers from parallel agent work.
+- Windows build support with platform-specific process management (watch daemon).
 
-## v0.1.0 — Initial Foundation
+### Core Features
 
 - `scan` — inventory projects and score AI readiness (0-100).
-- `metrics` — session trends: friction, satisfaction, velocity, efficiency, agent performance, token economics.
+- `metrics` — session trends: friction, satisfaction, velocity, efficiency, agent performance, token economics, model usage, project confidence.
 - `gaps` — surface missing CLAUDE.md, recurring friction, unconfigured hooks, stale patterns, tool anomalies.
 - `suggest` — ranked improvement suggestions with impact scoring. 13 rules covering configuration, friction, agents, cost, and custom metrics.
 - `track` — snapshot metrics to SQLite, diff against previous snapshot.
 - `log` — inject custom metrics (scale, boolean, counter, duration).
 - Pure Go with no CGO. SQLite via modernc.org/sqlite. Cross-compiles to linux/darwin/windows on amd64 and arm64.
 - CLI built with Cobra. Styled terminal output with lipgloss.
+- CI/CD with auto-format, auto-lint-fix, tests with race detection, and goreleaser on tags.
