@@ -3,7 +3,6 @@ package app
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"math"
 	"os"
 	"path/filepath"
@@ -41,13 +40,31 @@ func init() {
 
 // metricsOutput is the JSON-serializable output for the metrics command.
 type metricsOutput struct {
-	Days         int                        `json:"days"`
-	Project      string                     `json:"project,omitempty"`
-	Sessions     int                        `json:"total_sessions"`
-	Velocity     analyzer.VelocityMetrics   `json:"velocity"`
-	Efficiency   analyzer.EfficiencyMetrics `json:"efficiency"`
-	Satisfaction analyzer.SatisfactionScore `json:"satisfaction"`
-	Agents       analyzer.AgentPerformance  `json:"agents"`
+	Days            int                             `json:"days"`
+	Project         string                          `json:"project,omitempty"`
+	Sessions        int                             `json:"total_sessions"`
+	Velocity        analyzer.VelocityMetrics        `json:"velocity"`
+	Efficiency      analyzer.EfficiencyMetrics      `json:"efficiency"`
+	Satisfaction    analyzer.SatisfactionScore      `json:"satisfaction"`
+	Agents          analyzer.AgentPerformance       `json:"agents"`
+	Tokens          tokenUsage                      `json:"tokens"`
+	Commits         analyzer.CommitAnalysis         `json:"commits"`
+	Conversation    *analyzer.ConversationAnalysis  `json:"conversation,omitempty"`
+	Confidence      analyzer.ConfidenceAnalysis     `json:"confidence"`
+	FrictionTrends  analyzer.PersistenceAnalysis    `json:"friction_trends"`
+	CostPerOutcome  analyzer.OutcomeAnalysis        `json:"cost_per_outcome"`
+	Effectiveness   []analyzer.EffectivenessResult  `json:"effectiveness,omitempty"`
+}
+
+// tokenUsage captures token metrics computed from session data.
+type tokenUsage struct {
+	TotalTokens         int64   `json:"total_tokens"`
+	TotalInput          int64   `json:"total_input"`
+	TotalOutput         int64   `json:"total_output"`
+	InputOutputRatio    float64 `json:"input_output_ratio"`
+	AvgTokensPerSession int64   `json:"avg_tokens_per_session"`
+	AvgInputPerSession  int64   `json:"avg_input_per_session"`
+	AvgOutputPerSession int64   `json:"avg_output_per_session"`
 }
 
 func runMetrics(cmd *cobra.Command, args []string) error {
@@ -93,17 +110,46 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 	efficiency := analyzer.AnalyzeEfficiency(sessions)
 	satisfaction := analyzer.AnalyzeSatisfaction(facets)
 	agents := analyzer.AnalyzeAgents(agentTasks)
+	commitAnalysis := analyzer.AnalyzeCommits(sessions)
+	confidence := analyzer.AnalyzeConfidence(sessions)
+	persistence := analyzer.AnalyzeFrictionPersistence(facets, sessions)
+	pricing := analyzer.DefaultPricing["sonnet"]
+	outcomes := analyzer.AnalyzeOutcomes(sessions, facets, pricing)
+
+	// Compute token usage from sessions.
+	tokens := computeTokenUsage(sessions)
+
+	// Conversation quality (optional, may fail).
+	var convAnalysis *analyzer.ConversationAnalysis
+	if ca, err := analyzer.AnalyzeConversations(cfg.ClaudeHome); err == nil {
+		convAnalysis = &ca
+	}
+
+	// CLAUDE.md effectiveness scoring.
+	var effectiveness []analyzer.EffectivenessResult
+	if projects, projErr := scanner.DiscoverProjects(cfg.ScanPaths); projErr == nil {
+		if changes := detectClaudeMDChanges(projects); len(changes) > 0 {
+			effectiveness = analyzer.EffectivenessTimeline(changes, sessions, facets, pricing)
+		}
+	}
 
 	// JSON output mode.
 	if flagJSON {
 		out := metricsOutput{
-			Days:         metricsDays,
-			Project:      metricsProject,
-			Sessions:     len(sessions),
-			Velocity:     velocity,
-			Efficiency:   efficiency,
-			Satisfaction: satisfaction,
-			Agents:       agents,
+			Days:           metricsDays,
+			Project:        metricsProject,
+			Sessions:       len(sessions),
+			Velocity:       velocity,
+			Efficiency:     efficiency,
+			Satisfaction:   satisfaction,
+			Agents:         agents,
+			Tokens:         tokens,
+			Commits:        commitAnalysis,
+			Conversation:   convAnalysis,
+			Confidence:     confidence,
+			FrictionTrends: persistence,
+			CostPerOutcome: outcomes,
+			Effectiveness:  effectiveness,
 		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
@@ -118,40 +164,18 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 	renderTokenUsage(sessions)
 	renderFeatureAdoption(efficiency.FeatureAdoption)
 	renderAgentPerformance(agents)
-
-	// Commit patterns.
-	commitAnalysis := analyzer.AnalyzeCommits(sessions)
 	renderCommitPatterns(commitAnalysis)
 
-	// Conversation quality.
-	convAnalysis, err := analyzer.AnalyzeConversations(cfg.ClaudeHome)
-	if err != nil {
-		log.Printf("Warning: conversation analysis failed: %v", err)
-	} else {
-		renderConversationQuality(convAnalysis)
+	if convAnalysis != nil {
+		renderConversationQuality(*convAnalysis)
 	}
 
-	// Project confidence (edit-to-read ratio analysis).
-	confidence := analyzer.AnalyzeConfidence(sessions)
 	renderProjectConfidence(confidence)
-
-	// Friction trends.
-	persistence := analyzer.AnalyzeFrictionPersistence(facets, sessions)
 	renderFrictionTrends(persistence)
-
-	// Cost-per-outcome analysis.
-	pricing := analyzer.DefaultPricing["sonnet"]
-	outcomes := analyzer.AnalyzeOutcomes(sessions, facets, pricing)
 	renderCostPerOutcome(outcomes)
 
-	// CLAUDE.md effectiveness scoring.
-	projects, projErr := scanner.DiscoverProjects(cfg.ScanPaths)
-	if projErr == nil {
-		changes := detectClaudeMDChanges(projects)
-		if len(changes) > 0 {
-			effectiveness := analyzer.EffectivenessTimeline(changes, sessions, facets, pricing)
-			renderEffectiveness(effectiveness)
-		}
+	if len(effectiveness) > 0 {
+		renderEffectiveness(effectiveness)
 	}
 
 	return nil
@@ -703,6 +727,36 @@ func renderProjectConfidence(ca analyzer.ConfidenceAnalysis) {
 	}
 
 	fmt.Println()
+}
+
+// computeTokenUsage computes token metrics from session data.
+func computeTokenUsage(sessions []claude.SessionMeta) tokenUsage {
+	if len(sessions) == 0 {
+		return tokenUsage{}
+	}
+
+	var totalInput, totalOutput int64
+	for _, s := range sessions {
+		totalInput += int64(s.InputTokens)
+		totalOutput += int64(s.OutputTokens)
+	}
+	totalTokens := totalInput + totalOutput
+
+	var ratio float64
+	if totalOutput > 0 {
+		ratio = float64(totalInput) / float64(totalOutput)
+	}
+
+	n := int64(len(sessions))
+	return tokenUsage{
+		TotalTokens:         totalTokens,
+		TotalInput:          totalInput,
+		TotalOutput:         totalOutput,
+		InputOutputRatio:    ratio,
+		AvgTokensPerSession: totalTokens / n,
+		AvgInputPerSession:  totalInput / n,
+		AvgOutputPerSession: totalOutput / n,
+	}
 }
 
 // detectClaudeMDChanges finds projects with CLAUDE.md files and returns their
