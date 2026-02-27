@@ -141,14 +141,30 @@ A plan agent with a 40% kill rate is a signal that plan mode is costing you sess
 
 ## Installation
 
+**Homebrew (macOS/Linux):**
 ```bash
-# From source (requires Go 1.24+)
-go install github.com/blackwell-systems/claudewatch/cmd/claudewatch@latest
-
-# Homebrew
 brew install blackwell-systems/tap/claudewatch
+```
 
-# Build locally
+**Direct download:**
+```bash
+# Download latest release for your platform
+# https://github.com/blackwell-systems/claudewatch/releases/latest
+
+# macOS/Linux: extract and move to PATH
+tar -xzf claudewatch_*_$(uname -s)_$(uname -m).tar.gz
+sudo mv claudewatch /usr/local/bin/
+
+# Windows: extract ZIP and add to PATH
+```
+
+**From source (requires Go 1.24+):**
+```bash
+go install github.com/blackwell-systems/claudewatch/cmd/claudewatch@latest
+```
+
+**Build from source:**
+```bash
 git clone https://github.com/blackwell-systems/claudewatch.git
 cd claudewatch
 make build
