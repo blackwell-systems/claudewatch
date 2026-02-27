@@ -88,12 +88,6 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 		agentTasks = nil
 	}
 
-	// Load stats cache for token economics.
-	stats, err := claude.ParseStatsCache(cfg.ClaudeHome)
-	if err != nil {
-		stats = nil
-	}
-
 	// Run analyzers.
 	velocity := analyzer.AnalyzeVelocity(sessions, metricsDays)
 	efficiency := analyzer.AnalyzeEfficiency(sessions)
@@ -117,24 +111,13 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 	}
 
 	// Render styled output.
-	renderSessionVolume(velocity, stats)
+	renderSessionVolume(velocity)
 	renderProductivity(velocity)
 	renderEfficiency(efficiency)
 	renderSatisfaction(satisfaction)
-	renderTokenUsage(stats, sessions)
-	renderModelUsage(stats)
+	renderTokenUsage(sessions)
 	renderFeatureAdoption(efficiency.FeatureAdoption)
 	renderAgentPerformance(agents)
-
-	// Cost estimation (augments token economics with detailed cost breakdown).
-	if stats != nil {
-		totalCommits := 0
-		for _, s := range sessions {
-			totalCommits += s.GitCommits
-		}
-		costEst := analyzer.EstimateCosts(*stats, "", len(sessions), totalCommits)
-		renderCostEstimation(costEst)
-	}
 
 	// Commit patterns.
 	commitAnalysis := analyzer.AnalyzeCommits(sessions)
@@ -174,7 +157,7 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func renderSessionVolume(v analyzer.VelocityMetrics, stats *claude.StatsCache) {
+func renderSessionVolume(v analyzer.VelocityMetrics) {
 	fmt.Println(output.Section("Session Volume"))
 
 	fmt.Printf(" %s %s\n",
@@ -186,12 +169,6 @@ func renderSessionVolume(v analyzer.VelocityMetrics, stats *claude.StatsCache) {
 	fmt.Printf(" %s %s\n",
 		output.StyleLabel.Render("Avg messages/session"),
 		output.StyleValue.Render(fmt.Sprintf("%.1f", v.AvgMessagesPerSession)))
-
-	if stats != nil {
-		fmt.Printf(" %s %s\n",
-			output.StyleLabel.Render("Total messages (all)"),
-			output.StyleValue.Render(fmt.Sprintf("%d", stats.TotalMessages)))
-	}
 
 	fmt.Println()
 }
@@ -281,108 +258,49 @@ func renderSatisfaction(s analyzer.SatisfactionScore) {
 	fmt.Println()
 }
 
-func renderTokenUsage(stats *claude.StatsCache, sessions []claude.SessionMeta) {
+func renderTokenUsage(sessions []claude.SessionMeta) {
 	fmt.Println(output.Section("Token Usage"))
 
-	ts := analyzer.AnalyzeTokens(stats, sessions)
-
-	if ts.TotalTokens == 0 && ts.TotalSessions == 0 {
-		fmt.Printf(" %s\n\n", output.StyleMuted.Render("No token data available"))
+	if len(sessions) == 0 {
+		fmt.Printf(" %s\n\n", output.StyleMuted.Render("No sessions to analyze"))
 		return
 	}
+
+	var totalInput, totalOutput int64
+	for _, s := range sessions {
+		totalInput += int64(s.InputTokens)
+		totalOutput += int64(s.OutputTokens)
+	}
+	totalTokens := totalInput + totalOutput
 
 	fmt.Printf(" %s %s\n",
 		output.StyleLabel.Render("Total tokens"),
-		output.StyleValue.Render(formatTokenCount(ts.TotalTokens)))
+		output.StyleValue.Render(formatTokenCount(totalTokens)))
 	fmt.Printf(" %s %s\n",
 		output.StyleLabel.Render("Input"),
-		output.StyleValue.Render(formatTokenCount(ts.TotalInput)))
+		output.StyleValue.Render(formatTokenCount(totalInput)))
 	fmt.Printf(" %s %s\n",
 		output.StyleLabel.Render("Output"),
-		output.StyleValue.Render(formatTokenCount(ts.TotalOutput)))
+		output.StyleValue.Render(formatTokenCount(totalOutput)))
 
-	if ts.TotalCacheReads > 0 || ts.TotalCacheWrites > 0 {
-		fmt.Printf(" %s %s\n",
-			output.StyleLabel.Render("Cache reads"),
-			output.StyleValue.Render(formatTokenCount(ts.TotalCacheReads)))
-		fmt.Printf(" %s %s\n",
-			output.StyleLabel.Render("Cache writes"),
-			output.StyleValue.Render(formatTokenCount(ts.TotalCacheWrites)))
-		fmt.Printf(" %s %s\n",
-			output.StyleLabel.Render("Cache hit rate"),
-			output.StyleValue.Render(fmt.Sprintf("%.0f%%", ts.CacheHitRate)))
-	}
-
-	if ts.InputOutputRatio > 0 {
+	if totalOutput > 0 {
+		ratio := float64(totalInput) / float64(totalOutput)
 		fmt.Printf(" %s %s\n",
 			output.StyleLabel.Render("Input/output ratio"),
-			output.StyleValue.Render(fmt.Sprintf("%.1f:1", ts.InputOutputRatio)))
+			output.StyleValue.Render(fmt.Sprintf("%.1f:1", ratio)))
 	}
 
-	if ts.TotalSessions > 0 {
-		fmt.Printf("\n %s\n", output.StyleMuted.Render("Per session:"))
-		fmt.Printf("   %s %s\n",
-			output.StyleLabel.Render("Avg input"),
-			output.StyleValue.Render(formatTokenCount(ts.AvgInputPerSession)))
-		fmt.Printf("   %s %s\n",
-			output.StyleLabel.Render("Avg output"),
-			output.StyleValue.Render(formatTokenCount(ts.AvgOutputPerSession)))
-		fmt.Printf("   %s %s\n",
-			output.StyleLabel.Render("Avg total"),
-			output.StyleValue.Render(formatTokenCount(ts.AvgTotalPerSession)))
-	}
-
-	fmt.Println()
-}
-
-func renderModelUsage(stats *claude.StatsCache) {
-	ma := analyzer.AnalyzeModels(stats)
-
-	fmt.Println(output.Section("Model Usage"))
-
-	if len(ma.Models) == 0 {
-		fmt.Printf(" %s\n\n", output.StyleMuted.Render("No model data available"))
-		return
-	}
-
-	// Per-model breakdown.
-	for _, m := range ma.Models {
-		costLabel := fmt.Sprintf("$%.2f (%.0f%% of spend)", m.CostUSD, m.CostPercent)
-		tokenLabel := fmt.Sprintf("%s tokens (%.0f%%)", formatTokenCount(m.TotalTokens), m.TokenPercent)
-		fmt.Printf(" %s\n",
-			output.StyleLabel.Render(m.ModelName))
-		fmt.Printf("   %s  %s\n",
-			output.StyleValue.Render(costLabel),
-			output.StyleMuted.Render(tokenLabel))
-	}
-
-	// Tier summary.
-	if len(ma.TierCosts) > 1 {
-		fmt.Printf("\n %s\n", output.StyleMuted.Render("By tier:"))
-		tiers := []analyzer.ModelTier{analyzer.TierOpus, analyzer.TierSonnet, analyzer.TierHaiku, analyzer.TierOther}
-		for _, tier := range tiers {
-			cost, ok := ma.TierCosts[tier]
-			if !ok || cost == 0 {
-				continue
-			}
-			pct := cost / ma.TotalCost * 100
-			fmt.Printf("   %-8s $%.2f (%.0f%%)\n",
-				string(tier), cost, pct)
-		}
-	}
-
-	// Overspend signal.
-	if ma.OpusCostPercent > 50 && ma.PotentialSavings > 1.0 {
-		fmt.Printf("\n %s %s\n",
-			output.StyleError.Render("⚠"),
-			output.StyleLabel.Render(fmt.Sprintf(
-				"%.0f%% of spend is on Opus. Switching to Sonnet could save $%.2f.",
-				ma.OpusCostPercent, ma.PotentialSavings)))
-	} else if ma.PotentialSavings > 0.01 {
-		fmt.Printf("\n %s %s\n",
-			output.StyleMuted.Render("Potential savings:"),
-			output.StyleValue.Render(fmt.Sprintf("$%.2f if Opus usage moved to Sonnet", ma.PotentialSavings)))
-	}
+	n := int64(len(sessions))
+	fmt.Printf("\n %s\n", output.StyleMuted.Render("Per session:"))
+	fmt.Printf("   %s %s\n",
+		output.StyleLabel.Render("Avg input"),
+		output.StyleValue.Render(formatTokenCount(totalInput/n)))
+	fmt.Printf("   %s %s\n",
+		output.StyleLabel.Render("Avg output"),
+		output.StyleValue.Render(formatTokenCount(totalOutput/n)))
+	fmt.Printf("   %s %s\n",
+		output.StyleLabel.Render("Avg total"),
+		output.StyleValue.Render(formatTokenCount(totalTokens/n)))
 
 	fmt.Println()
 }
@@ -615,9 +533,10 @@ func renderCostPerOutcome(o analyzer.OutcomeAnalysis) {
 		return
 	}
 
-	fmt.Printf(" %s %s\n",
+	fmt.Printf(" %s %s %s\n",
 		output.StyleLabel.Render("Total cost"),
-		output.StyleValue.Render(fmt.Sprintf("$%.2f across %d sessions", o.TotalCost, len(o.Sessions))))
+		output.StyleValue.Render(fmt.Sprintf("$%.2f", o.TotalCost)),
+		output.StyleMuted.Render(fmt.Sprintf("(%d sessions)", len(o.Sessions))))
 	fmt.Printf(" %s %s\n",
 		output.StyleLabel.Render("Cost/session"),
 		output.StyleValue.Render(fmt.Sprintf("$%.2f", o.AvgCostPerSession)))
@@ -625,7 +544,10 @@ func renderCostPerOutcome(o analyzer.OutcomeAnalysis) {
 	if o.TotalCommits > 0 {
 		fmt.Printf(" %s %s\n",
 			output.StyleLabel.Render("Cost/commit"),
-			output.StyleValue.Render(fmt.Sprintf("$%.2f (median $%.2f)", o.AvgCostPerCommit, o.MedianCostPerCommit)))
+			output.StyleValue.Render(fmt.Sprintf("$%.2f avg", o.AvgCostPerCommit)))
+		fmt.Printf(" %s %s\n",
+			output.StyleLabel.Render("  median"),
+			output.StyleValue.Render(fmt.Sprintf("$%.2f", o.MedianCostPerCommit)))
 	}
 	if o.TotalFilesModified > 0 {
 		fmt.Printf(" %s %s\n",
@@ -640,9 +562,8 @@ func renderCostPerOutcome(o analyzer.OutcomeAnalysis) {
 
 		achievedAvg, notAchievedAvg := analyzer.CostPerGoal(o)
 		if achievedAvg > 0 && notAchievedAvg > 0 {
-			fmt.Printf(" %s %s\n",
-				output.StyleLabel.Render("Cost: achieved vs not"),
-				output.StyleValue.Render(fmt.Sprintf("$%.2f vs $%.2f", achievedAvg, notAchievedAvg)))
+			fmt.Printf(" %s\n",
+				output.StyleMuted.Render(fmt.Sprintf("  achieved: $%.2f, not achieved: $%.2f", achievedAvg, notAchievedAvg)))
 		}
 	}
 
