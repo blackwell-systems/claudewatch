@@ -2,25 +2,95 @@
 
 Get measurably better at AI-assisted development.
 
-claudewatch analyzes your Claude Code sessions and tells you — with data — what's working, what's not, and what to change. It reads local files under `~/.claude/`, computes metrics, and generates concrete improvements. No network calls, no telemetry, everything stays on your machine.
+claudewatch analyzes your Claude Code sessions and tells you -- with data -- what's working, what's not, and what to change. It reads local files under `~/.claude/`, computes metrics, and generates concrete improvements. No network calls, no telemetry, everything stays on your machine.
 
 ## The problem
 
-Every developer using AI tools hits the same friction: sessions that spiral, plans that get killed, prompts that trigger the wrong behavior. Most people respond by guessing — tweaking their CLAUDE.md, trying different prompting styles, hoping things improve. There's no feedback loop. You can't improve what you can't measure.
+Every developer using AI tools hits the same friction: sessions that spiral, plans that get killed, prompts that trigger the wrong behavior. Most people respond by guessing -- tweaking their CLAUDE.md, trying different prompting styles, hoping things improve. There's no feedback loop. You can't improve what you can't measure.
 
 ## What claudewatch does
 
-Claude Code already records rich session data locally — tool usage, friction events, satisfaction signals, agent lifecycles, commit patterns. claudewatch reads that data and turns it into actionable insights.
+Claude Code already records rich session data locally -- tool usage, friction events, satisfaction signals, agent lifecycles, commit patterns. claudewatch reads that data and turns it into actionable insights.
 
-**Measure where you are.** `scan` scores every project's AI readiness. `metrics` shows session trends over time — friction rate, correction rate, cost per session, cache efficiency, agent success rates.
+**Measure where you are.** `scan` scores every project's AI readiness. `metrics` shows session trends over time -- friction rate, correction rate, cost per outcome, cache efficiency, agent success rates. Cost-per-outcome connects your token spend to what you actually shipped: cost per commit, cost per file modified, and whether successful sessions cost more or less than failed ones.
+
+```
+$ claudewatch metrics --days 30
+
+ Session Trends (30 days)
+ ---------------------------------------------------------------
+ Sessions            42          (1.4/day)
+ Avg duration        38 min
+ Friction rate       32%         down from 45%
+ Satisfaction        3.8/5       up from 3.2
+ Commits/session     4.2
+
+ Tool Usage
+ ---------------------------------------------------------------
+ Edit                38%         most used
+ Bash                24%
+ Read                19%
+ Grep/Glob           12%
+ Task (agents)        7%
+
+ Agent Performance
+ ---------------------------------------------------------------
+ Total spawned       47          (1.2/session)
+ Success rate        83%         up 5%
+ Background ratio    68%
+ Avg duration        42s
+ Avg tokens/agent    12,400
+
+ By type:
+  Explore            18  (92% success)  avg 15s
+  general-purpose    14  (71% success)  avg 68s
+  Plan                8  (88% success)  avg 45s
+  documentation       7  (86% success)  avg 52s
+```
 
 **Find what's hurting you.** `gaps` surfaces missing context (no CLAUDE.md, no hooks, no testing section), recurring friction patterns, and stale problems that have persisted for weeks. `suggest` ranks improvements by impact so you know what to fix first.
 
-**Fix it automatically.** `fix` generates CLAUDE.md patches from your actual session data — not templates, not guesses. Seven data-driven rules inspect your friction patterns, tool usage, agent kill rates, and zero-commit streaks to produce targeted additions. The `--ai` flag calls the Claude API for project-specific content grounded in your real usage.
+```
+$ claudewatch suggest --limit 3
 
-**Track whether it worked.** `track` snapshots your metrics to SQLite. Run it before and after changes to see measurable improvement. `watch` runs in the background and alerts you when friction spikes or quality degrades.
+ #1  Add scope constraints to shelfctl CLAUDE.md        impact: 8.4
+     Unrequested edits in 55% of sessions. Adding "do not add
+     features beyond what is asked" reduced this to 12% in similar
+     projects.
 
-The differentiating capability is **multi-agent workflow analytics**. claudewatch is the only tool that extracts agent lifecycle data from session transcripts — which agent types you use, success and kill rates, parallelization patterns, and correction rates. A plan agent with a 40% kill rate is a signal. An explore agent that succeeds 95% of the time is a signal. claudewatch surfaces these so you can adjust your workflow based on evidence.
+ #2  Skip plan mode for TUI features                    impact: 7.1
+     Plan agent killed in 40% of TUI sessions. Direct implementation
+     with a task list achieves the same outcome faster.
+
+ #3  Add post-edit lint hook                             impact: 6.3
+     Tool errors from lint failures in 38% of Go sessions. A
+     PreToolUse hook running go vet catches these before they
+     cascade into multi-cycle debugging loops.
+```
+
+**Fix it automatically.** `fix` generates CLAUDE.md patches from your actual session data -- not templates, not guesses. Seven data-driven rules inspect your friction patterns, tool usage, agent kill rates, and zero-commit streaks to produce targeted additions. The `--ai` flag calls the Claude API for project-specific content grounded in your real usage.
+
+**Track whether it worked.** `track` snapshots your metrics to SQLite. `metrics` automatically scores your CLAUDE.md changes -- it splits sessions at the modification timestamp, compares before/after on friction, tool errors, interruptions, goal achievement, and cost per commit, then produces a -100 to +100 effectiveness score. Did adding that scope constraint actually reduce unrequested edits? Now you know. `watch` runs in the background and alerts you when friction spikes or quality degrades.
+
+```
+$ claudewatch track --compare
+
+ Metric                  Before     Now        Delta
+ ---------------------------------------------------------------
+ Friction rate           45%        28%        -17%  (improved)
+ Agent success rate      71%        89%        +18%  (improved)
+ Avg corrections/session 2.4        0.8        -1.6  (improved)
+ Commits/session         3.1        4.6        +1.5  (improved)
+ Zero-commit sessions    18%        5%         -13%  (improved)
+```
+
+## Multi-agent workflow analytics
+
+claudewatch parses session transcripts to extract agent lifecycle data that isn't available anywhere else -- not in Claude Code's UI, not in the API, not in any third-party tool.
+
+It reconstructs agent spans from JSONL transcripts: launch to completion, success or kill, parallel or sequential, duration and token cost. From that raw data it computes success rates by agent type, parallelization ratios, correction rates, and cost per task.
+
+A plan agent with a 40% kill rate is a signal that plan mode is costing you sessions for that project type. An explore agent that succeeds 95% of the time tells you to delegate more search tasks. claudewatch surfaces these patterns so you can adjust your workflow based on evidence, not intuition.
 
 ## Installation
 
@@ -57,9 +127,6 @@ claudewatch fix myproject             # apply interactively
 claudewatch track
 # ... work for a week ...
 claudewatch track --compare
-
-# Stay ahead of problems
-claudewatch watch --daemon
 ```
 
 ## Commands
@@ -67,7 +134,7 @@ claudewatch watch --daemon
 | Command | What it does |
 |---------|-------------|
 | `scan` | Score every project's AI readiness (0-100) |
-| `metrics` | Session trends: friction, satisfaction, cost, agents, commits |
+| `metrics` | Session trends: friction, cost per outcome, effectiveness scoring, agents |
 | `gaps` | What's missing: context, hooks, stale friction patterns |
 | `suggest` | Ranked improvements with impact scores |
 | `fix` | Generate and apply CLAUDE.md patches from session data |
@@ -91,7 +158,7 @@ claudewatch fix --all                 # fix all projects scoring < 50
 
 ### `claudewatch watch`
 
-Background monitoring with desktop notifications (macOS and Linux).
+Background monitoring with desktop notifications via Notification Center on macOS and libnotify on Linux.
 
 ```bash
 claudewatch watch                     # foreground, ctrl-c to stop
