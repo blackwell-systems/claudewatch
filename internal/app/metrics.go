@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"path/filepath"
 	"sort"
 
 	"github.com/blackwell-systems/claudewatch/internal/analyzer"
@@ -149,6 +150,21 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 	// Friction trends.
 	persistence := analyzer.AnalyzeFrictionPersistence(facets, sessions)
 	renderFrictionTrends(persistence)
+
+	// Cost-per-outcome analysis.
+	pricing := analyzer.DefaultPricing["sonnet"]
+	outcomes := analyzer.AnalyzeOutcomes(sessions, facets, pricing)
+	renderCostPerOutcome(outcomes)
+
+	// CLAUDE.md effectiveness scoring.
+	projects, projErr := scanner.DiscoverProjects(cfg.ScanPaths)
+	if projErr == nil {
+		changes := detectClaudeMDChanges(projects)
+		if len(changes) > 0 {
+			effectiveness := analyzer.EffectivenessTimeline(changes, sessions, facets, pricing)
+			renderEffectiveness(effectiveness)
+		}
+	}
 
 	return nil
 }
@@ -531,4 +547,162 @@ func renderFrictionTrends(pa analyzer.PersistenceAnalysis) {
 	}
 
 	fmt.Println()
+}
+
+func renderCostPerOutcome(o analyzer.OutcomeAnalysis) {
+	fmt.Println(output.Section("Cost per Outcome"))
+
+	if len(o.Sessions) == 0 {
+		fmt.Printf(" %s\n\n", output.StyleMuted.Render("No sessions to analyze"))
+		return
+	}
+
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Total cost"),
+		output.StyleValue.Render(fmt.Sprintf("$%.2f across %d sessions", o.TotalCost, len(o.Sessions))))
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Cost/session"),
+		output.StyleValue.Render(fmt.Sprintf("$%.2f", o.AvgCostPerSession)))
+
+	if o.TotalCommits > 0 {
+		fmt.Printf(" %s %s\n",
+			output.StyleLabel.Render("Cost/commit"),
+			output.StyleValue.Render(fmt.Sprintf("$%.2f (median $%.2f)", o.AvgCostPerCommit, o.MedianCostPerCommit)))
+	}
+	if o.TotalFilesModified > 0 {
+		fmt.Printf(" %s %s\n",
+			output.StyleLabel.Render("Cost/file modified"),
+			output.StyleValue.Render(fmt.Sprintf("$%.2f", o.AvgCostPerFile)))
+	}
+
+	if o.GoalAchievementRate > 0 {
+		fmt.Printf(" %s %s\n",
+			output.StyleLabel.Render("Goal achievement"),
+			output.StyleValue.Render(fmt.Sprintf("%.0f%%", o.GoalAchievementRate*100)))
+
+		achievedAvg, notAchievedAvg := analyzer.CostPerGoal(o)
+		if achievedAvg > 0 && notAchievedAvg > 0 {
+			fmt.Printf(" %s %s\n",
+				output.StyleLabel.Render("Cost: achieved vs not"),
+				output.StyleValue.Render(fmt.Sprintf("$%.2f vs $%.2f", achievedAvg, notAchievedAvg)))
+		}
+	}
+
+	// Trend.
+	if o.CostPerCommitTrend != "insufficient_data" {
+		trendLabel := o.CostPerCommitTrend
+		trendDetail := ""
+		if o.TrendChangePercent != 0 {
+			trendDetail = fmt.Sprintf(" (%.0f%%)", o.TrendChangePercent)
+		}
+		styled := output.StyleValue.Render(trendLabel + trendDetail)
+		if o.CostPerCommitTrend == "improving" {
+			styled = output.StyleSuccess.Render(trendLabel + trendDetail)
+		} else if o.CostPerCommitTrend == "worsening" {
+			styled = output.StyleError.Render(trendLabel + trendDetail)
+		}
+		fmt.Printf(" %s %s\n",
+			output.StyleLabel.Render("Cost/commit trend"),
+			styled)
+	}
+
+	// Per-project breakdown (top 5).
+	if len(o.ByProject) > 0 {
+		fmt.Printf("\n %s\n", output.StyleMuted.Render("By project:"))
+		limit := 5
+		if len(o.ByProject) < limit {
+			limit = len(o.ByProject)
+		}
+		for _, p := range o.ByProject[:limit] {
+			cpc := "N/A"
+			if p.TotalCommits > 0 {
+				cpc = fmt.Sprintf("$%.2f/commit", p.CostPerCommit)
+			}
+			fmt.Printf("   %-24s $%.2f  (%d sessions, %s)\n",
+				p.ProjectName, p.TotalCost, p.Sessions, cpc)
+		}
+	}
+
+	fmt.Println()
+}
+
+func renderEffectiveness(results []analyzer.EffectivenessResult) {
+	fmt.Println(output.Section("CLAUDE.md Effectiveness"))
+
+	if len(results) == 0 {
+		fmt.Printf(" %s\n\n", output.StyleMuted.Render("No CLAUDE.md changes detected with sufficient before/after data"))
+		return
+	}
+
+	for _, r := range results {
+		if r.Verdict == "insufficient_data" {
+			continue
+		}
+
+		verdictStyled := output.StyleValue.Render(r.Verdict)
+		switch r.Verdict {
+		case "effective":
+			verdictStyled = output.StyleSuccess.Render(r.Verdict)
+		case "regression":
+			verdictStyled = output.StyleError.Render(r.Verdict)
+		}
+
+		fmt.Printf(" %s %s  score: %d  %s\n",
+			output.StyleLabel.Render(r.ProjectName),
+			output.StyleMuted.Render(r.ChangeDetectedAt.Format("2006-01-02")),
+			r.Score,
+			verdictStyled)
+		fmt.Printf("   %s %s  →  %s %s\n",
+			output.StyleMuted.Render("friction"),
+			formatDelta(r.BeforeFrictionRate, r.AfterFrictionRate, true),
+			output.StyleMuted.Render("errors"),
+			formatDelta(r.BeforeToolErrors, r.AfterToolErrors, true))
+		fmt.Printf("   %s %s  →  %s %s\n",
+			output.StyleMuted.Render("goals"),
+			formatDelta(r.BeforeGoalRate*100, r.AfterGoalRate*100, false),
+			output.StyleMuted.Render("cost/commit"),
+			formatDelta(r.BeforeCostPerCommit, r.AfterCostPerCommit, true))
+		fmt.Printf("   %s %d before, %d after\n",
+			output.StyleMuted.Render("sessions:"),
+			r.BeforeSessions, r.AfterSessions)
+		fmt.Println()
+	}
+}
+
+// formatDelta renders a before→after value with color. lowerIsBetter controls
+// whether a decrease is green (good) or red (bad).
+func formatDelta(before, after float64, lowerIsBetter bool) string {
+	delta := after - before
+	arrow := "→"
+	label := fmt.Sprintf("%.1f %s %.1f", before, arrow, after)
+
+	improved := (lowerIsBetter && delta < 0) || (!lowerIsBetter && delta > 0)
+	if improved {
+		return output.StyleSuccess.Render(label)
+	}
+	if delta == 0 {
+		return output.StyleMuted.Render(label)
+	}
+	return output.StyleError.Render(label)
+}
+
+// detectClaudeMDChanges finds projects with CLAUDE.md files and returns their
+// modification times as change events for effectiveness analysis.
+func detectClaudeMDChanges(projects []scanner.Project) []analyzer.ClaudeMDChange {
+	var changes []analyzer.ClaudeMDChange
+	for _, p := range projects {
+		if !p.HasClaudeMD {
+			continue
+		}
+		claudeMDPath := filepath.Join(p.Path, "CLAUDE.md")
+		info, err := os.Stat(claudeMDPath)
+		if err != nil {
+			continue
+		}
+		changes = append(changes, analyzer.ClaudeMDChange{
+			ProjectPath: p.Path,
+			ModifiedAt:  info.ModTime(),
+		})
+	}
+	return changes
 }
