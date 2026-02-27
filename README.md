@@ -72,7 +72,7 @@ $ claudewatch suggest --limit 3
 
 **Fix it automatically.** `fix` generates CLAUDE.md patches from your actual session data -- not templates, not guesses. Seven data-driven rules inspect your friction patterns, tool usage, agent kill rates, and zero-commit streaks to produce targeted additions. The `--ai` flag calls the Claude API for project-specific content grounded in your real usage.
 
-**Track whether it worked.** `track` snapshots your metrics to SQLite and diffs against previous snapshots so you can see exactly what changed.
+**Track whether it worked.** `track` snapshots your metrics to SQLite and diffs against previous snapshots so you can see exactly what changed. `watch` runs in the background and alerts you when friction spikes or quality degrades.
 
 ```
 $ claudewatch track --compare
@@ -104,8 +104,6 @@ $ claudewatch metrics --effectiveness
    Goal achievement    62% → 89%     +44%  (improved)
    Cost/commit         $2.10 → $1.42 -32%  (improved)
 ```
-
-`watch` runs in the background and alerts you when friction spikes or quality degrades.
 
 ## Multi-agent workflow analytics
 
