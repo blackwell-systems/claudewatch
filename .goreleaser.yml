@@ -33,12 +33,14 @@ changelog:
       - "^test:"
       - "^chore:"
 
-brews:
-  - repository:
-      owner: blackwell-systems
-      name: homebrew-tap
-    homepage: https://github.com/blackwell-systems/claudewatch
-    description: Observability for AI-assisted development workflows
-    license: MIT
-    install: |
-      bin.install "claudewatch"
+# Brew publishing disabled - requires PAT with cross-repo permissions
+# Formula is manually maintained in blackwell-systems/homebrew-tap
+# brews:
+#   - repository:
+#       owner: blackwell-systems
+#       name: homebrew-tap
+#     homepage: https://github.com/blackwell-systems/claudewatch
+#     description: Observability for AI-assisted development workflows
+#     license: MIT
+#     install: |
+#       bin.install "claudewatch"
