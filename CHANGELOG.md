@@ -2,7 +2,7 @@
 
 All notable changes to claudewatch are documented here.
 
-## [Unreleased]
+## [v0.1.1] - 2026-02-27
 
 ### Added
 
@@ -11,6 +11,7 @@ All notable changes to claudewatch are documented here.
 ### Fixed
 
 - **Metrics data consistency** — eliminated stats-cache data mixing where metrics sections showed contradictory numbers by combining all-time historical data with time-filtered session data. All metrics now computed from the same filtered session dataset. Resolved token count discrepancies (31M vs 6B cache reads), cost contradictions ($0.00 vs $5,480.20 vs $5.29), and message count mismatches. Cost-per-outcome formatting improved to prevent line wrapping on narrow terminals.
+- **Removed unused function** — removed unused `renderCostEstimation()` function that was replaced by `renderCostPerOutcome()` during stats-cache refactor.
 
 ## [v0.1.0] - 2026-02-26
 
