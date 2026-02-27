@@ -24,6 +24,8 @@ $ claudewatch metrics --days 30
  Friction rate       32%         down from 45%
  Satisfaction        3.8/5       up from 3.2
  Commits/session     4.2
+ Cost/commit         $1.42       down from $2.10
+ Cost/session        $4.28
 
  Tool Usage
  ---------------------------------------------------------------
@@ -70,7 +72,7 @@ $ claudewatch suggest --limit 3
 
 **Fix it automatically.** `fix` generates CLAUDE.md patches from your actual session data -- not templates, not guesses. Seven data-driven rules inspect your friction patterns, tool usage, agent kill rates, and zero-commit streaks to produce targeted additions. The `--ai` flag calls the Claude API for project-specific content grounded in your real usage.
 
-**Track whether it worked.** `track` snapshots your metrics to SQLite. `metrics` automatically scores your CLAUDE.md changes -- it splits sessions at the modification timestamp, compares before/after on friction, tool errors, interruptions, goal achievement, and cost per commit, then produces a -100 to +100 effectiveness score. Did adding that scope constraint actually reduce unrequested edits? Now you know. `watch` runs in the background and alerts you when friction spikes or quality degrades.
+**Track whether it worked.** `track` snapshots your metrics to SQLite and diffs against previous snapshots so you can see exactly what changed.
 
 ```
 $ claudewatch track --compare
@@ -83,6 +85,27 @@ $ claudewatch track --compare
  Commits/session         3.1        4.6        +1.5  (improved)
  Zero-commit sessions    18%        5%         -13%  (improved)
 ```
+
+**Prove it with effectiveness scoring.** `metrics` automatically scores your CLAUDE.md changes -- it splits sessions at the modification timestamp, compares before/after on friction, tool errors, goal achievement, and cost per commit, then produces a -100 to +100 effectiveness score. Did adding that scope constraint actually reduce unrequested edits? Now you know.
+
+```
+$ claudewatch metrics --effectiveness
+
+ CLAUDE.md Effectiveness
+ ---------------------------------------------------------------
+ Project             Score   Verdict      Changed
+ shelfctl              +72   effective    2026-01-15
+ crosschain-verifier   +34   effective    2026-01-20
+ bubbletea-components   -8   neutral      2026-01-22
+
+ shelfctl (detailed):
+   Friction rate       45% → 28%     -17%  (improved)
+   Tool errors/session 4.2 → 1.1     -74%  (improved)
+   Goal achievement    62% → 89%     +44%  (improved)
+   Cost/commit         $2.10 → $1.42 -32%  (improved)
+```
+
+`watch` runs in the background and alerts you when friction spikes or quality degrades.
 
 ## Multi-agent workflow analytics
 
