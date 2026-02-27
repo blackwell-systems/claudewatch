@@ -121,7 +121,8 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 	renderProductivity(velocity)
 	renderEfficiency(efficiency)
 	renderSatisfaction(satisfaction)
-	renderTokenEconomics(stats)
+	renderTokenUsage(stats, sessions)
+	renderModelUsage(stats)
 	renderFeatureAdoption(efficiency.FeatureAdoption)
 	renderAgentPerformance(agents)
 
@@ -276,54 +277,107 @@ func renderSatisfaction(s analyzer.SatisfactionScore) {
 	fmt.Println()
 }
 
-func renderTokenEconomics(stats *claude.StatsCache) {
-	fmt.Println(output.Section("Token Economics"))
+func renderTokenUsage(stats *claude.StatsCache, sessions []claude.SessionMeta) {
+	fmt.Println(output.Section("Token Usage"))
 
-	if stats == nil {
-		fmt.Printf(" %s\n\n", output.StyleMuted.Render("No stats cache available"))
+	ts := analyzer.AnalyzeTokens(stats, sessions)
+
+	if ts.TotalTokens == 0 && ts.TotalSessions == 0 {
+		fmt.Printf(" %s\n\n", output.StyleMuted.Render("No token data available"))
 		return
 	}
 
-	var totalInput, totalOutput, totalCacheRead, totalCacheCreation int64
-	var totalCost float64
-
-	for _, mu := range stats.ModelUsage {
-		totalInput += mu.InputTokens
-		totalOutput += mu.OutputTokens
-		totalCacheRead += mu.CacheReadInputTokens
-		totalCacheCreation += mu.CacheCreationInputTokens
-		totalCost += mu.CostUSD
-	}
-
-	totalTokens := totalInput + totalOutput
 	fmt.Printf(" %s %s\n",
 		output.StyleLabel.Render("Total tokens"),
-		output.StyleValue.Render(formatTokenCount(totalTokens)))
+		output.StyleValue.Render(formatTokenCount(ts.TotalTokens)))
 	fmt.Printf(" %s %s\n",
-		output.StyleLabel.Render("Input tokens"),
-		output.StyleValue.Render(formatTokenCount(totalInput)))
+		output.StyleLabel.Render("Input"),
+		output.StyleValue.Render(formatTokenCount(ts.TotalInput)))
 	fmt.Printf(" %s %s\n",
-		output.StyleLabel.Render("Output tokens"),
-		output.StyleValue.Render(formatTokenCount(totalOutput)))
+		output.StyleLabel.Render("Output"),
+		output.StyleValue.Render(formatTokenCount(ts.TotalOutput)))
 
-	// Cache hit ratio: cache reads as a percentage of cache-eligible input tokens
-	// (cache reads + non-cached input). Cache creation tokens are excluded because
-	// they represent new entries being written, not cache lookups.
-	totalCacheEligible := totalCacheRead + totalInput
-	if totalCacheEligible > 0 {
-		cacheRatio := float64(totalCacheRead) / float64(totalCacheEligible) * 100.0
-		if cacheRatio > 100.0 {
-			cacheRatio = 100.0
-		}
+	if ts.TotalCacheReads > 0 || ts.TotalCacheWrites > 0 {
 		fmt.Printf(" %s %s\n",
-			output.StyleLabel.Render("Cache hit ratio"),
-			output.StyleValue.Render(fmt.Sprintf("%.0f%%", cacheRatio)))
+			output.StyleLabel.Render("Cache reads"),
+			output.StyleValue.Render(formatTokenCount(ts.TotalCacheReads)))
+		fmt.Printf(" %s %s\n",
+			output.StyleLabel.Render("Cache writes"),
+			output.StyleValue.Render(formatTokenCount(ts.TotalCacheWrites)))
+		fmt.Printf(" %s %s\n",
+			output.StyleLabel.Render("Cache hit rate"),
+			output.StyleValue.Render(fmt.Sprintf("%.0f%%", ts.CacheHitRate)))
 	}
 
-	if totalCost > 0 {
+	if ts.InputOutputRatio > 0 {
 		fmt.Printf(" %s %s\n",
-			output.StyleLabel.Render("Estimated cost"),
-			output.StyleValue.Render(fmt.Sprintf("$%.2f", totalCost)))
+			output.StyleLabel.Render("Input/output ratio"),
+			output.StyleValue.Render(fmt.Sprintf("%.1f:1", ts.InputOutputRatio)))
+	}
+
+	if ts.TotalSessions > 0 {
+		fmt.Printf("\n %s\n", output.StyleMuted.Render("Per session:"))
+		fmt.Printf("   %s %s\n",
+			output.StyleLabel.Render("Avg input"),
+			output.StyleValue.Render(formatTokenCount(ts.AvgInputPerSession)))
+		fmt.Printf("   %s %s\n",
+			output.StyleLabel.Render("Avg output"),
+			output.StyleValue.Render(formatTokenCount(ts.AvgOutputPerSession)))
+		fmt.Printf("   %s %s\n",
+			output.StyleLabel.Render("Avg total"),
+			output.StyleValue.Render(formatTokenCount(ts.AvgTotalPerSession)))
+	}
+
+	fmt.Println()
+}
+
+func renderModelUsage(stats *claude.StatsCache) {
+	ma := analyzer.AnalyzeModels(stats)
+
+	fmt.Println(output.Section("Model Usage"))
+
+	if len(ma.Models) == 0 {
+		fmt.Printf(" %s\n\n", output.StyleMuted.Render("No model data available"))
+		return
+	}
+
+	// Per-model breakdown.
+	for _, m := range ma.Models {
+		costLabel := fmt.Sprintf("$%.2f (%.0f%% of spend)", m.CostUSD, m.CostPercent)
+		tokenLabel := fmt.Sprintf("%s tokens (%.0f%%)", formatTokenCount(m.TotalTokens), m.TokenPercent)
+		fmt.Printf(" %s\n",
+			output.StyleLabel.Render(m.ModelName))
+		fmt.Printf("   %s  %s\n",
+			output.StyleValue.Render(costLabel),
+			output.StyleMuted.Render(tokenLabel))
+	}
+
+	// Tier summary.
+	if len(ma.TierCosts) > 1 {
+		fmt.Printf("\n %s\n", output.StyleMuted.Render("By tier:"))
+		tiers := []analyzer.ModelTier{analyzer.TierOpus, analyzer.TierSonnet, analyzer.TierHaiku, analyzer.TierOther}
+		for _, tier := range tiers {
+			cost, ok := ma.TierCosts[tier]
+			if !ok || cost == 0 {
+				continue
+			}
+			pct := cost / ma.TotalCost * 100
+			fmt.Printf("   %-8s $%.2f (%.0f%%)\n",
+				string(tier), cost, pct)
+		}
+	}
+
+	// Overspend signal.
+	if ma.OpusCostPercent > 50 && ma.PotentialSavings > 1.0 {
+		fmt.Printf("\n %s %s\n",
+			output.StyleError.Render("⚠"),
+			output.StyleLabel.Render(fmt.Sprintf(
+				"%.0f%% of spend is on Opus. Switching to Sonnet could save $%.2f.",
+				ma.OpusCostPercent, ma.PotentialSavings)))
+	} else if ma.PotentialSavings > 0.01 {
+		fmt.Printf("\n %s %s\n",
+			output.StyleMuted.Render("Potential savings:"),
+			output.StyleValue.Render(fmt.Sprintf("$%.2f if Opus usage moved to Sonnet", ma.PotentialSavings)))
 	}
 
 	fmt.Println()
