@@ -12,7 +12,7 @@ Every developer using AI tools is guessing at how to get better. You tweak your 
 
 Claude Code already records rich session data locally -- tool usage, friction events, satisfaction signals, agent lifecycles, commit patterns. claudewatch reads that data and turns it into actionable insights.
 
-**Measure where you are.** `scan` scores every project's AI readiness. `metrics` shows session trends over time -- friction rate, correction rate, cost per outcome, cache efficiency, agent success rates. Cost-per-outcome connects your token spend to what you actually shipped: cost per commit, cost per file modified, and whether successful sessions cost more or less than failed ones.
+**Measure where you are.** `scan` scores every project's AI readiness. `metrics` shows session trends over time -- friction rate, correction rate, cost per outcome, model usage, cache efficiency, agent success rates. Cost-per-outcome connects your token spend to what you actually shipped: cost per commit, cost per file modified, and whether successful sessions cost more or less than failed ones. Model usage analysis shows which models are consuming your budget and flags overspend -- like burning Opus tokens on tasks Sonnet handles fine.
 
 ```
 $ claudewatch metrics --days 30
@@ -48,6 +48,23 @@ $ claudewatch metrics --days 30
   general-purpose    14  (71% success)  avg 68s
   Plan                8  (88% success)  avg 45s
   documentation       7  (86% success)  avg 52s
+
+ Token Usage
+ ---------------------------------------------------------------
+ Total tokens        18.4M
+ Input               14.2M
+ Output               4.2M
+ Cache hit rate       62%
+ Input/output ratio   3.4:1
+ Avg tokens/session   438K
+
+ Model Usage
+ ---------------------------------------------------------------
+ claude-sonnet-4     $48.20 (78% of spend)   16.1M tokens (87%)
+ claude-opus-4       $12.80 (21% of spend)    1.8M tokens (10%)
+ claude-haiku-4       $0.60  (1% of spend)    0.5M tokens  (3%)
+
+ ⚠ Potential savings: $9.40 if Opus usage moved to Sonnet
 ```
 
 **Find what's hurting you.** `gaps` surfaces missing context (no CLAUDE.md, no hooks, no testing section), recurring friction patterns, and stale problems that have persisted for weeks. `suggest` ranks improvements by impact so you know what to fix first.
@@ -155,7 +172,7 @@ claudewatch track --compare
 | Command | What it does |
 |---------|-------------|
 | `scan` | Score every project's AI readiness (0-100) |
-| `metrics` | Session trends: friction, cost per outcome, effectiveness scoring, agents |
+| `metrics` | Session trends: friction, cost per outcome, model usage, token breakdown, effectiveness scoring, agents |
 | `gaps` | What's missing: context, hooks, stale friction patterns |
 | `suggest` | Ranked improvements with impact scores |
 | `fix` | Generate and apply CLAUDE.md patches from session data |
