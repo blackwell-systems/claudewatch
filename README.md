@@ -1,5 +1,7 @@
 # claudewatch
 
+[![Blackwell Systems™](https://raw.githubusercontent.com/blackwell-systems/blackwell-docs-theme/main/badge-trademark.svg)](https://github.com/blackwell-systems)
+
 Get measurably better at AI-assisted development.
 
 claudewatch generates CLAUDE.md improvements from your actual Claude Code session data, then proves whether they worked with before/after effectiveness scoring. It reads local files under `~/.claude/`, finds what's costing you time and money, fixes it, and measures the result. No network calls, no telemetry, everything stays on your machine.
