@@ -14,15 +14,16 @@ import (
 
 // WatchState captures a point-in-time snapshot of Claude session data.
 type WatchState struct {
-	Timestamp       time.Time
-	SessionCount    int
-	FrictionCounts  map[string]int // friction type -> count
-	AgentCount      int
-	AgentKillCount  int
-	ZeroCommitCount int
-	TotalSessions   int
-	StalePatterns   int
-	LastSessionID   string
+	Timestamp          time.Time
+	SessionCount       int
+	FrictionCounts     map[string]int // friction type -> count
+	AgentCount         int
+	AgentKillCount     int
+	ZeroCommitCount    int
+	TotalSessions      int
+	StalePatterns      int
+	LastSessionID      string
+	EstimatedDailyCost float64 // estimated cost for today's sessions
 
 	// Internal: keep richer data for comparison.
 	frictionByType   map[string]int
@@ -49,6 +50,7 @@ type Watcher struct {
 	previous      *WatchState
 	alertFn       func(Alert)     // callback for emitting alerts
 	lastAlertKeys map[string]bool // dedup: suppress repeated identical alerts
+	BudgetUSD     float64         // daily cost budget; 0 means no budget alert
 }
 
 // New creates a Watcher that monitors the given Claude data directory.
@@ -106,6 +108,16 @@ func (w *Watcher) Check() []Alert {
 	var raw []Alert
 	if w.previous != nil {
 		raw = Compare(w.previous, curr)
+	}
+
+	// Budget alert: fires when today's estimated cost exceeds the threshold.
+	if w.BudgetUSD > 0 && curr.EstimatedDailyCost > w.BudgetUSD {
+		raw = append(raw, Alert{
+			Level:   "warning",
+			Title:   "Daily cost budget exceeded",
+			Message: fmt.Sprintf("Estimated $%.2f today (budget: $%.2f)", curr.EstimatedDailyCost, w.BudgetUSD),
+			Time:    time.Now(),
+		})
 	}
 
 	// Deduplicate: suppress alerts with the same title+message as last cycle.
@@ -201,6 +213,16 @@ func (w *Watcher) Snapshot() (*WatchState, error) {
 		persistence := analyzer.AnalyzeFrictionPersistence(facets, sessions)
 		state.StalePatterns = persistence.StaleCount
 		state.persistence = persistence
+	}
+
+	// Estimate today's cost from sessions starting today.
+	today := time.Now().Format("2006-01-02")
+	for _, s := range sessions {
+		if len(s.StartTime) >= 10 && s.StartTime[:10] == today {
+			inputCost := float64(s.InputTokens) / 1_000_000 * 3.0
+			outputCost := float64(s.OutputTokens) / 1_000_000 * 15.0
+			state.EstimatedDailyCost += inputCost + outputCost
+		}
 	}
 
 	return state, nil

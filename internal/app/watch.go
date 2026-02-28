@@ -19,6 +19,7 @@ var (
 	watchInterval string
 	watchStop     bool
 	watchQuiet    bool
+	watchBudget   float64
 )
 
 var watchCmd = &cobra.Command{
@@ -33,6 +34,7 @@ Examples:
   claudewatch watch                    # run in foreground (ctrl-c to stop)
   claudewatch watch --daemon           # run in background, write PID file
   claudewatch watch --interval 5m      # check every 5 minutes (default: 10m)
+  claudewatch watch --budget 20        # alert if daily cost exceeds $20
   claudewatch watch --stop             # stop the background daemon`,
 	RunE: runWatch,
 }
@@ -42,6 +44,7 @@ func init() {
 	watchCmd.Flags().StringVar(&watchInterval, "interval", "10m", "Check interval as duration string (e.g. 5m, 1h)")
 	watchCmd.Flags().BoolVar(&watchStop, "stop", false, "Stop a running background daemon")
 	watchCmd.Flags().BoolVar(&watchQuiet, "quiet", false, "Suppress terminal output, only send notifications")
+	watchCmd.Flags().Float64Var(&watchBudget, "budget", 0, "Daily cost budget in USD; alert when exceeded (e.g. --budget 20)")
 	rootCmd.AddCommand(watchCmd)
 }
 
@@ -108,6 +111,7 @@ func runForeground(cfg *config.Config, interval time.Duration) error {
 	}
 
 	w := watcher.New(cfg.ClaudeHome, interval, alertFn)
+	w.BudgetUSD = watchBudget
 
 	// Take initial snapshot and display baseline.
 	initial, err := w.Snapshot()
@@ -192,6 +196,7 @@ func runDaemon(cfg *config.Config, interval time.Duration) error {
 	}
 
 	w := watcher.New(cfg.ClaudeHome, interval, alertFn)
+	w.BudgetUSD = watchBudget
 
 	err = w.Run(ctx)
 	if err == context.Canceled {
