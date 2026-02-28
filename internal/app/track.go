@@ -555,7 +555,7 @@ func outputHistoryJSON(db *store.DB, n int) error {
 	}
 
 	type snapshotEntry struct {
-		Snapshot store.Snapshot        `json:"snapshot"`
+		Snapshot store.Snapshot          `json:"snapshot"`
 		Metrics  []store.AggregateMetric `json:"metrics"`
 	}
 
