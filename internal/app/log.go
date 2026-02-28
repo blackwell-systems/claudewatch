@@ -71,7 +71,7 @@ func runLog(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("opening database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if logList {
 		return runLogList(db, cfg)
@@ -303,7 +303,7 @@ func queryCustomMetrics(db *store.DB, metricFilter string, days int) ([]store.Cu
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []store.CustomMetricRow
 	for rows.Next() {

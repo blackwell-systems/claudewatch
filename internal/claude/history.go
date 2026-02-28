@@ -18,7 +18,7 @@ func ParseHistory(claudeHome string) ([]HistoryEntry, error) {
 		}
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var entries []HistoryEntry
 	scanner := bufio.NewScanner(f)

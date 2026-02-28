@@ -134,7 +134,7 @@ func (db *DB) GetAggregateMetrics(snapshotID int64) ([]AggregateMetric, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var metrics []AggregateMetric
 	for rows.Next() {
@@ -160,7 +160,7 @@ func (db *DB) GetProjectScores(snapshotID int64) ([]ProjectScore, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var scores []ProjectScore
 	for rows.Next() {
@@ -189,7 +189,7 @@ func (db *DB) GetOpenSuggestions() ([]Suggestion, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var suggestions []Suggestion
 	for rows.Next() {

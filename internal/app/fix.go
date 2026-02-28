@@ -118,7 +118,7 @@ func resolveAPIKey(cfg *config.Config) (string, error) {
 	// is not currently supported, so we only check the environment).
 	// If we later add an api_key field to Config, check it here.
 
-	return "", fmt.Errorf("ANTHROPIC_API_KEY environment variable is not set.\n\n  Set it with: export ANTHROPIC_API_KEY=sk-ant-...")
+	return "", fmt.Errorf("ANTHROPIC_API_KEY environment variable is not set, set it with: export ANTHROPIC_API_KEY=sk-ant-<your-key>")
 }
 
 // fixProject generates and applies fixes for a single project.
@@ -375,7 +375,7 @@ func applyFix(fix *fixer.ProposedFix, ctx *fixer.FixContext) error {
 		if err != nil {
 			return fmt.Errorf("opening CLAUDE.md for append: %w", err)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 
 		if _, err := f.WriteString(markdown); err != nil {
 			return fmt.Errorf("writing additions: %w", err)

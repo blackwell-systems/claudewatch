@@ -153,7 +153,7 @@ func runDaemon(cfg *config.Config, interval time.Duration) error {
 			return fmt.Errorf("daemon already running (PID %d). Use --stop to stop it", pid)
 		}
 		// Stale PID file, remove it.
-		os.Remove(pidFilePath())
+		_ = os.Remove(pidFilePath())
 	}
 
 	// Write PID file.
@@ -161,14 +161,14 @@ func runDaemon(cfg *config.Config, interval time.Duration) error {
 	if err := os.WriteFile(pidFilePath(), []byte(strconv.Itoa(pid)), 0o644); err != nil {
 		return fmt.Errorf("writing PID file: %w", err)
 	}
-	defer os.Remove(pidFilePath())
+	defer func() { _ = os.Remove(pidFilePath()) }()
 
 	// Open log file for output.
 	logFile, err := os.OpenFile(logFilePath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return fmt.Errorf("opening log file: %w", err)
 	}
-	defer logFile.Close()
+	defer func() { _ = logFile.Close() }()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -214,7 +214,7 @@ func readPID() (int, error) {
 func writeLog(f *os.File, format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	fmt.Fprintf(f, "[%s] %s\n", timestamp, msg)
+	_, _ = fmt.Fprintf(f, "[%s] %s\n", timestamp, msg)
 }
 
 // printAlert formats and prints an alert to the terminal.

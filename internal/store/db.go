@@ -28,13 +28,13 @@ func Open(dbPath string) (*DB, error) {
 
 	// Enable WAL mode for better concurrent read performance.
 	if _, err := conn.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, err
 	}
 
 	// Enable foreign keys.
 	if _, err := conn.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, err
 	}
 
@@ -42,7 +42,7 @@ func Open(dbPath string) (*DB, error) {
 
 	// Run migrations on open.
 	if err := db.Migrate(); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, err
 	}
 
@@ -57,13 +57,13 @@ func OpenInMemory() (*DB, error) {
 	}
 
 	if _, err := conn.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, err
 	}
 
 	db := &DB{conn: conn}
 	if err := db.Migrate(); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, err
 	}
 

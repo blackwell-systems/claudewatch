@@ -581,9 +581,10 @@ func renderCostPerOutcome(o analyzer.OutcomeAnalysis) {
 			trendDetail = fmt.Sprintf(" (%.0f%%)", o.TrendChangePercent)
 		}
 		styled := output.StyleValue.Render(trendLabel + trendDetail)
-		if o.CostPerCommitTrend == "improving" {
+		switch o.CostPerCommitTrend {
+		case "improving":
 			styled = output.StyleSuccess.Render(trendLabel + trendDetail)
-		} else if o.CostPerCommitTrend == "worsening" {
+		case "worsening":
 			styled = output.StyleError.Render(trendLabel + trendDetail)
 		}
 		fmt.Printf(" %s %s\n",

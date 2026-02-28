@@ -173,7 +173,7 @@ func RenderMarkdown(fix *ProposedFix, hasExisting bool) string {
 	var sb strings.Builder
 
 	if !hasExisting {
-		sb.WriteString(fmt.Sprintf("# %s\n\n", fix.ProjectName))
+		fmt.Fprintf(&sb, "# %s\n\n", fix.ProjectName)
 		sb.WriteString("Claude Code instructions for this project.\n\n")
 	}
 

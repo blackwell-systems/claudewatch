@@ -95,11 +95,11 @@ func buildUserPrompt(ctx *FixContext) string {
 
 	// Project overview.
 	sb.WriteString("## Project Overview\n\n")
-	sb.WriteString(fmt.Sprintf("- Name: %s\n", ctx.Project.Name))
-	sb.WriteString(fmt.Sprintf("- Path: %s\n", ctx.Project.Path))
-	sb.WriteString(fmt.Sprintf("- Primary language: %s\n", ctx.Project.PrimaryLanguage))
-	sb.WriteString(fmt.Sprintf("- Has CLAUDE.md: %v\n", ctx.Project.HasClaudeMD))
-	sb.WriteString(fmt.Sprintf("- Readiness score: %d/100\n", int(ctx.Project.Score)))
+	fmt.Fprintf(&sb, "- Name: %s\n", ctx.Project.Name)
+	fmt.Fprintf(&sb, "- Path: %s\n", ctx.Project.Path)
+	fmt.Fprintf(&sb, "- Primary language: %s\n", ctx.Project.PrimaryLanguage)
+	fmt.Fprintf(&sb, "- Has CLAUDE.md: %v\n", ctx.Project.HasClaudeMD)
+	fmt.Fprintf(&sb, "- Readiness score: %d/100\n", int(ctx.Project.Score))
 	sb.WriteString("\n")
 
 	// Project structure.
@@ -125,7 +125,7 @@ func buildUserPrompt(ctx *FixContext) string {
 	// Session statistics.
 	sb.WriteString("## Session Statistics\n\n")
 	sessionCount := len(ctx.Sessions)
-	sb.WriteString(fmt.Sprintf("- Total sessions: %d\n", sessionCount))
+	fmt.Fprintf(&sb, "- Total sessions: %d\n", sessionCount)
 
 	if sessionCount > 0 {
 		var totalDuration, totalUserMsgs, totalAssistantMsgs int
@@ -147,16 +147,16 @@ func buildUserPrompt(ctx *FixContext) string {
 		}
 
 		avgDuration := totalDuration / sessionCount
-		sb.WriteString(fmt.Sprintf("- Average session duration: %d minutes\n", avgDuration))
-		sb.WriteString(fmt.Sprintf("- Total user messages: %d\n", totalUserMsgs))
-		sb.WriteString(fmt.Sprintf("- Total assistant messages: %d\n", totalAssistantMsgs))
-		sb.WriteString(fmt.Sprintf("- Total tool errors: %d\n", totalToolErrors))
+		fmt.Fprintf(&sb, "- Average session duration: %d minutes\n", avgDuration)
+		fmt.Fprintf(&sb, "- Total user messages: %d\n", totalUserMsgs)
+		fmt.Fprintf(&sb, "- Total assistant messages: %d\n", totalAssistantMsgs)
+		fmt.Fprintf(&sb, "- Total tool errors: %d\n", totalToolErrors)
 
 		// Tool usage breakdown.
 		if len(toolTotals) > 0 {
 			sb.WriteString("\n### Tool Usage\n\n")
 			for tool, count := range toolTotals {
-				sb.WriteString(fmt.Sprintf("- %s: %d calls\n", tool, count))
+				fmt.Fprintf(&sb, "- %s: %d calls\n", tool, count)
 			}
 		}
 
@@ -164,7 +164,7 @@ func buildUserPrompt(ctx *FixContext) string {
 		if len(langTotals) > 0 {
 			sb.WriteString("\n### Languages Detected\n\n")
 			for lang, count := range langTotals {
-				sb.WriteString(fmt.Sprintf("- %s: %d files\n", lang, count))
+				fmt.Fprintf(&sb, "- %s: %d files\n", lang, count)
 			}
 		}
 	}
@@ -173,23 +173,23 @@ func buildUserPrompt(ctx *FixContext) string {
 	// Commit analysis.
 	if ctx.CommitAnalysis != nil {
 		sb.WriteString("## Commit Analysis\n\n")
-		sb.WriteString(fmt.Sprintf("- Total sessions: %d\n", ctx.CommitAnalysis.TotalSessions))
-		sb.WriteString(fmt.Sprintf("- Sessions with commits: %d\n", ctx.CommitAnalysis.SessionsWithCommits))
-		sb.WriteString(fmt.Sprintf("- Zero-commit rate: %.0f%%\n", ctx.CommitAnalysis.ZeroCommitRate*100))
-		sb.WriteString(fmt.Sprintf("- Average commits per session: %.1f\n", ctx.CommitAnalysis.AvgCommitsPerSession))
+		fmt.Fprintf(&sb, "- Total sessions: %d\n", ctx.CommitAnalysis.TotalSessions)
+		fmt.Fprintf(&sb, "- Sessions with commits: %d\n", ctx.CommitAnalysis.SessionsWithCommits)
+		fmt.Fprintf(&sb, "- Zero-commit rate: %.0f%%\n", ctx.CommitAnalysis.ZeroCommitRate*100)
+		fmt.Fprintf(&sb, "- Average commits per session: %.1f\n", ctx.CommitAnalysis.AvgCommitsPerSession)
 		sb.WriteString("\n")
 	}
 
 	// Friction patterns.
 	if ctx.FrictionPatterns != nil && len(ctx.FrictionPatterns.Patterns) > 0 {
 		sb.WriteString("## Friction Patterns\n\n")
-		sb.WriteString(fmt.Sprintf("- Stale patterns (3+ weeks): %d\n", ctx.FrictionPatterns.StaleCount))
-		sb.WriteString(fmt.Sprintf("- Improving patterns: %d\n", ctx.FrictionPatterns.ImprovingCount))
-		sb.WriteString(fmt.Sprintf("- Worsening patterns: %d\n", ctx.FrictionPatterns.WorseningCount))
+		fmt.Fprintf(&sb, "- Stale patterns (3+ weeks): %d\n", ctx.FrictionPatterns.StaleCount)
+		fmt.Fprintf(&sb, "- Improving patterns: %d\n", ctx.FrictionPatterns.ImprovingCount)
+		fmt.Fprintf(&sb, "- Worsening patterns: %d\n", ctx.FrictionPatterns.WorseningCount)
 		sb.WriteString("\n### Pattern Details\n\n")
 		for _, p := range ctx.FrictionPatterns.Patterns {
-			sb.WriteString(fmt.Sprintf("- %s: frequency=%.2f, trend=%s, consecutive_weeks=%d, stale=%v, occurrences=%d\n",
-				p.FrictionType, p.Frequency, p.WeeklyTrend, p.ConsecutiveWeeks, p.Stale, p.OccurrenceCount))
+			fmt.Fprintf(&sb, "- %s: frequency=%.2f, trend=%s, consecutive_weeks=%d, stale=%v, occurrences=%d\n",
+				p.FrictionType, p.Frequency, p.WeeklyTrend, p.ConsecutiveWeeks, p.Stale, p.OccurrenceCount)
 		}
 		sb.WriteString("\n")
 	}
@@ -213,12 +213,12 @@ func buildUserPrompt(ctx *FixContext) string {
 			if count > 0 {
 				killRate = float64(killed) / float64(count) * 100
 			}
-			sb.WriteString(fmt.Sprintf("- %s: %d tasks, %d killed (%.0f%% kill rate)\n",
-				agentType, count, killed, killRate))
+			fmt.Fprintf(&sb, "- %s: %d tasks, %d killed (%.0f%% kill rate)\n",
+				agentType, count, killed, killRate)
 		}
 		if len(ctx.AgentTasks) > 0 {
 			avgDurationMin := totalAgentDurationMs / int64(len(ctx.AgentTasks)) / 60000
-			sb.WriteString(fmt.Sprintf("- Average agent task duration: %d minutes\n", avgDurationMin))
+			fmt.Fprintf(&sb, "- Average agent task duration: %d minutes\n", avgDurationMin)
 		}
 		sb.WriteString("\n")
 	}
@@ -226,29 +226,29 @@ func buildUserPrompt(ctx *FixContext) string {
 	// Tool profile.
 	if ctx.ToolProfile != nil {
 		sb.WriteString("## Tool Profile\n\n")
-		sb.WriteString(fmt.Sprintf("- Dominant tool: %s\n", ctx.ToolProfile.DominantTool))
-		sb.WriteString(fmt.Sprintf("- Bash ratio: %.2f\n", ctx.ToolProfile.BashRatio))
-		sb.WriteString(fmt.Sprintf("- Edit/Read ratio: %.2f\n", ctx.ToolProfile.EditToReadRatio))
+		fmt.Fprintf(&sb, "- Dominant tool: %s\n", ctx.ToolProfile.DominantTool)
+		fmt.Fprintf(&sb, "- Bash ratio: %.2f\n", ctx.ToolProfile.BashRatio)
+		fmt.Fprintf(&sb, "- Edit/Read ratio: %.2f\n", ctx.ToolProfile.EditToReadRatio)
 		sb.WriteString("\n")
 	}
 
 	// Conversation data.
 	if ctx.ConversationData != nil {
 		sb.WriteString("## Conversation Quality\n\n")
-		sb.WriteString(fmt.Sprintf("- Average correction rate: %.0f%%\n", ctx.ConversationData.AvgCorrectionRate*100))
-		sb.WriteString(fmt.Sprintf("- Average long message rate: %.0f%%\n", ctx.ConversationData.AvgLongMsgRate*100))
-		sb.WriteString(fmt.Sprintf("- High-correction sessions: %d\n", ctx.ConversationData.HighCorrectionSessions))
+		fmt.Fprintf(&sb, "- Average correction rate: %.0f%%\n", ctx.ConversationData.AvgCorrectionRate*100)
+		fmt.Fprintf(&sb, "- Average long message rate: %.0f%%\n", ctx.ConversationData.AvgLongMsgRate*100)
+		fmt.Fprintf(&sb, "- High-correction sessions: %d\n", ctx.ConversationData.HighCorrectionSessions)
 		sb.WriteString("\n")
 	}
 
 	// CLAUDE.md quality analysis.
 	if ctx.ClaudeMDQuality != nil {
 		sb.WriteString("## CLAUDE.md Quality Analysis\n\n")
-		sb.WriteString(fmt.Sprintf("- Quality score: %d\n", ctx.ClaudeMDQuality.QualityScore))
-		sb.WriteString(fmt.Sprintf("- Total lines: %d\n", ctx.ClaudeMDQuality.TotalLines))
-		sb.WriteString(fmt.Sprintf("- Has code blocks: %v\n", ctx.ClaudeMDQuality.HasCodeBlocks))
+		fmt.Fprintf(&sb, "- Quality score: %d\n", ctx.ClaudeMDQuality.QualityScore)
+		fmt.Fprintf(&sb, "- Total lines: %d\n", ctx.ClaudeMDQuality.TotalLines)
+		fmt.Fprintf(&sb, "- Has code blocks: %v\n", ctx.ClaudeMDQuality.HasCodeBlocks)
 		if len(ctx.ClaudeMDQuality.MissingSections) > 0 {
-			sb.WriteString(fmt.Sprintf("- Missing sections: %s\n", strings.Join(ctx.ClaudeMDQuality.MissingSections, ", ")))
+			fmt.Fprintf(&sb, "- Missing sections: %s\n", strings.Join(ctx.ClaudeMDQuality.MissingSections, ", "))
 		}
 		if len(ctx.ClaudeMDQuality.Sections) > 0 {
 			sb.WriteString("- Existing sections: ")
@@ -284,9 +284,9 @@ func scanProjectStructure(projectPath string) string {
 			continue
 		}
 		if entry.IsDir() {
-			sb.WriteString(fmt.Sprintf("- %s/ (directory)\n", name))
+			fmt.Fprintf(&sb, "- %s/ (directory)\n", name)
 		} else {
-			sb.WriteString(fmt.Sprintf("- %s\n", name))
+			fmt.Fprintf(&sb, "- %s\n", name)
 		}
 	}
 
@@ -298,7 +298,7 @@ func scanProjectStructure(projectPath string) string {
 		if content == "" {
 			continue
 		}
-		sb.WriteString(fmt.Sprintf("\n### %s (first 20 lines)\n\n```\n%s\n```\n", name, content))
+		fmt.Fprintf(&sb, "\n### %s (first 20 lines)\n\n```\n%s\n```\n", name, content)
 	}
 
 	result := sb.String()
@@ -390,7 +390,7 @@ func callClaudeAPI(apiKey, model, systemPrompt, userPrompt string) (string, erro
 	if err != nil {
 		return "", fmt.Errorf("sending request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {

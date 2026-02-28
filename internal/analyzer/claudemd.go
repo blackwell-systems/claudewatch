@@ -170,7 +170,7 @@ func readClaudeMD(path string) ([]string, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var lines []string
 	hasCodeBlocks := false

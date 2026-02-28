@@ -81,7 +81,7 @@ func ParseSingleTranscript(path string) ([]AgentSpan, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Derive session ID from the filename (strip .jsonl extension).
 	sessionID := strings.TrimSuffix(filepath.Base(path), ".jsonl")
@@ -398,7 +398,7 @@ func WalkTranscriptEntries(claudeDir string, fn func(entry TranscriptEntry, sess
 				}
 				fn(entry, sessionID, projectHash)
 			}
-			file.Close()
+			_ = file.Close()
 		}
 	}
 

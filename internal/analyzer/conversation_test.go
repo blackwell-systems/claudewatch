@@ -17,7 +17,7 @@ func writeJSONL(t *testing.T, path string, entries []any) {
 	if err != nil {
 		t.Fatalf("failed to create %s: %v", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	enc := json.NewEncoder(f)
 	for _, e := range entries {
 		if err := enc.Encode(e); err != nil {

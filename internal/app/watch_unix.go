@@ -20,7 +20,7 @@ func stopDaemon() error {
 
 	if !processExists(pid) {
 		// Clean up stale PID file.
-		os.Remove(pidFilePath())
+		_ = os.Remove(pidFilePath())
 		return fmt.Errorf("no daemon running (PID %d is not active, cleaned up stale PID file)", pid)
 	}
 
@@ -29,7 +29,7 @@ func stopDaemon() error {
 	}
 
 	// Remove PID file after successful signal.
-	os.Remove(pidFilePath())
+	_ = os.Remove(pidFilePath())
 	fmt.Printf("Stopped daemon (PID %d)\n", pid)
 	return nil
 }
