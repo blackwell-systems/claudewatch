@@ -2,14 +2,21 @@
 
 All notable changes to claudewatch are documented here.
 
-## [Unreleased]
+## [v0.3.0] - 2026-02-28
 
 ### Added
 
 - **Session drill-down** — new `sessions` command lists individual sessions with sorting (`--sort friction|cost|duration|commits|recent`), project filtering (`--project`), configurable lookback (`--days`), and result limit (`--limit`). `--worst` is a shortcut for `--sort friction`. Supports `--json` output.
-- **Cost budget alerts** — `watch --budget <USD>` alerts when estimated daily spend exceeds the given threshold. Computed from today's session token usage, integrated with existing alert deduplication.
+- **Session inspect** — `sessions <session-id>` shows a detailed single-session view: messages, tokens, cost, git stats, tool usage breakdown, friction events, outcome, satisfaction, and first prompt. Matches by full ID or prefix.
+- **Session summary stats** — sessions table now shows a totals footer: total cost, total commits, average friction, and average duration across displayed sessions.
+- **Doctor command** — new `doctor` command runs 8 health checks: Claude home directory, session data, stats cache, scan paths, SQLite database, watch daemon status, CLAUDE.md coverage, and API key. Reports pass/fail per check with a summary. Supports `--json` output.
+- **Cost budget alerts** — `watch --budget <USD>` alerts when estimated daily spend exceeds the given threshold. Integrated with existing alert deduplication.
 - **Track history timeline** — `track --history N` shows metric trends across N most recent snapshots in a multi-column table with trend arrows. Supports `--json` for machine-readable output.
-- **Track compare wired** — `track --compare N` now actually compares against the Nth previous snapshot. Previously the flag was defined but ignored (always compared against the immediate predecessor).
+- **Track compare wired** — `track --compare N` now actually compares against the Nth previous snapshot. Previously the flag was defined but ignored.
+
+### Fixed
+
+- **Accurate cost estimation** — session cost calculations now use `EstimateSessionCost` with per-model pricing (Sonnet default) and cache-adjusted ratios from `stats-cache.json`, replacing hardcoded $3/$15 per-MTok estimates. Applied to `sessions`, `watch --budget`, and cost-per-outcome metrics.
 
 ## [v0.2.1] - 2026-02-28
 
