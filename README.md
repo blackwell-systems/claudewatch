@@ -1,6 +1,9 @@
 # claudewatch
 
 [![Blackwell Systems™](https://raw.githubusercontent.com/blackwell-systems/blackwell-docs-theme/main/badge-trademark.svg)](https://github.com/blackwell-systems)
+[![CI](https://github.com/blackwell-systems/claudewatch/actions/workflows/ci.yml/badge.svg)](https://github.com/blackwell-systems/claudewatch/actions)
+[![Release](https://img.shields.io/github/v/release/blackwell-systems/claudewatch)](https://github.com/blackwell-systems/claudewatch/releases/latest)
+[![Go Report Card](https://goreportcard.com/badge/github.com/blackwell-systems/claudewatch)](https://goreportcard.com/report/github.com/blackwell-systems/claudewatch)
 
 Get measurably better at AI-assisted development.
 
