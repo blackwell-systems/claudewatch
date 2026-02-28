@@ -161,7 +161,7 @@ sudo mv claudewatch /usr/local/bin/
 # Windows: extract ZIP and add to PATH
 ```
 
-**From source (requires Go 1.24+):**
+**From source (requires Go 1.26+):**
 ```bash
 go install github.com/blackwell-systems/claudewatch/cmd/claudewatch@latest
 ```
