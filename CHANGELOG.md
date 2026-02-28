@@ -2,7 +2,7 @@
 
 All notable changes to claudewatch are documented here.
 
-## [Unreleased]
+## [v0.2.1] - 2026-02-28
 
 ### Added
 
@@ -13,6 +13,7 @@ All notable changes to claudewatch are documented here.
 - **False zero-commit alerts** — watch daemon now filters trivial sessions (<5 messages and <10 minutes) from zero-commit rate detection. Short Q&A sessions no longer trigger false "High zero-commit rate" alerts.
 - **Repeated alert suppression** — watch daemon deduplicates identical alerts between check cycles, only re-alerting when the underlying data changes.
 - **CI workflow** — removed auto-format-and-push step that violated branch protection rules. CI now fails on unformatted code instead of attempting to push fixes directly to main. Permissions downgraded from write to read.
+- **Lint compliance** — resolved all 27 golangci-lint v2 violations (errcheck, staticcheck) across 14 files. Upgraded Go from 1.24 to 1.26 and golangci-lint action from v6 to v7.
 
 ## [v0.2.0] - 2026-02-27
 
