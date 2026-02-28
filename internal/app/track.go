@@ -18,6 +18,7 @@ import (
 
 var (
 	trackCompare int
+	trackHistory int
 	trackJSON    bool
 )
 
@@ -32,6 +33,7 @@ whose trigger conditions are no longer true.`,
 
 func init() {
 	trackCmd.Flags().IntVar(&trackCompare, "compare", 1, "Compare against Nth previous snapshot (1 = most recent)")
+	trackCmd.Flags().IntVar(&trackHistory, "history", 0, "Show metric trends across N most recent snapshots")
 	trackCmd.Flags().BoolVar(&trackJSON, "json", false, "Output as JSON")
 	rootCmd.AddCommand(trackCmd)
 }
@@ -189,9 +191,17 @@ func runTrack(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Handle --history mode: show trends across N snapshots.
+	if trackHistory > 0 {
+		if trackJSON || flagJSON {
+			return outputHistoryJSON(db, trackHistory)
+		}
+		return renderHistory(db, trackHistory)
+	}
+
 	// Load previous snapshot for comparison.
-	// GetSnapshotN(2) gets the second most recent (the one before the one we just created).
-	prevSnapshot, err := db.GetSnapshotN(2)
+	// trackCompare=1 means compare against the immediate predecessor (offset 2 from newest).
+	prevSnapshot, err := db.GetSnapshotN(trackCompare + 1)
 	if err != nil {
 		return fmt.Errorf("loading previous snapshot: %w", err)
 	}
@@ -412,4 +422,153 @@ func renderTrackOutput(current *store.Snapshot, diff *store.SnapshotDiff) {
 	}
 
 	tbl.Print()
+}
+
+// metricDisplayOrder defines the order metrics appear in history output.
+var metricDisplayOrder = []string{
+	"total_sessions",
+	"avg_duration_minutes",
+	"avg_messages_per_session",
+	"avg_commits_per_session",
+	"avg_lines_added_per_session",
+	"avg_files_modified",
+	"satisfaction_score",
+	"total_friction_events",
+	"sessions_with_friction",
+	"avg_tool_errors",
+	"avg_interruptions",
+	"avg_tokens_per_session",
+	"agent_total",
+	"agent_success_rate",
+	"agent_background_ratio",
+}
+
+// metricShortName returns a compact label for display in the history table.
+func metricShortName(name string) string {
+	short := map[string]string{
+		"total_sessions":              "Sessions",
+		"avg_duration_minutes":        "Avg Duration (min)",
+		"avg_messages_per_session":    "Avg Messages",
+		"avg_commits_per_session":     "Avg Commits",
+		"avg_lines_added_per_session": "Avg Lines Added",
+		"avg_files_modified":          "Avg Files Modified",
+		"satisfaction_score":          "Satisfaction",
+		"total_friction_events":       "Friction Events",
+		"sessions_with_friction":      "Sessions w/ Friction",
+		"avg_tool_errors":             "Avg Tool Errors",
+		"avg_interruptions":           "Avg Interruptions",
+		"avg_tokens_per_session":      "Avg Tokens",
+		"agent_total":                 "Agents Total",
+		"agent_success_rate":          "Agent Success %",
+		"agent_background_ratio":      "Agent Background %",
+	}
+	if s, ok := short[name]; ok {
+		return s
+	}
+	return name
+}
+
+// renderHistory shows a multi-snapshot timeline table.
+func renderHistory(db *store.DB, n int) error {
+	snapshots, err := db.GetRecentSnapshots(n)
+	if err != nil {
+		return fmt.Errorf("loading snapshots: %w", err)
+	}
+
+	if len(snapshots) == 0 {
+		fmt.Println(" No snapshots found. Run 'claudewatch track' to create one.")
+		return nil
+	}
+
+	// Reverse so oldest is first (left to right = chronological).
+	for i, j := 0, len(snapshots)-1; i < j; i, j = i+1, j-1 {
+		snapshots[i], snapshots[j] = snapshots[j], snapshots[i]
+	}
+
+	// Load metrics for each snapshot.
+	type snapshotMetrics struct {
+		snapshot store.Snapshot
+		metrics  map[string]float64
+	}
+	var timeline []snapshotMetrics
+	for _, s := range snapshots {
+		metrics, err := db.GetAggregateMetrics(s.ID)
+		if err != nil {
+			return fmt.Errorf("loading metrics for snapshot #%d: %w", s.ID, err)
+		}
+		m := make(map[string]float64)
+		for _, am := range metrics {
+			m[am.MetricName] = am.MetricValue
+		}
+		timeline = append(timeline, snapshotMetrics{snapshot: s, metrics: m})
+	}
+
+	fmt.Println(output.Section("Track: Metric History"))
+	fmt.Println()
+	fmt.Printf(" Showing %d most recent snapshots\n\n", len(timeline))
+
+	// Build table: Metric | snap1 | snap2 | ... | Trend
+	headers := []string{"Metric"}
+	for _, sm := range timeline {
+		headers = append(headers, fmt.Sprintf("#%d %s", sm.snapshot.ID, sm.snapshot.TakenAt.Format("Jan 02")))
+	}
+	headers = append(headers, "Trend")
+	tbl := output.NewTable(headers...)
+
+	for _, name := range metricDisplayOrder {
+		row := []string{metricShortName(name)}
+		var vals []float64
+		for _, sm := range timeline {
+			v := sm.metrics[name]
+			vals = append(vals, v)
+			row = append(row, fmt.Sprintf("%.1f", v))
+		}
+
+		// Compute trend from first to last.
+		trend := ""
+		if len(vals) >= 2 {
+			delta := vals[len(vals)-1] - vals[0]
+			higherIsBetter, known := metricDirection[name]
+			if !known {
+				higherIsBetter = true
+			}
+			trend = output.TrendArrow(delta, higherIsBetter)
+		}
+		row = append(row, trend)
+		tbl.AddRow(row...)
+	}
+
+	tbl.Print()
+	return nil
+}
+
+// outputHistoryJSON writes the history data as JSON.
+func outputHistoryJSON(db *store.DB, n int) error {
+	snapshots, err := db.GetRecentSnapshots(n)
+	if err != nil {
+		return fmt.Errorf("loading snapshots: %w", err)
+	}
+
+	// Reverse to chronological order.
+	for i, j := 0, len(snapshots)-1; i < j; i, j = i+1, j-1 {
+		snapshots[i], snapshots[j] = snapshots[j], snapshots[i]
+	}
+
+	type snapshotEntry struct {
+		Snapshot store.Snapshot        `json:"snapshot"`
+		Metrics  []store.AggregateMetric `json:"metrics"`
+	}
+
+	var entries []snapshotEntry
+	for _, s := range snapshots {
+		metrics, err := db.GetAggregateMetrics(s.ID)
+		if err != nil {
+			return fmt.Errorf("loading metrics for snapshot #%d: %w", s.ID, err)
+		}
+		entries = append(entries, snapshotEntry{Snapshot: s, Metrics: metrics})
+	}
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(map[string]any{"history": entries})
 }

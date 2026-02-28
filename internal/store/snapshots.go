@@ -203,6 +203,30 @@ func (db *DB) GetOpenSuggestions() ([]Suggestion, error) {
 	return suggestions, rows.Err()
 }
 
+// GetRecentSnapshots returns the N most recent snapshots, ordered newest first.
+func (db *DB) GetRecentSnapshots(n int) ([]Snapshot, error) {
+	rows, err := db.conn.Query(
+		"SELECT id, taken_at, command, version FROM snapshots ORDER BY id DESC LIMIT ?",
+		n,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var snapshots []Snapshot
+	for rows.Next() {
+		var s Snapshot
+		var takenAt string
+		if err := rows.Scan(&s.ID, &takenAt, &s.Command, &s.Version); err != nil {
+			return nil, err
+		}
+		s.TakenAt, _ = time.Parse(time.RFC3339, takenAt)
+		snapshots = append(snapshots, s)
+	}
+	return snapshots, rows.Err()
+}
+
 // ResolveSuggestion marks a suggestion as resolved.
 func (db *DB) ResolveSuggestion(id int64) error {
 	_, err := db.conn.Exec("UPDATE suggestions SET status = 'resolved' WHERE id = ?", id)

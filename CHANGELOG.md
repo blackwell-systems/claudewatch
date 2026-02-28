@@ -2,6 +2,13 @@
 
 All notable changes to claudewatch are documented here.
 
+## [Unreleased]
+
+### Added
+
+- **Track history timeline** — `track --history N` shows metric trends across N most recent snapshots in a multi-column table with trend arrows. Supports `--json` for machine-readable output.
+- **Track compare wired** — `track --compare N` now actually compares against the Nth previous snapshot. Previously the flag was defined but ignored (always compared against the immediate predecessor).
+
 ## [v0.2.1] - 2026-02-28
 
 ### Added
