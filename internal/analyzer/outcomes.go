@@ -82,7 +82,7 @@ func AnalyzeOutcomes(sessions []claude.SessionMeta, facets []claude.SessionFacet
 
 	// Build per-session outcomes.
 	for _, s := range sorted {
-		cost := estimateSessionCost(s, pricing, ratio)
+		cost := EstimateSessionCost(s, pricing, ratio)
 
 		outcome := SessionOutcome{
 			SessionID:     s.SessionID,
@@ -158,10 +158,10 @@ func AnalyzeOutcomes(sessions []claude.SessionMeta, facets []claude.SessionFacet
 	return result
 }
 
-// estimateSessionCost computes the dollar cost of a single session from its
+// EstimateSessionCost computes the dollar cost of a single session from its
 // token counts. Input tokens are treated as uncached; estimated cache-read and
 // cache-write volumes are derived from the aggregate CacheRatio.
-func estimateSessionCost(s claude.SessionMeta, pricing ModelPricing, ratio CacheRatio) float64 {
+func EstimateSessionCost(s claude.SessionMeta, pricing ModelPricing, ratio CacheRatio) float64 {
 	inputTokens := float64(s.InputTokens)
 	uncachedCost := inputTokens / 1_000_000.0 * pricing.InputPerMillion
 	cacheReadCost := (inputTokens * ratio.CacheReadMultiplier) / 1_000_000.0 * pricing.CacheReadPerMillion

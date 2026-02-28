@@ -252,7 +252,7 @@ func costPerCommit(sessions []claude.SessionMeta, pricing ModelPricing, ratio Ca
 	var totalCost float64
 	var totalCommits int
 	for _, s := range sessions {
-		totalCost += estimateSessionCost(s, pricing, ratio)
+		totalCost += EstimateSessionCost(s, pricing, ratio)
 		totalCommits += s.GitCommits
 	}
 	if totalCommits == 0 {

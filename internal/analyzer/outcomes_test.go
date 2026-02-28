@@ -164,6 +164,21 @@ func TestMedianFloat64(t *testing.T) {
 	}
 }
 
+func TestEstimateSessionCost_Exported(t *testing.T) {
+	s := claude.SessionMeta{
+		InputTokens:  1_000_000, // $3.00 at $3/M
+		OutputTokens: 100_000,   // $1.50 at $15/M
+	}
+
+	got := EstimateSessionCost(s, testPricing, NoCacheRatio())
+
+	// Expected: uncached input $3.00 + output $1.50 = $4.50 (no cache costs with NoCacheRatio)
+	expected := 4.50
+	if diff := got - expected; diff > 0.001 || diff < -0.001 {
+		t.Errorf("EstimateSessionCost() = %.4f, want %.4f", got, expected)
+	}
+}
+
 func TestAnalyzeOutcomes_WithCacheRatio(t *testing.T) {
 	// Simulate a cache ratio where cache reads are 2900x uncached input
 	// and cache writes are 395x uncached input (realistic from stats-cache data).
