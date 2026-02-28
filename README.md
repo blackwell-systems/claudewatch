@@ -197,7 +197,7 @@ claudewatch track --compare
 | Command | What it does |
 |---------|-------------|
 | `scan` | Score every project's AI readiness (0-100) |
-| `metrics` | Session trends: friction, cost per outcome, model usage, token breakdown, effectiveness scoring, agents |
+| `metrics` | Session trends: friction, cost per outcome, model usage, token breakdown, effectiveness scoring, agents, task planning |
 | `gaps` | What's missing: context, hooks, stale friction patterns |
 | `suggest` | Ranked improvements with impact scores |
 | `fix` | Generate and apply CLAUDE.md patches from session data |
@@ -251,8 +251,9 @@ claudewatch metrics --days 7 --json > week.json   # save to file
 - `conversation` - correction rate, long message frequency
 - `confidence` - project confidence scores, read/write ratios
 - `friction_trends` - stale/improving/worsening friction patterns
-- `cost_per_outcome` - cost per commit/file/session, goal achievement
+- `cost_per_outcome` - cost per commit/file/session, goal achievement (cache-adjusted)
 - `effectiveness` - CLAUDE.md before/after effectiveness scoring
+- `planning` - task completion rates and file churn intensity
 
 **Example queries:**
 
@@ -282,6 +283,9 @@ All data is read from local files. claudewatch never writes to these paths, neve
 | `~/.claude/history.jsonl` | Conversation history |
 | `~/.claude/usage-data/session-meta/` | Session metadata (tools, commits, languages) |
 | `~/.claude/usage-data/facets/` | Session analysis (friction, satisfaction, goals) |
+| `~/.claude/stats-cache.json` | Aggregate token usage and cache statistics |
+| `~/.claude/todos/` | Task lists created during sessions (completion tracking) |
+| `~/.claude/file-history/` | File edit snapshots per session (churn analysis) |
 | `~/.claude/settings.json` | Global settings, hooks, permissions |
 | `~/.claude/projects/` | Project-specific settings and session transcripts |
 | `~/.claude/commands/` | Custom slash commands |

@@ -302,3 +302,62 @@ func TestEstimateCosts_CaseInsensitiveModel(t *testing.T) {
 		t.Errorf("InputCost = %.4f, want %.4f (case-insensitive model)", est.InputCost, wantInput)
 	}
 }
+
+func TestComputeCacheRatio(t *testing.T) {
+	stats := claude.StatsCache{
+		ModelUsage: map[string]claude.ModelUsage{
+			"model-a": {
+				InputTokens:              100,
+				CacheReadInputTokens:     800,
+				CacheCreationInputTokens: 100,
+			},
+			"model-b": {
+				InputTokens:              100,
+				CacheReadInputTokens:     400,
+				CacheCreationInputTokens: 100,
+			},
+		},
+	}
+
+	ratio := ComputeCacheRatio(stats)
+
+	// Uncached: 200, CacheRead: 1200, CacheWrite: 200
+	// CacheReadMultiplier = 1200/200 = 6.0
+	// CacheWriteMultiplier = 200/200 = 1.0
+	if diff := ratio.CacheReadMultiplier - 6.0; diff > 0.01 || diff < -0.01 {
+		t.Errorf("CacheReadMultiplier = %.2f, want 6.0", ratio.CacheReadMultiplier)
+	}
+	if diff := ratio.CacheWriteMultiplier - 1.0; diff > 0.01 || diff < -0.01 {
+		t.Errorf("CacheWriteMultiplier = %.2f, want 1.0", ratio.CacheWriteMultiplier)
+	}
+}
+
+func TestComputeCacheRatio_Empty(t *testing.T) {
+	ratio := ComputeCacheRatio(claude.StatsCache{})
+	if ratio.CacheReadMultiplier != 0 || ratio.CacheWriteMultiplier != 0 {
+		t.Errorf("expected zero multipliers for empty stats, got read=%.2f write=%.2f",
+			ratio.CacheReadMultiplier, ratio.CacheWriteMultiplier)
+	}
+}
+
+func TestComputeCacheRatio_ZeroUncached(t *testing.T) {
+	stats := claude.StatsCache{
+		ModelUsage: map[string]claude.ModelUsage{
+			"model": {
+				InputTokens:          0,
+				CacheReadInputTokens: 1000,
+			},
+		},
+	}
+	ratio := ComputeCacheRatio(stats)
+	if ratio.CacheReadMultiplier != 0 {
+		t.Errorf("expected zero multiplier when uncached=0, got %.2f", ratio.CacheReadMultiplier)
+	}
+}
+
+func TestNoCacheRatio(t *testing.T) {
+	ratio := NoCacheRatio()
+	if ratio.CacheReadMultiplier != 0 || ratio.CacheWriteMultiplier != 0 {
+		t.Errorf("NoCacheRatio should have zero multipliers")
+	}
+}

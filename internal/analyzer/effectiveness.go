@@ -60,6 +60,7 @@ func AnalyzeEffectiveness(
 	sessions []claude.SessionMeta,
 	facets []claude.SessionFacet,
 	pricing ModelPricing,
+	ratio CacheRatio,
 ) EffectivenessResult {
 	result := EffectivenessResult{
 		ProjectPath:      projectPath,
@@ -121,8 +122,8 @@ func AnalyzeEffectiveness(
 	result.GoalDelta = result.AfterGoalRate - result.BeforeGoalRate
 
 	// Cost per commit.
-	result.BeforeCostPerCommit = costPerCommit(before, pricing)
-	result.AfterCostPerCommit = costPerCommit(after, pricing)
+	result.BeforeCostPerCommit = costPerCommit(before, pricing, ratio)
+	result.AfterCostPerCommit = costPerCommit(after, pricing, ratio)
 	result.CostDelta = result.AfterCostPerCommit - result.BeforeCostPerCommit
 
 	// Score: each improving metric contributes points. Range -100 to +100.
@@ -139,6 +140,7 @@ func EffectivenessTimeline(
 	sessions []claude.SessionMeta,
 	facets []claude.SessionFacet,
 	pricing ModelPricing,
+	ratio CacheRatio,
 ) []EffectivenessResult {
 	// Index sessions by project path.
 	sessionsByProject := make(map[string][]claude.SessionMeta)
@@ -162,7 +164,7 @@ func EffectivenessTimeline(
 			continue
 		}
 
-		r := AnalyzeEffectiveness(change.ProjectPath, change.ModifiedAt, projectSessions, facets, pricing)
+		r := AnalyzeEffectiveness(change.ProjectPath, change.ModifiedAt, projectSessions, facets, pricing, ratio)
 		results = append(results, r)
 	}
 
@@ -246,11 +248,11 @@ func goalRate(sessions []claude.SessionMeta, facets map[string]claude.SessionFac
 	return float64(achieved) / float64(total)
 }
 
-func costPerCommit(sessions []claude.SessionMeta, pricing ModelPricing) float64 {
+func costPerCommit(sessions []claude.SessionMeta, pricing ModelPricing, ratio CacheRatio) float64 {
 	var totalCost float64
 	var totalCommits int
 	for _, s := range sessions {
-		totalCost += estimateSessionCost(s, pricing)
+		totalCost += estimateSessionCost(s, pricing, ratio)
 		totalCommits += s.GitCommits
 	}
 	if totalCommits == 0 {

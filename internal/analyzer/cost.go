@@ -66,6 +66,40 @@ type ProjectCost struct {
 	CostPerSession float64 `json:"cost_per_session"`
 }
 
+// CacheRatio holds multipliers that estimate how many cache-read and
+// cache-write tokens accompany each uncached input token. Derived from the
+// aggregate stats-cache.json because per-session cache token data is not
+// available.
+type CacheRatio struct {
+	// CacheReadMultiplier is cacheReadTokens / uncachedInputTokens.
+	CacheReadMultiplier float64
+	// CacheWriteMultiplier is cacheWriteTokens / uncachedInputTokens.
+	CacheWriteMultiplier float64
+}
+
+// NoCacheRatio returns a CacheRatio with zero multipliers, pricing all input
+// at the full uncached rate. Use when stats-cache is unavailable.
+func NoCacheRatio() CacheRatio {
+	return CacheRatio{}
+}
+
+// ComputeCacheRatio derives a CacheRatio from aggregate stats-cache model usage.
+func ComputeCacheRatio(stats claude.StatsCache) CacheRatio {
+	var uncached, cacheRead, cacheWrite int64
+	for _, usage := range stats.ModelUsage {
+		uncached += usage.InputTokens
+		cacheRead += usage.CacheReadInputTokens
+		cacheWrite += usage.CacheCreationInputTokens
+	}
+	if uncached == 0 {
+		return NoCacheRatio()
+	}
+	return CacheRatio{
+		CacheReadMultiplier:  float64(cacheRead) / float64(uncached),
+		CacheWriteMultiplier: float64(cacheWrite) / float64(uncached),
+	}
+}
+
 // tokensToCost converts a token count to a dollar amount given a per-million rate.
 func tokensToCost(tokens int64, perMillion float64) float64 {
 	return float64(tokens) / 1_000_000.0 * perMillion

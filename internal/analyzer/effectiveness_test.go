@@ -8,7 +8,7 @@ import (
 )
 
 func TestAnalyzeEffectiveness_InsufficientData(t *testing.T) {
-	result := AnalyzeEffectiveness("/proj", time.Time{}, nil, nil, testPricing)
+	result := AnalyzeEffectiveness("/proj", time.Time{}, nil, nil, testPricing, NoCacheRatio())
 	if result.Verdict != "insufficient_data" {
 		t.Errorf("expected insufficient_data, got %q", result.Verdict)
 	}
@@ -21,7 +21,7 @@ func TestAnalyzeEffectiveness_TooFewSessions(t *testing.T) {
 		{SessionID: "s2", StartTime: "2026-01-20T10:00:00Z"},
 	}
 
-	result := AnalyzeEffectiveness("/proj", changeTime, sessions, nil, testPricing)
+	result := AnalyzeEffectiveness("/proj", changeTime, sessions, nil, testPricing, NoCacheRatio())
 	if result.Verdict != "insufficient_data" {
 		t.Errorf("expected insufficient_data (1 per side), got %q", result.Verdict)
 	}
@@ -50,7 +50,7 @@ func TestAnalyzeEffectiveness_FrictionImproved(t *testing.T) {
 		{SessionID: "s6", FrictionCounts: map[string]int{"wrong_approach": 1}},
 	}
 
-	result := AnalyzeEffectiveness("/proj", changeTime, sessions, facets, testPricing)
+	result := AnalyzeEffectiveness("/proj", changeTime, sessions, facets, testPricing, NoCacheRatio())
 
 	if result.BeforeSessions != 3 {
 		t.Errorf("expected 3 before sessions, got %d", result.BeforeSessions)
@@ -96,7 +96,7 @@ func TestAnalyzeEffectiveness_Regression(t *testing.T) {
 		{SessionID: "s4", FrictionCounts: map[string]int{"wrong_approach": 4}},
 	}
 
-	result := AnalyzeEffectiveness("/proj", changeTime, sessions, facets, testPricing)
+	result := AnalyzeEffectiveness("/proj", changeTime, sessions, facets, testPricing, NoCacheRatio())
 
 	if result.Score >= 0 {
 		t.Errorf("expected negative score for regression, got %d", result.Score)
@@ -119,7 +119,7 @@ func TestEffectivenessTimeline_MultipleProjects(t *testing.T) {
 		{SessionID: "s4", ProjectPath: "/proj/a", StartTime: "2026-01-21T10:00:00Z", ToolErrors: 0},
 	}
 
-	results := EffectivenessTimeline(changes, sessions, nil, testPricing)
+	results := EffectivenessTimeline(changes, sessions, nil, testPricing, NoCacheRatio())
 
 	// Only /proj/a has sessions, /proj/b should be skipped.
 	if len(results) != 1 {

@@ -60,7 +60,7 @@ type ProjectOutcome struct {
 
 // AnalyzeOutcomes computes cost-per-outcome metrics by joining session metadata
 // with facet data and token-based cost estimates.
-func AnalyzeOutcomes(sessions []claude.SessionMeta, facets []claude.SessionFacet, pricing ModelPricing) OutcomeAnalysis {
+func AnalyzeOutcomes(sessions []claude.SessionMeta, facets []claude.SessionFacet, pricing ModelPricing, ratio CacheRatio) OutcomeAnalysis {
 	result := OutcomeAnalysis{}
 
 	if len(sessions) == 0 {
@@ -82,7 +82,7 @@ func AnalyzeOutcomes(sessions []claude.SessionMeta, facets []claude.SessionFacet
 
 	// Build per-session outcomes.
 	for _, s := range sorted {
-		cost := estimateSessionCost(s, pricing)
+		cost := estimateSessionCost(s, pricing, ratio)
 
 		outcome := SessionOutcome{
 			SessionID:     s.SessionID,
@@ -159,11 +159,15 @@ func AnalyzeOutcomes(sessions []claude.SessionMeta, facets []claude.SessionFacet
 }
 
 // estimateSessionCost computes the dollar cost of a single session from its
-// token counts using the given pricing.
-func estimateSessionCost(s claude.SessionMeta, pricing ModelPricing) float64 {
-	inputCost := float64(s.InputTokens) / 1_000_000.0 * pricing.InputPerMillion
+// token counts. Input tokens are treated as uncached; estimated cache-read and
+// cache-write volumes are derived from the aggregate CacheRatio.
+func estimateSessionCost(s claude.SessionMeta, pricing ModelPricing, ratio CacheRatio) float64 {
+	inputTokens := float64(s.InputTokens)
+	uncachedCost := inputTokens / 1_000_000.0 * pricing.InputPerMillion
+	cacheReadCost := (inputTokens * ratio.CacheReadMultiplier) / 1_000_000.0 * pricing.CacheReadPerMillion
+	cacheWriteCost := (inputTokens * ratio.CacheWriteMultiplier) / 1_000_000.0 * pricing.CacheWritePerMillion
 	outputCost := float64(s.OutputTokens) / 1_000_000.0 * pricing.OutputPerMillion
-	return inputCost + outputCost
+	return uncachedCost + cacheReadCost + cacheWriteCost + outputCost
 }
 
 // computeOutcomeTrend splits sessions in half by time and compares the average

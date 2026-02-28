@@ -53,6 +53,7 @@ type metricsOutput struct {
 	FrictionTrends analyzer.PersistenceAnalysis   `json:"friction_trends"`
 	CostPerOutcome analyzer.OutcomeAnalysis       `json:"cost_per_outcome"`
 	Effectiveness  []analyzer.EffectivenessResult `json:"effectiveness,omitempty"`
+	Planning       analyzer.PlanningAnalysis      `json:"planning"`
 }
 
 // tokenUsage captures token metrics computed from session data.
@@ -113,7 +114,16 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 	confidence := analyzer.AnalyzeConfidence(sessions)
 	persistence := analyzer.AnalyzeFrictionPersistence(facets, sessions)
 	pricing := analyzer.DefaultPricing["sonnet"]
-	outcomes := analyzer.AnalyzeOutcomes(sessions, facets, pricing)
+	cacheRatio := analyzer.NoCacheRatio()
+	if statsCache, err := claude.ParseStatsCache(cfg.ClaudeHome); err == nil && statsCache != nil {
+		cacheRatio = analyzer.ComputeCacheRatio(*statsCache)
+	}
+	outcomes := analyzer.AnalyzeOutcomes(sessions, facets, pricing, cacheRatio)
+
+	// Load todos and file-history for planning analysis.
+	todos, _ := claude.ParseAllTodos(cfg.ClaudeHome)
+	fileHistory, _ := claude.ParseAllFileHistory(cfg.ClaudeHome)
+	planning := analyzer.AnalyzePlanning(todos, fileHistory)
 
 	// Compute token usage from sessions.
 	tokens := computeTokenUsage(sessions)
@@ -128,7 +138,7 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 	var effectiveness []analyzer.EffectivenessResult
 	if projects, projErr := scanner.DiscoverProjects(cfg.ScanPaths); projErr == nil {
 		if changes := detectClaudeMDChanges(projects); len(changes) > 0 {
-			effectiveness = analyzer.EffectivenessTimeline(changes, sessions, facets, pricing)
+			effectiveness = analyzer.EffectivenessTimeline(changes, sessions, facets, pricing, cacheRatio)
 		}
 	}
 
@@ -149,6 +159,7 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 			FrictionTrends: persistence,
 			CostPerOutcome: outcomes,
 			Effectiveness:  effectiveness,
+			Planning:       planning,
 		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
@@ -176,6 +187,8 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 	if len(effectiveness) > 0 {
 		renderEffectiveness(effectiveness)
 	}
+
+	renderPlanning(planning)
 
 	return nil
 }
@@ -693,6 +706,60 @@ func renderProjectConfidence(ca analyzer.ConfidenceAnalysis) {
 			output.StyleMuted.Render(fmt.Sprintf(
 				"%d project(s) with low confidence — consider adding more context to their CLAUDE.md",
 				ca.LowConfidenceCount)))
+	}
+
+	fmt.Println()
+}
+
+func renderPlanning(p analyzer.PlanningAnalysis) {
+	if p.Todos.TotalTasks == 0 && p.FileChurn.TotalSessions == 0 {
+		return
+	}
+
+	fmt.Println(output.Section("Task Planning & File Churn"))
+
+	if p.Todos.TotalTasks > 0 {
+		fmt.Printf(" %s\n", output.StyleMuted.Render("Task usage:"))
+		fmt.Printf("   %s %s\n",
+			output.StyleLabel.Render("Total tasks"),
+			output.StyleValue.Render(fmt.Sprintf("%d", p.Todos.TotalTasks)))
+		fmt.Printf("   %s %s\n",
+			output.StyleLabel.Render("Completion rate"),
+			output.StyleValue.Render(fmt.Sprintf("%.0f%%", p.Todos.CompletionRate*100)))
+		fmt.Printf("   %s %s\n",
+			output.StyleLabel.Render("Sessions with tasks"),
+			output.StyleValue.Render(fmt.Sprintf("%d", p.Todos.SessionsWithTodos)))
+		fmt.Printf("   %s %s\n",
+			output.StyleLabel.Render("Avg tasks/session"),
+			output.StyleValue.Render(fmt.Sprintf("%.1f", p.Todos.AvgTasksPerSession)))
+
+		if p.Todos.PendingTasks > 0 {
+			fmt.Printf("   %s %s\n",
+				output.StyleLabel.Render("Pending"),
+				output.StyleError.Render(fmt.Sprintf("%d", p.Todos.PendingTasks)))
+		}
+	}
+
+	if p.FileChurn.TotalSessions > 0 {
+		if p.Todos.TotalTasks > 0 {
+			fmt.Println()
+		}
+		fmt.Printf(" %s\n", output.StyleMuted.Render("File churn:"))
+		fmt.Printf("   %s %s\n",
+			output.StyleLabel.Render("Sessions tracked"),
+			output.StyleValue.Render(fmt.Sprintf("%d", p.FileChurn.TotalSessions)))
+		fmt.Printf("   %s %s\n",
+			output.StyleLabel.Render("Total files"),
+			output.StyleValue.Render(fmt.Sprintf("%d", p.FileChurn.TotalFiles)))
+		fmt.Printf("   %s %s\n",
+			output.StyleLabel.Render("Total edits"),
+			output.StyleValue.Render(fmt.Sprintf("%d", p.FileChurn.TotalEdits)))
+		fmt.Printf("   %s %s\n",
+			output.StyleLabel.Render("Avg edits/file"),
+			output.StyleValue.Render(fmt.Sprintf("%.1f", p.FileChurn.AvgEditsPerFile)))
+		fmt.Printf("   %s %s\n",
+			output.StyleLabel.Render("Avg files/session"),
+			output.StyleValue.Render(fmt.Sprintf("%.1f", p.FileChurn.AvgFilesPerSession)))
 	}
 
 	fmt.Println()

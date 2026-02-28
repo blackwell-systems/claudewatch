@@ -2,6 +2,14 @@
 
 All notable changes to claudewatch are documented here.
 
+## [Unreleased]
+
+### Added
+
+- **Cache-adjusted cost estimation** — cost-per-outcome and effectiveness scoring now include estimated cache-read and cache-write token costs. Derives a global cache ratio from `stats-cache.json` (cache-read/uncached multiplier, cache-write/uncached multiplier) and scales each session's uncached input tokens accordingly. Previously only priced uncached input and output tokens, significantly underestimating total spend. Falls back to uncached-only pricing when stats-cache is unavailable.
+- **Task planning metrics** — new "Task Planning & File Churn" section in `metrics` parses `~/.claude/todos/` to report task completion rate, pending task count, sessions using task lists, and average tasks per session. Surfaces abandoned tasks as a friction indicator.
+- **File churn analysis** — parses `~/.claude/file-history/` to measure per-session editing intensity: unique files touched, total edits (version count), average edits per file, and peak session churn. High edit counts on the same file correlate with iterative debugging cycles.
+
 ## [v0.1.1] - 2026-02-27
 
 ### Added

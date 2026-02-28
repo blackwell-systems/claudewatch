@@ -182,3 +182,28 @@ type ProjectDir struct {
 	Path string
 	Name string
 }
+
+// TodoTask represents a single task from ~/.claude/todos/*.json.
+type TodoTask struct {
+	Content    string `json:"content"`
+	Status     string `json:"status"`
+	ID         string `json:"id,omitempty"`
+	ActiveForm string `json:"activeForm,omitempty"`
+}
+
+// SessionTodos groups tasks by session and agent.
+type SessionTodos struct {
+	SessionID string
+	AgentID   string
+	Tasks     []TodoTask
+}
+
+// FileHistorySession represents file edit metadata for a single session
+// from ~/.claude/file-history/{sessionID}/.
+type FileHistorySession struct {
+	SessionID   string
+	UniqueFiles int   // distinct file hashes
+	TotalEdits  int   // total version count across all files
+	MaxVersion  int   // highest version number seen in this session
+	TotalBytes  int64 // cumulative size of all versioned files
+}

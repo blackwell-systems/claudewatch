@@ -7,12 +7,14 @@ import (
 )
 
 var testPricing = ModelPricing{
-	InputPerMillion:  3.0,
-	OutputPerMillion: 15.0,
+	InputPerMillion:      3.0,
+	OutputPerMillion:     15.0,
+	CacheReadPerMillion:  0.3,
+	CacheWritePerMillion: 3.75,
 }
 
 func TestAnalyzeOutcomes_Empty(t *testing.T) {
-	result := AnalyzeOutcomes(nil, nil, testPricing)
+	result := AnalyzeOutcomes(nil, nil, testPricing, NoCacheRatio())
 	if len(result.Sessions) != 0 {
 		t.Errorf("expected 0 sessions, got %d", len(result.Sessions))
 	}
@@ -32,7 +34,7 @@ func TestAnalyzeOutcomes_BasicCosts(t *testing.T) {
 		},
 	}
 
-	result := AnalyzeOutcomes(sessions, nil, testPricing)
+	result := AnalyzeOutcomes(sessions, nil, testPricing, NoCacheRatio())
 
 	if len(result.Sessions) != 1 {
 		t.Fatalf("expected 1 session, got %d", len(result.Sessions))
@@ -66,7 +68,7 @@ func TestAnalyzeOutcomes_GoalAchievement(t *testing.T) {
 		{SessionID: "s3", Outcome: "not_achieved"},
 	}
 
-	result := AnalyzeOutcomes(sessions, facets, testPricing)
+	result := AnalyzeOutcomes(sessions, facets, testPricing, NoCacheRatio())
 
 	// 2 out of 3 achieved/mostly_achieved
 	if result.GoalAchievementRate < 0.66 || result.GoalAchievementRate > 0.67 {
@@ -83,7 +85,7 @@ func TestAnalyzeOutcomes_Trend(t *testing.T) {
 		{SessionID: "s4", StartTime: "2026-01-11T10:00:00Z", InputTokens: 500_000, GitCommits: 2},
 	}
 
-	result := AnalyzeOutcomes(sessions, nil, testPricing)
+	result := AnalyzeOutcomes(sessions, nil, testPricing, NoCacheRatio())
 
 	if result.CostPerCommitTrend != "improving" {
 		t.Errorf("expected improving trend, got %q", result.CostPerCommitTrend)
@@ -95,7 +97,7 @@ func TestAnalyzeOutcomes_TrendInsufficientData(t *testing.T) {
 		{SessionID: "s1", StartTime: "2026-01-01T10:00:00Z", InputTokens: 100_000, GitCommits: 1},
 	}
 
-	result := AnalyzeOutcomes(sessions, nil, testPricing)
+	result := AnalyzeOutcomes(sessions, nil, testPricing, NoCacheRatio())
 
 	if result.CostPerCommitTrend != "insufficient_data" {
 		t.Errorf("expected insufficient_data, got %q", result.CostPerCommitTrend)
@@ -109,7 +111,7 @@ func TestAnalyzeOutcomes_ByProject(t *testing.T) {
 		{SessionID: "s3", ProjectPath: "/proj/b", StartTime: "2026-01-03T10:00:00Z", InputTokens: 500_000, GitCommits: 1},
 	}
 
-	result := AnalyzeOutcomes(sessions, nil, testPricing)
+	result := AnalyzeOutcomes(sessions, nil, testPricing, NoCacheRatio())
 
 	if len(result.ByProject) != 2 {
 		t.Fatalf("expected 2 projects, got %d", len(result.ByProject))
@@ -159,5 +161,43 @@ func TestMedianFloat64(t *testing.T) {
 				t.Errorf("medianFloat64(%v) = %v, want %v", tt.vals, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestAnalyzeOutcomes_WithCacheRatio(t *testing.T) {
+	// Simulate a cache ratio where cache reads are 2900x uncached input
+	// and cache writes are 395x uncached input (realistic from stats-cache data).
+	ratio := CacheRatio{
+		CacheReadMultiplier:  2900.0,
+		CacheWriteMultiplier: 395.0,
+	}
+	sessions := []claude.SessionMeta{
+		{
+			SessionID:    "s1",
+			StartTime:    "2026-01-10T10:00:00Z",
+			InputTokens:  1000, // 1K uncached input tokens
+			OutputTokens: 100_000,
+			GitCommits:   1,
+		},
+	}
+
+	withCache := AnalyzeOutcomes(sessions, nil, testPricing, ratio)
+	withoutCache := AnalyzeOutcomes(sessions, nil, testPricing, NoCacheRatio())
+
+	// With cache ratio, cost should be higher (includes estimated cache costs).
+	if withCache.TotalCost <= withoutCache.TotalCost {
+		t.Errorf("cache-adjusted cost ($%.4f) should be > no-cache cost ($%.4f)",
+			withCache.TotalCost, withoutCache.TotalCost)
+	}
+
+	// Verify the math:
+	// uncached: 1000/1M * 3.0 = 0.003
+	// cache read: (1000 * 2900) / 1M * 0.3 = 0.87
+	// cache write: (1000 * 395) / 1M * 3.75 = 1.48125
+	// output: 100_000/1M * 15.0 = 1.50
+	// total ~= 3.854
+	expected := 0.003 + 0.87 + 1.48125 + 1.50
+	if diff := withCache.TotalCost - expected; diff > 0.01 || diff < -0.01 {
+		t.Errorf("expected total cost ~$%.4f, got $%.4f", expected, withCache.TotalCost)
 	}
 }
