@@ -64,12 +64,12 @@ func runServer(t *testing.T, s *Server) (
 	}
 
 	closePipe = func() {
-		pw.Close()
+		_ = pw.Close()
 	}
 
 	cleanup = func() {
 		cancel()
-		pw.Close()
+		_ = pw.Close()
 		// Drain done channel.
 		select {
 		case <-done:
@@ -224,8 +224,8 @@ func TestRun_Notification(t *testing.T) {
 
 	// Clean up.
 	cancel()
-	pw.Close()
-	sr.Close()
+	_ = pw.Close()
+	_ = sr.Close()
 }
 
 // TestRun_ContextCancel verifies that cancelling the context causes Run to
@@ -244,7 +244,7 @@ func TestRun_ContextCancel(t *testing.T) {
 
 	// Cancel the context and expect Run to return nil.
 	cancel()
-	pw.Close()
+	_ = pw.Close()
 
 	select {
 	case err := <-done:
@@ -272,7 +272,7 @@ func TestRun_EOFClean(t *testing.T) {
 	}()
 
 	// Close the write side to signal EOF.
-	pw.Close()
+	_ = pw.Close()
 
 	select {
 	case err := <-done:
