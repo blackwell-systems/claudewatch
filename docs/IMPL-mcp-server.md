@@ -828,15 +828,88 @@ Expect JSON response with `protocolVersion`. Ctrl-C to exit.
 
 ### Status
 
-- [ ] Wave 1 Agent A — JSON-RPC stdio transport (`internal/mcp/jsonrpc.go`)
-- [ ] Wave 1 Agent B — MCP tool handlers (`internal/mcp/tools.go`)
+- [x] Wave 1 Agent A — JSON-RPC stdio transport (`internal/mcp/jsonrpc.go`)
+- [x] Wave 1 Agent B — MCP tool handlers (`internal/mcp/tools.go`)
 - [ ] Wave 2 Agent C — Cobra `mcp` subcommand (`internal/app/mcp.go`)
 
 ---
 
 ### Agent A — Completion Report
 
-*(Agent A appends here.)*
+**Status:** COMPLETE — all verification gates pass.
+
+**Date:** 2026-02-28
+
+**Branch:** `wave1-agent-a`
+
+**Files delivered:**
+
+| File | Role |
+|------|------|
+| `internal/mcp/jsonrpc.go` | Full JSON-RPC 2.0 stdio transport implementation |
+| `internal/mcp/jsonrpc_test.go` | 6 tests covering all required scenarios |
+| `internal/mcp/tools.go` | Temporary stub (`func addTools(s *Server) {}`) — Agent B replaces |
+
+**Functions implemented in `jsonrpc.go`:**
+
+- `NewServer(cfg *config.Config, budgetUSD float64) *Server` — allocates Server, stores `cfg.ClaudeHome` and `budgetUSD`, calls `addTools(s)`, returns `s`
+- `(s *Server) registerTool(def toolDef)` — appends a `toolDef` to `s.tools`
+- `(s *Server) Run(ctx context.Context, r io.Reader, w io.Writer) error` — newline-delimited JSON read loop via `bufio.Scanner` in a goroutine; dispatches to `handleLine`; returns nil on EOF or context cancel, non-nil on scanner error
+- `(s *Server) handleLine(_ context.Context, line string, bw *bufio.Writer) error` — unmarshals JSON-RPC request, skips notifications (nil ID), dispatches on Method
+- Internal helpers: `writeError`, `writeResponse`
+
+**Type definitions (exact — binding for Agent B):**
+
+```go
+type toolDef struct {
+    Name        string
+    Description string
+    InputSchema json.RawMessage
+    Handler     toolHandler
+}
+
+type toolHandler func(args json.RawMessage) (any, error)
+
+type Server struct {
+    tools      []toolDef
+    claudeHome string
+    budgetUSD  float64
+}
+```
+
+Agent B must use exactly these types. The `registerTool` method signature is:
+
+```go
+func (s *Server) registerTool(def toolDef)
+```
+
+**Test results:**
+
+```
+=== RUN   TestRun_Initialize
+--- PASS: TestRun_Initialize (0.00s)
+=== RUN   TestRun_ToolsList
+--- PASS: TestRun_ToolsList (0.00s)
+=== RUN   TestRun_UnknownMethod
+--- PASS: TestRun_UnknownMethod (0.00s)
+=== RUN   TestRun_Notification
+--- PASS: TestRun_Notification (0.10s)
+=== RUN   TestRun_ContextCancel
+--- PASS: TestRun_ContextCancel (0.00s)
+=== RUN   TestRun_EOFClean
+--- PASS: TestRun_EOFClean (0.00s)
+PASS
+ok      github.com/blackwell-systems/claudewatch/internal/mcp
+```
+
+**Stub caveat for `TestRun_ToolsList`:** With the stub `addTools` (no-op), `NewServer` registers zero tools. The test works around this by calling `s.registerTool(...)` directly in the test setup to register one test tool, then asserts `len >= 1`. When Agent B's real `addTools` replaces the stub at merge, the test will see `>= 4` tools (3 real + 1 test tool), which still satisfies the `>= 1` assertion. No test changes are needed after merge.
+
+**Interface deviations from spec:** None. All types, method names, and signatures match the Interface Contracts section exactly.
+
+**Verification gate output:**
+- `go build ./...` — clean (no output)
+- `go vet ./...` — clean (no output)
+- `go test ./internal/mcp/... -run 'TestRun_' -v -timeout 30s` — 6/6 PASS
 
 ---
 
@@ -857,80 +930,21 @@ Expect JSON response with `protocolVersion`. Ctrl-C to exit.
 
 #### Tools Implemented
 
-**`get_session_stats`** (no args)
-- Loads all session metadata via `claude.ParseAllSessionMeta`
-- Returns error if no sessions exist
-- Sorts by `StartTime` descending, takes most recent
-- Loads stats-cache non-fatally; falls back to `NoCacheRatio()`
-- Calls `analyzer.EstimateSessionCost` with `DefaultPricing["sonnet"]`
-- Returns `SessionStatsResult` with `ProjectName = filepath.Base(session.ProjectPath)`
+**`get_session_stats`** — loads all session metadata, sorts by StartTime descending, computes cost via `analyzer.EstimateSessionCost` with `DefaultPricing["sonnet"]`, falls back to `NoCacheRatio()` on missing stats-cache.
 
-**`get_cost_budget`** (no args)
-- Loads all session metadata; non-fatal empty on `os.IsNotExist`
-- Filters sessions where `StartTime[:10] == time.Now().UTC().Format("2006-01-02")`
-- Sums costs across today's sessions
-- `Remaining = budgetUSD - sum` when `budgetUSD > 0`; 0 otherwise
-- `OverBudget = budgetUSD > 0 && sum > budgetUSD`
-- Returns `CostBudgetResult`
+**`get_cost_budget`** — filters today's sessions by `StartTime[:10]`, sums costs, compares to `budgetUSD`. Returns `Remaining` and `OverBudget` fields.
 
-**`get_recent_sessions`** (optional `n int`, default 5, cap 50)
-- Parses `{"n": N}` from args; handles null/empty args gracefully
-- Loads session metadata and facets; indexes facets by `SessionID`
-- Sorts sessions by `StartTime` descending; takes first N
-- `FrictionScore` = sum of all `facet.FrictionCounts` values (0 if no facet)
-- Returns `RecentSessionsResult`
+**`get_recent_sessions`** — takes optional `n` (default 5, cap 50), joins sessions with facets, computes `FrictionScore` as sum of all `FrictionCounts` values.
 
 #### Test Results
 
-```
-=== RUN   TestGetSessionStats_NoSessions
---- PASS: TestGetSessionStats_NoSessions (0.00s)
-=== RUN   TestGetSessionStats_SingleSession
---- PASS: TestGetSessionStats_SingleSession (0.00s)
-=== RUN   TestGetCostBudget_NoSessions
---- PASS: TestGetCostBudget_NoSessions (0.00s)
-=== RUN   TestGetCostBudget_OverBudget
---- PASS: TestGetCostBudget_OverBudget (0.00s)
-=== RUN   TestGetRecentSessions_DefaultN
---- PASS: TestGetRecentSessions_DefaultN (0.01s)
-=== RUN   TestGetRecentSessions_CustomN
---- PASS: TestGetRecentSessions_CustomN (0.01s)
-=== RUN   TestGetRecentSessions_FrictionScore
---- PASS: TestGetRecentSessions_FrictionScore (0.00s)
-PASS
-ok  	github.com/blackwell-systems/claudewatch/internal/mcp	0.553s
-```
+All 7 tests pass: `TestGetSessionStats_NoSessions`, `TestGetSessionStats_SingleSession`, `TestGetCostBudget_NoSessions`, `TestGetCostBudget_OverBudget`, `TestGetRecentSessions_DefaultN`, `TestGetRecentSessions_CustomN`, `TestGetRecentSessions_FrictionScore`.
 
 `go build ./...` and `go vet ./...` both pass clean.
 
-#### Notes for Agent A (merge-time)
-
-The stub `internal/mcp/jsonrpc.go` defines these types that `tools.go` depends on:
-
-```go
-type toolDef struct {
-    Name        string
-    Description string
-    InputSchema json.RawMessage
-    Handler     toolHandler
-}
-
-type toolHandler func(args json.RawMessage) (any, error)
-
-type Server struct {
-    tools      []toolDef
-    claudeHome string
-    budgetUSD  float64
-}
-
-func (s *Server) registerTool(def toolDef)
-```
-
-Agent A's real `jsonrpc.go` must expose exactly these names and types. No deviations from the Interface Contracts in this document were made. `addTools(s *Server)` is the sole cross-file boundary; it is called from `NewServer` in the stub (and must be called from `NewServer` in Agent A's real implementation).
-
 #### Discovery: `EstimateSessionCost` location
 
-The IMPL doc lists `EstimateSessionCost` under `internal/analyzer` (cost.go) but the function is actually in `internal/analyzer/outcomes.go`. `cost.go` contains `EstimateCosts` (aggregate stats-cache path). Both are exported and work correctly. `tools.go` imports from `internal/analyzer` which exposes `EstimateSessionCost` from `outcomes.go` — no import path change needed.
+The IMPL doc lists `EstimateSessionCost` under `cost.go` but it lives in `internal/analyzer/outcomes.go`. No import path change needed — both files are in package `analyzer`.
 
 ---
 
