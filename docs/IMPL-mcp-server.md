@@ -950,4 +950,86 @@ The IMPL doc lists `EstimateSessionCost` under `cost.go` but it lives in `intern
 
 ### Agent C — Completion Report
 
-*(Agent C appends here.)*
+**Status:** COMPLETE — all verification gates pass.
+
+**Date:** 2026-02-28
+
+**Branch:** `wave2-agent-c`
+
+#### Files Delivered
+
+| File | Role |
+|------|------|
+| `internal/app/mcp.go` | Cobra `mcp` subcommand wiring |
+| `internal/app/mcp_test.go` | `TestMCPCmd_Registered` — verifies subcommand is on rootCmd |
+
+#### Implementation
+
+`internal/app/mcp.go` follows the `watch.go` pattern exactly:
+
+- `mcpBudget float64` package-level var, bound to `--budget` flag
+- `mcpCmd *cobra.Command` with `Use: "mcp"`, `RunE: runMCP`
+- `init()` registers the `--budget` flag and calls `rootCmd.AddCommand(mcpCmd)`
+- `runMCP` loads config via `config.Load(flagConfig)`, constructs `mcp.NewServer(cfg, mcpBudget)`, calls `srv.Run(cmd.Context(), os.Stdin, os.Stdout)`
+
+No existing files were modified. `go.mod` was not touched.
+
+#### Interface Contracts Confirmed
+
+Read Agent A and B completion reports and verified actual package source before writing code. Signatures match spec exactly:
+
+```go
+func mcp.NewServer(cfg *config.Config, budgetUSD float64) *mcp.Server  // confirmed
+func (s *mcp.Server) Run(ctx context.Context, r io.Reader, w io.Writer) error  // confirmed
+```
+
+No deviations.
+
+#### Test Results
+
+```
+=== RUN   TestMCPCmd_Registered
+--- PASS: TestMCPCmd_Registered (0.00s)
+PASS
+ok      github.com/blackwell-systems/claudewatch/internal/app   1.021s
+```
+
+Full `internal/mcp` suite also verified clean in this worktree:
+
+```
+=== RUN   TestRun_Initialize
+--- PASS: TestRun_Initialize (0.00s)
+=== RUN   TestRun_ToolsList
+--- PASS: TestRun_ToolsList (0.00s)
+=== RUN   TestRun_UnknownMethod
+--- PASS: TestRun_UnknownMethod (0.00s)
+=== RUN   TestRun_Notification
+--- PASS: TestRun_Notification (0.10s)
+=== RUN   TestRun_ContextCancel
+--- PASS: TestRun_ContextCancel (0.00s)
+=== RUN   TestRun_EOFClean
+--- PASS: TestRun_EOFClean (0.00s)
+=== RUN   TestGetSessionStats_NoSessions
+--- PASS: TestGetSessionStats_NoSessions (0.00s)
+=== RUN   TestGetSessionStats_SingleSession
+--- PASS: TestGetSessionStats_SingleSession (0.00s)
+=== RUN   TestGetCostBudget_NoSessions
+--- PASS: TestGetCostBudget_NoSessions (0.00s)
+=== RUN   TestGetCostBudget_OverBudget
+--- PASS: TestGetCostBudget_OverBudget (0.00s)
+=== RUN   TestGetRecentSessions_DefaultN
+--- PASS: TestGetRecentSessions_DefaultN (0.01s)
+=== RUN   TestGetRecentSessions_CustomN
+--- PASS: TestGetRecentSessions_CustomN (0.01s)
+=== RUN   TestGetRecentSessions_FrictionScore
+--- PASS: TestGetRecentSessions_FrictionScore (0.00s)
+PASS
+ok      github.com/blackwell-systems/claudewatch/internal/mcp   0.526s
+```
+
+#### Verification Gate Output
+
+- `go build ./...` — clean (no output)
+- `go vet ./...` — clean (no output)
+- `go test ./internal/app/... -run TestMCPCmd -v -timeout 30s` — 1/1 PASS
+- `go test ./internal/mcp/... -v -timeout 60s` — 13/13 PASS
