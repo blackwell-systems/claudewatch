@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   lint:
@@ -32,16 +32,12 @@ jobs:
       - name: Run go vet
         run: go vet ./...
 
-      - name: Check for uncommitted fixes
+      - name: Check formatting
         run: |
           if [ -n "$(git diff --name-only)" ]; then
-            echo "Formatting or lint fixes were applied:"
+            echo "Files need formatting:"
             git diff --name-only
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add -A
-            git commit -m "style: auto-format and lint fixes"
-            git push
+            exit 1
           fi
 
   test:
