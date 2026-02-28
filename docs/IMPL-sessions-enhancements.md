@@ -326,7 +326,7 @@ After each wave completes:
 
 - [x] Wave 1 Agent A — Export `EstimateSessionCost` in analyzer package
 - [x] Wave 1 Agent B — Create `doctor` command
-- [ ] Wave 2 Agent C — Sessions inspect + summary stats + wire accurate cost
+- [x] Wave 2 Agent C — Sessions inspect + summary stats + wire accurate cost
 
 ---
 
@@ -396,3 +396,74 @@ go vet ./...     # clean
 - The CLAUDE.md coverage check passes when coverage is >= 50% (not just 100%), to avoid a noisy failure on large repos where some projects legitimately lack CLAUDE.md.
 
 **Out-of-scope dependencies:** None. No new packages, no new files beyond `doctor.go`.
+
+---
+
+### Agent C — Completion Report
+
+**What was implemented:**
+
+**4a. Accurate cost estimation in `internal/app/sessions.go`:**
+
+Removed the inline `estimatedCost()` method from `sessionRow`. Added an `EstimatedCost float64` field to `sessionRow` that is populated once at row construction time using `analyzer.EstimateSessionCost(s, pricing, cacheRatio)`. Stats-cache is loaded once at the top of `runSessions()` with `claude.ParseStatsCache(cfg.ClaudeHome)`; if loading fails or returns nil, `analyzer.NoCacheRatio()` is used. `analyzer.DefaultPricing["sonnet"]` is the default pricing tier. All cost references in sorting and rendering now read `r.EstimatedCost` directly instead of calling a method repeatedly. The `analyzer` package is now imported in `sessions.go`.
+
+**4b. Summary stats footer in `renderSessions()`:**
+
+After the table, a `Totals:` line is printed showing:
+- Total cost across all displayed rows (`$X.XX`)
+- Total commits
+- Average friction per session (float, one decimal)
+- Average duration in minutes
+
+Format: `Totals: $X.XX cost · Y commits · Z.Z avg friction · Wm avg duration`
+
+Rendered in `output.StyleBold` for emphasis. Added an additional hint line pointing users to the inspect feature.
+
+**4c. `--inspect <session-id>` mode (`internal/app/sessions.go`):**
+
+Changed `sessionsCmd.Args` from implicit `cobra.NoArgs` to `cobra.MaximumNArgs(1)`. The `Use` field was updated to `"sessions [session-id]"` and the `Long` description updated to mention inspect usage.
+
+When a positional argument is provided, `runInspect()` is called. It scans all sessions for a full or prefix match (using `strings.HasPrefix`). Ambiguous prefix matches return an error. The `renderInspect()` function renders a structured detail view using `output.Section()` headers and `output.StyleLabel` / `output.StyleMuted` / `output.StyleBold` styled labels for:
+
+- Session ID, project name, project path, date, duration
+- User and assistant message counts
+- Input/output tokens, estimated cost (4 decimal places for precision)
+- Git commits, pushes, lines added/removed, files modified
+- Tool counts (top 5 by usage, sorted descending then alphabetically)
+- Friction types and counts (highlighted in `StyleWarning` if count > 2)
+- Outcome (styled: green for "achieved", yellow for "not_achieved"), helpfulness, goal, summary
+- First prompt (truncated to 200 chars with ellipsis)
+
+Gracefully handles missing facet data (prints a muted "No facet data recorded" line). Respects `--json` flag: outputs the full `sessionRow` struct as JSON.
+
+**4d. Accurate cost in `internal/watcher/watcher.go`:**
+
+Replaced the inline `inputCost + outputCost` calculation in `Snapshot()` with `analyzer.EstimateSessionCost(s, pricing, cacheRatio)`. Stats-cache is loaded once per `Snapshot()` call (non-fatal: falls back to `NoCacheRatio()` on error or nil). `analyzer.DefaultPricing["sonnet"]` used as the default tier. The `analyzer` import was already present in `watcher.go`.
+
+**Test results:**
+
+```
+go build ./...                 # clean
+go vet ./...                   # clean
+go test ./... -count=1         # all pass
+
+?   	github.com/blackwell-systems/claudewatch/cmd/claudewatch	[no test files]
+ok  	github.com/blackwell-systems/claudewatch/internal/analyzer	0.464s
+?   	github.com/blackwell-systems/claudewatch/internal/app	[no test files]
+ok  	github.com/blackwell-systems/claudewatch/internal/claude	0.685s
+?   	github.com/blackwell-systems/claudewatch/internal/config	[no test files]
+ok  	github.com/blackwell-systems/claudewatch/internal/fixer	0.236s
+ok  	github.com/blackwell-systems/claudewatch/internal/output	0.649s
+ok  	github.com/blackwell-systems/claudewatch/internal/scanner	0.870s
+?   	github.com/blackwell-systems/claudewatch/internal/store	[no test files]
+ok  	github.com/blackwell-systems/claudewatch/internal/suggest	0.517s
+ok  	github.com/blackwell-systems/claudewatch/internal/watcher	1.590s
+```
+
+**Deviations from spec:**
+
+- The `--inspect` mode is implemented as a positional argument (not a `--inspect` flag) to match the spec's stated syntax `claudewatch sessions <session-id>`. `cobra.MaximumNArgs(1)` enforces the arity.
+- The `estimatedCost()` method was removed entirely rather than kept as a thin wrapper, since the cost is now a stored field. All call sites already use `r.EstimatedCost` directly.
+- `renderInspect()` uses `output.Section()` for each sub-section header (Messages, Tokens & Cost, Git, Tools, Friction, Outcome & Satisfaction, First Prompt) to match the existing visual style of the codebase.
+
+**Out-of-scope dependencies:** None. No new packages or files created. Only `internal/app/sessions.go` and `internal/watcher/watcher.go` were modified.

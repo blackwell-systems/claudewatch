@@ -216,12 +216,16 @@ func (w *Watcher) Snapshot() (*WatchState, error) {
 	}
 
 	// Estimate today's cost from sessions starting today.
+	// Load stats-cache for accurate cache-aware pricing (non-fatal if missing).
+	pricing := analyzer.DefaultPricing["sonnet"]
+	cacheRatio := analyzer.NoCacheRatio()
+	if sc, scErr := claude.ParseStatsCache(w.claudeDir); scErr == nil && sc != nil {
+		cacheRatio = analyzer.ComputeCacheRatio(*sc)
+	}
 	today := time.Now().Format("2006-01-02")
 	for _, s := range sessions {
 		if len(s.StartTime) >= 10 && s.StartTime[:10] == today {
-			inputCost := float64(s.InputTokens) / 1_000_000 * 3.0
-			outputCost := float64(s.OutputTokens) / 1_000_000 * 15.0
-			state.EstimatedDailyCost += inputCost + outputCost
+			state.EstimatedDailyCost += analyzer.EstimateSessionCost(s, pricing, cacheRatio)
 		}
 	}
 
