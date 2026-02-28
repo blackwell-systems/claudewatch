@@ -387,11 +387,11 @@ func TestRecentSessions_Empty(t *testing.T) {
 
 func TestFilterNonTrivialSessions(t *testing.T) {
 	sessions := []claude.SessionMeta{
-		{SessionID: "trivial1", DurationMinutes: 3, UserMessageCount: 1},   // trivial: short + few messages
-		{SessionID: "long", DurationMinutes: 30, UserMessageCount: 2},      // non-trivial: ≥10 min
-		{SessionID: "chatty", DurationMinutes: 5, UserMessageCount: 8},     // non-trivial: ≥5 messages
-		{SessionID: "trivial2", DurationMinutes: 2, UserMessageCount: 3},   // trivial
-		{SessionID: "both", DurationMinutes: 20, UserMessageCount: 10},     // non-trivial: both
+		{SessionID: "trivial1", DurationMinutes: 3, UserMessageCount: 1}, // trivial: short + few messages
+		{SessionID: "long", DurationMinutes: 30, UserMessageCount: 2},    // non-trivial: ≥10 min
+		{SessionID: "chatty", DurationMinutes: 5, UserMessageCount: 8},   // non-trivial: ≥5 messages
+		{SessionID: "trivial2", DurationMinutes: 2, UserMessageCount: 3}, // trivial
+		{SessionID: "both", DurationMinutes: 20, UserMessageCount: 10},   // non-trivial: both
 	}
 
 	result := filterNonTrivialSessions(sessions)

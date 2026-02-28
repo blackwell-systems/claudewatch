@@ -44,11 +44,11 @@ type Alert struct {
 // Watcher monitors Claude session data at a regular interval and emits alerts
 // when notable changes are detected.
 type Watcher struct {
-	claudeDir      string
-	interval       time.Duration
-	previous       *WatchState
-	alertFn        func(Alert) // callback for emitting alerts
-	lastAlertKeys  map[string]bool // dedup: suppress repeated identical alerts
+	claudeDir     string
+	interval      time.Duration
+	previous      *WatchState
+	alertFn       func(Alert)     // callback for emitting alerts
+	lastAlertKeys map[string]bool // dedup: suppress repeated identical alerts
 }
 
 // New creates a Watcher that monitors the given Claude data directory.
