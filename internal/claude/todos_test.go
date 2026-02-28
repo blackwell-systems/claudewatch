@@ -50,7 +50,9 @@ func TestParseTodoFilename(t *testing.T) {
 func TestParseAllTodos(t *testing.T) {
 	dir := t.TempDir()
 	todosDir := filepath.Join(dir, "todos")
-	os.MkdirAll(todosDir, 0o755)
+	if err := os.MkdirAll(todosDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	// Write a non-empty todo file.
 	tasks := []TodoTask{
@@ -58,10 +60,14 @@ func TestParseAllTodos(t *testing.T) {
 		{Content: "Add tests", Status: "pending", ID: "2"},
 	}
 	data, _ := json.Marshal(tasks)
-	os.WriteFile(filepath.Join(todosDir, "sess1-agent-sess1.json"), data, 0o644)
+	if err := os.WriteFile(filepath.Join(todosDir, "sess1-agent-sess1.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Write an empty array file (should be skipped).
-	os.WriteFile(filepath.Join(todosDir, "sess2-agent-sess2.json"), []byte("[]"), 0o644)
+	if err := os.WriteFile(filepath.Join(todosDir, "sess2-agent-sess2.json"), []byte("[]"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	results, err := ParseAllTodos(dir)
 	if err != nil {

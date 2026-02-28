@@ -35,12 +35,20 @@ func TestParseVersionedFilename(t *testing.T) {
 func TestParseAllFileHistory(t *testing.T) {
 	dir := t.TempDir()
 	fhDir := filepath.Join(dir, "file-history", "session-abc")
-	os.MkdirAll(fhDir, 0o755)
+	if err := os.MkdirAll(fhDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create versioned files.
-	os.WriteFile(filepath.Join(fhDir, "hash1@v1"), []byte("content v1"), 0o644)
-	os.WriteFile(filepath.Join(fhDir, "hash1@v2"), []byte("content v2 longer"), 0o644)
-	os.WriteFile(filepath.Join(fhDir, "hash2@v1"), []byte("other file"), 0o644)
+	if err := os.WriteFile(filepath.Join(fhDir, "hash1@v1"), []byte("content v1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fhDir, "hash1@v2"), []byte("content v2 longer"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fhDir, "hash2@v1"), []byte("other file"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	results, err := ParseAllFileHistory(dir)
 	if err != nil {
@@ -82,7 +90,9 @@ func TestParseAllFileHistory_MissingDir(t *testing.T) {
 func TestParseAllFileHistory_EmptySession(t *testing.T) {
 	dir := t.TempDir()
 	fhDir := filepath.Join(dir, "file-history", "empty-session")
-	os.MkdirAll(fhDir, 0o755)
+	if err := os.MkdirAll(fhDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	results, err := ParseAllFileHistory(dir)
 	if err != nil {
