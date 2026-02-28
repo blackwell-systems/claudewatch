@@ -830,7 +830,7 @@ Expect JSON response with `protocolVersion`. Ctrl-C to exit.
 
 - [x] Wave 1 Agent A — JSON-RPC stdio transport (`internal/mcp/jsonrpc.go`)
 - [x] Wave 1 Agent B — MCP tool handlers (`internal/mcp/tools.go`)
-- [ ] Wave 2 Agent C — Cobra `mcp` subcommand (`internal/app/mcp.go`)
+- [x] Wave 2 Agent C — Cobra `mcp` subcommand (`internal/app/mcp.go`)
 
 ---
 
