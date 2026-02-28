@@ -2,6 +2,12 @@
 
 All notable changes to claudewatch are documented here.
 
+## [v0.4.0] - 2026-02-28
+
+### Added
+
+- **MCP server** — new `mcp` subcommand runs a JSON-RPC 2.0 stdio server compatible with the [Model Context Protocol](https://modelcontextprotocol.io). Exposes three tools to Claude Code and other MCP clients: `get_session_stats` (most recent completed session with cost and token breakdown), `get_cost_budget` (today's estimated spend vs a configurable daily budget), and `get_recent_sessions` (last N sessions with friction scores and cost, default 5, max 50). Start with `claudewatch mcp` or add `--budget <USD>` to enable budget tracking. Configure in `~/.claude.json` under `mcpServers` to make the tools available inside Claude Code sessions.
+
 ## [v0.3.0] - 2026-02-28
 
 ### Added

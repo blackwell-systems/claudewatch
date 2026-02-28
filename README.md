@@ -207,6 +207,7 @@ claudewatch track --compare
 | `track` | Snapshot metrics to SQLite, diff against previous |
 | `log` | Inject custom metrics (scale, boolean, counter, duration) |
 | `watch` | Background daemon with desktop alerts on friction spikes |
+| `mcp` | Run an MCP stdio server for Claude Code integration |
 
 ### `claudewatch fix`
 
@@ -234,6 +235,36 @@ claudewatch watch --stop              # stop background daemon
 ```
 
 Notifies on: friction spikes, new stale patterns, agent kill rate increases, zero-commit streaks.
+
+### `claudewatch mcp`
+
+Run claudewatch as an MCP ([Model Context Protocol](https://modelcontextprotocol.io)) stdio server. This makes your session data directly queryable from inside Claude Code sessions without leaving the terminal.
+
+```bash
+claudewatch mcp                    # start MCP server on stdio
+claudewatch mcp --budget 20        # enable daily budget tracking ($20 limit)
+```
+
+**Configure in Claude Code** by adding to `~/.claude.json`:
+
+```json
+{
+  "mcpServers": {
+    "claudewatch": {
+      "command": "/usr/local/bin/claudewatch",
+      "args": ["mcp", "--budget", "20"]
+    }
+  }
+}
+```
+
+**Tools exposed:**
+
+| Tool | Description |
+|------|-------------|
+| `get_session_stats` | Most recent completed session: cost, tokens, duration, project |
+| `get_cost_budget` | Today's estimated spend vs your daily budget |
+| `get_recent_sessions` | Last N sessions (default 5, max 50) with friction scores and cost |
 
 ### `claudewatch metrics --json`
 
