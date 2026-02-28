@@ -205,13 +205,13 @@ func TestCompare_AgentKillRateNoSpike(t *testing.T) {
 }
 
 func TestCompare_ZeroCommitRateHigh(t *testing.T) {
-	// Need at least 5 recent sessions with >80% zero commits.
+	// Need at least 5 recent non-trivial sessions with >80% zero commits.
 	sessions := []claude.SessionMeta{
-		{SessionID: "s1", StartTime: "2026-01-10T10:00:00Z", GitCommits: 0},
-		{SessionID: "s2", StartTime: "2026-01-11T10:00:00Z", GitCommits: 0},
-		{SessionID: "s3", StartTime: "2026-01-12T10:00:00Z", GitCommits: 0},
-		{SessionID: "s4", StartTime: "2026-01-13T10:00:00Z", GitCommits: 0},
-		{SessionID: "s5", StartTime: "2026-01-14T10:00:00Z", GitCommits: 0},
+		{SessionID: "s1", StartTime: "2026-01-10T10:00:00Z", GitCommits: 0, DurationMinutes: 30},
+		{SessionID: "s2", StartTime: "2026-01-11T10:00:00Z", GitCommits: 0, DurationMinutes: 20},
+		{SessionID: "s3", StartTime: "2026-01-12T10:00:00Z", GitCommits: 0, DurationMinutes: 15},
+		{SessionID: "s4", StartTime: "2026-01-13T10:00:00Z", GitCommits: 0, DurationMinutes: 25},
+		{SessionID: "s5", StartTime: "2026-01-14T10:00:00Z", GitCommits: 0, DurationMinutes: 10},
 	}
 
 	prev := makeState()
@@ -234,11 +234,11 @@ func TestCompare_ZeroCommitRateHigh(t *testing.T) {
 
 func TestCompare_ZeroCommitRateAcceptable(t *testing.T) {
 	sessions := []claude.SessionMeta{
-		{SessionID: "s1", StartTime: "2026-01-10T10:00:00Z", GitCommits: 0},
-		{SessionID: "s2", StartTime: "2026-01-11T10:00:00Z", GitCommits: 2},
-		{SessionID: "s3", StartTime: "2026-01-12T10:00:00Z", GitCommits: 0},
-		{SessionID: "s4", StartTime: "2026-01-13T10:00:00Z", GitCommits: 1},
-		{SessionID: "s5", StartTime: "2026-01-14T10:00:00Z", GitCommits: 3},
+		{SessionID: "s1", StartTime: "2026-01-10T10:00:00Z", GitCommits: 0, DurationMinutes: 20},
+		{SessionID: "s2", StartTime: "2026-01-11T10:00:00Z", GitCommits: 2, DurationMinutes: 30},
+		{SessionID: "s3", StartTime: "2026-01-12T10:00:00Z", GitCommits: 0, DurationMinutes: 15},
+		{SessionID: "s4", StartTime: "2026-01-13T10:00:00Z", GitCommits: 1, DurationMinutes: 25},
+		{SessionID: "s5", StartTime: "2026-01-14T10:00:00Z", GitCommits: 3, DurationMinutes: 40},
 	}
 
 	prev := makeState()
@@ -382,6 +382,55 @@ func TestRecentSessions_Empty(t *testing.T) {
 	recent := recentSessions(nil, 5)
 	if recent != nil {
 		t.Errorf("expected nil for empty sessions, got %v", recent)
+	}
+}
+
+func TestFilterNonTrivialSessions(t *testing.T) {
+	sessions := []claude.SessionMeta{
+		{SessionID: "trivial1", DurationMinutes: 3, UserMessageCount: 1},   // trivial: short + few messages
+		{SessionID: "long", DurationMinutes: 30, UserMessageCount: 2},      // non-trivial: ≥10 min
+		{SessionID: "chatty", DurationMinutes: 5, UserMessageCount: 8},     // non-trivial: ≥5 messages
+		{SessionID: "trivial2", DurationMinutes: 2, UserMessageCount: 3},   // trivial
+		{SessionID: "both", DurationMinutes: 20, UserMessageCount: 10},     // non-trivial: both
+	}
+
+	result := filterNonTrivialSessions(sessions)
+	if len(result) != 3 {
+		t.Fatalf("expected 3 non-trivial sessions, got %d", len(result))
+	}
+	ids := map[string]bool{}
+	for _, s := range result {
+		ids[s.SessionID] = true
+	}
+	for _, want := range []string{"long", "chatty", "both"} {
+		if !ids[want] {
+			t.Errorf("expected session %q in non-trivial results", want)
+		}
+	}
+}
+
+func TestCompare_ZeroCommitRateTrivialSessionsFiltered(t *testing.T) {
+	// 5 trivial sessions with zero commits should NOT trigger the alert
+	// because they get filtered out, leaving < 5 non-trivial sessions.
+	sessions := []claude.SessionMeta{
+		{SessionID: "s1", StartTime: "2026-01-10T10:00:00Z", GitCommits: 0, DurationMinutes: 3, UserMessageCount: 1},
+		{SessionID: "s2", StartTime: "2026-01-11T10:00:00Z", GitCommits: 0, DurationMinutes: 2, UserMessageCount: 2},
+		{SessionID: "s3", StartTime: "2026-01-12T10:00:00Z", GitCommits: 0, DurationMinutes: 5, UserMessageCount: 1},
+		{SessionID: "s4", StartTime: "2026-01-13T10:00:00Z", GitCommits: 0, DurationMinutes: 1, UserMessageCount: 1},
+		{SessionID: "s5", StartTime: "2026-01-14T10:00:00Z", GitCommits: 0, DurationMinutes: 4, UserMessageCount: 3},
+	}
+
+	prev := makeState()
+	curr := makeState()
+	curr.sessions = sessions
+	curr.SessionCount = 5
+
+	alerts := Compare(prev, curr)
+
+	for _, a := range alerts {
+		if a.Level == "critical" && a.Title == "High zero-commit rate" {
+			t.Error("should not alert when all sessions are trivial (< 5 messages and < 10 min)")
+		}
 	}
 }
 

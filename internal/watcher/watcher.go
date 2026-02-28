@@ -44,18 +44,20 @@ type Alert struct {
 // Watcher monitors Claude session data at a regular interval and emits alerts
 // when notable changes are detected.
 type Watcher struct {
-	claudeDir string
-	interval  time.Duration
-	previous  *WatchState
-	alertFn   func(Alert) // callback for emitting alerts
+	claudeDir      string
+	interval       time.Duration
+	previous       *WatchState
+	alertFn        func(Alert) // callback for emitting alerts
+	lastAlertKeys  map[string]bool // dedup: suppress repeated identical alerts
 }
 
 // New creates a Watcher that monitors the given Claude data directory.
 func New(claudeDir string, interval time.Duration, alertFn func(Alert)) *Watcher {
 	return &Watcher{
-		claudeDir: claudeDir,
-		interval:  interval,
-		alertFn:   alertFn,
+		claudeDir:     claudeDir,
+		interval:      interval,
+		alertFn:       alertFn,
+		lastAlertKeys: make(map[string]bool),
 	}
 }
 
@@ -89,6 +91,7 @@ func (w *Watcher) Run(ctx context.Context) error {
 
 // Check performs a single check cycle: takes a new snapshot, compares against
 // the previous state, updates the previous state, and returns any alerts.
+// Identical alerts are suppressed until the underlying data changes.
 func (w *Watcher) Check() []Alert {
 	curr, err := w.Snapshot()
 	if err != nil {
@@ -100,10 +103,22 @@ func (w *Watcher) Check() []Alert {
 		}}
 	}
 
-	var alerts []Alert
+	var raw []Alert
 	if w.previous != nil {
-		alerts = Compare(w.previous, curr)
+		raw = Compare(w.previous, curr)
 	}
+
+	// Deduplicate: suppress alerts with the same title+message as last cycle.
+	currentKeys := make(map[string]bool, len(raw))
+	var alerts []Alert
+	for _, a := range raw {
+		key := a.Level + ":" + a.Title + ":" + a.Message
+		currentKeys[key] = true
+		if !w.lastAlertKeys[key] {
+			alerts = append(alerts, a)
+		}
+	}
+	w.lastAlertKeys = currentKeys
 
 	w.previous = curr
 	return alerts

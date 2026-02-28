@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"time"
+
+	"github.com/blackwell-systems/claudewatch/internal/claude"
 )
 
 // Compare detects notable changes between two watch states and returns alerts.
@@ -63,8 +65,10 @@ func compareCritical(prev, curr *WatchState) []Alert {
 		})
 	}
 
-	// Zero-commit rate above 80% over last 5 sessions.
-	recent := recentSessions(curr.sessions, 5)
+	// Zero-commit rate above 80% over last 5 non-trivial sessions.
+	// Filter out short Q&A sessions (< 5 messages and < 10 min) that aren't coding sessions.
+	nonTrivial := filterNonTrivialSessions(curr.sessions)
+	recent := recentSessions(nonTrivial, 5)
 	if len(recent) >= 5 {
 		zeroCount := 0
 		for _, s := range recent {
@@ -242,6 +246,20 @@ func findNewSessions(prev, curr *WatchState) []sessionInfo {
 		}
 	}
 	return newSessions
+}
+
+// filterNonTrivialSessions returns sessions that represent actual coding work,
+// filtering out short Q&A or exploration sessions that shouldn't count toward
+// commit-rate metrics. A session is non-trivial if it has ≥5 user messages OR
+// lasted ≥10 minutes.
+func filterNonTrivialSessions(sessions []claude.SessionMeta) []claude.SessionMeta {
+	var result []claude.SessionMeta
+	for _, s := range sessions {
+		if s.UserMessageCount >= 5 || s.DurationMinutes >= 10 {
+			result = append(result, s)
+		}
+	}
+	return result
 }
 
 // sessionInfo is a lightweight summary of a session for alert generation.
