@@ -38,9 +38,9 @@ type doctorCheck struct {
 
 // doctorOutput is the JSON-serializable result of the doctor command.
 type doctorOutput struct {
-	Checks       []doctorCheck `json:"checks"`
-	PassedCount  int           `json:"passed"`
-	TotalCount   int           `json:"total"`
+	Checks      []doctorCheck `json:"checks"`
+	PassedCount int           `json:"passed"`
+	TotalCount  int           `json:"total"`
 }
 
 func runDoctor(cmd *cobra.Command, args []string) error {
