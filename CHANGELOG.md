@@ -2,6 +2,18 @@
 
 All notable changes to claudewatch are documented here.
 
+## [Unreleased]
+
+### Added
+
+- **Default dashboard** — running `claudewatch` with no subcommand now shows a compact summary of key metrics from the last 30 days (sessions, duration, commits, satisfaction, tool errors, cost, zero-commit rate) instead of a static help message.
+
+### Fixed
+
+- **False zero-commit alerts** — watch daemon now filters trivial sessions (<5 messages and <10 minutes) from zero-commit rate detection. Short Q&A sessions no longer trigger false "High zero-commit rate" alerts.
+- **Repeated alert suppression** — watch daemon deduplicates identical alerts between check cycles, only re-alerting when the underlying data changes.
+- **CI workflow** — removed auto-format-and-push step that violated branch protection rules. CI now fails on unformatted code instead of attempting to push fixes directly to main. Permissions downgraded from write to read.
+
 ## [v0.2.0] - 2026-02-27
 
 ### Added
@@ -58,4 +70,4 @@ All notable changes to claudewatch are documented here.
 - `log` — inject custom metrics (scale, boolean, counter, duration).
 - Pure Go with no CGO. SQLite via modernc.org/sqlite. Cross-compiles to linux/darwin/windows on amd64 and arm64.
 - CLI built with Cobra. Styled terminal output with lipgloss.
-- CI/CD with auto-format, auto-lint-fix, tests with race detection, and goreleaser on tags.
+- CI/CD with format checks, lint, tests with race detection, and goreleaser on tags.
