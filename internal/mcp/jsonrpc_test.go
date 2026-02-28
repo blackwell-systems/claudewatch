@@ -12,7 +12,7 @@ import (
 )
 
 // newTestServer creates a Server with an empty config for use in tests.
-func newTestServer() *Server {
+func newEmptyServer() *Server {
 	cfg := &config.Config{ClaudeHome: "/tmp/test-claude-home"}
 	return NewServer(cfg, 0)
 }
@@ -84,7 +84,7 @@ func runServer(t *testing.T, s *Server) (
 // TestRun_Initialize verifies the server responds to "initialize" with the
 // correct protocolVersion and serverInfo.name.
 func TestRun_Initialize(t *testing.T) {
-	s := newTestServer()
+	s := newEmptyServer()
 	sendLine, _, cleanup := runServer(t, s)
 	defer cleanup()
 
@@ -116,7 +116,7 @@ func TestRun_Initialize(t *testing.T) {
 // directly and assert >= 1 tool. In the real build (after Agent B merges),
 // addTools registers >= 3 tools; that assertion belongs to Agent B's tests.
 func TestRun_ToolsList(t *testing.T) {
-	s := newTestServer()
+	s := newEmptyServer()
 	// Register a test tool directly so we can assert a non-empty list.
 	s.registerTool(toolDef{
 		Name:        "test_tool",
@@ -161,7 +161,7 @@ func TestRun_ToolsList(t *testing.T) {
 // TestRun_UnknownMethod verifies that an unknown method returns JSON-RPC
 // error code -32601.
 func TestRun_UnknownMethod(t *testing.T) {
-	s := newTestServer()
+	s := newEmptyServer()
 	sendLine, _, cleanup := runServer(t, s)
 	defer cleanup()
 
@@ -188,7 +188,7 @@ func TestRun_UnknownMethod(t *testing.T) {
 // TestRun_Notification verifies that a message without an "id" field
 // (a JSON-RPC notification) produces no response.
 func TestRun_Notification(t *testing.T) {
-	s := newTestServer()
+	s := newEmptyServer()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -231,7 +231,7 @@ func TestRun_Notification(t *testing.T) {
 // TestRun_ContextCancel verifies that cancelling the context causes Run to
 // return nil.
 func TestRun_ContextCancel(t *testing.T) {
-	s := newTestServer()
+	s := newEmptyServer()
 	ctx, cancel := context.WithCancel(context.Background())
 
 	pr, pw := io.Pipe()
@@ -259,7 +259,7 @@ func TestRun_ContextCancel(t *testing.T) {
 // TestRun_EOFClean verifies that closing the writer side of the input pipe
 // causes Run to return nil (clean EOF).
 func TestRun_EOFClean(t *testing.T) {
-	s := newTestServer()
+	s := newEmptyServer()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
