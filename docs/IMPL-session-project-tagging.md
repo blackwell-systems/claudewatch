@@ -859,9 +859,9 @@ After each wave:
 
 ## Status
 
-- [ ] Wave 1 Agent A — Session Tag Store (`internal/store/tags.go`)
-- [ ] Wave 2 Agent B — MCP Tag Tool + resolveProjectName (`internal/mcp/`)
-- [ ] Wave 2 Agent C — CLI Tag Command (`internal/app/tag.go`)
+- [x] Wave 1 Agent A — Session Tag Store (`internal/store/tags.go`)
+- [x] Wave 2 Agent B — MCP Tag Tool + resolveProjectName (`internal/mcp/`)
+- [x] Wave 2 Agent C — CLI Tag Command (`internal/app/tag.go`)
 
 ---
 
@@ -892,10 +892,92 @@ Design decisions: Load does not hold the mutex as specified — callers in the M
 
 ### Agent B — Completion Report
 
-*(To be filled by Agent B)*
+```yaml
+status: complete
+worktree: .claude/worktrees/wave2-agent-B
+commit: 45839b3
+files_changed:
+  - internal/mcp/jsonrpc.go
+  - internal/mcp/tools.go
+  - internal/mcp/health_tools.go
+  - internal/mcp/project_tools.go
+  - internal/mcp/tools_test.go
+files_created:
+  - internal/mcp/tag_tools.go
+  - internal/mcp/tag_tools_test.go
+interface_deviations: []
+out_of_scope_deps: []
+out_of_scope_build_blockers: []
+tests_added:
+  - TestHandleSetSessionProject_OK
+  - TestHandleSetSessionProject_MissingSessionID
+  - TestHandleSetSessionProject_MissingProjectName
+  - TestHandleSetSessionProject_InvalidJSON
+verification: PASS (go test ./internal/mcp/... — 62/62 tests)
+```
+
+Design decisions:
+
+- `resolveProjectName` is a pure package-level function (not a method), taking a pre-loaded tags map, so handlers call `s.loadTags()` once at the top and pass the result down — avoiding repeated disk reads per session in loops.
+- `loadTags()` is non-fatal by contract: it always returns a map (possibly empty). Missing tag file is treated as no overrides, so existing tests with no tag store file continue to use `filepath.Base()` fallback and all 62 tests pass without modification (except `tools_test.go` updated to populate `tagStorePath` field).
+- In `health_tools.go`, the loop variable shadowing `s` (the server) was resolved by renaming the loop variable from `s` to `sess` when filtering sessions for the target project.
+- `newTagTestServer` helper in `tag_tools_test.go` uses a different name than the existing `newTestServer` in `tools_test.go` to avoid redeclaration within the same package.
+- `internal/mcp/tools_test.go` updated: `newTestServer` now sets `tagStorePath` to a path within `tmpDir` so the existing tests remain compatible with the updated `Server` struct.
 
 ---
 
 ### Agent C — Completion Report
 
-*(To be filled by Agent C)*
+```yaml
+status: complete
+worktree: .claude/worktrees/wave2-agent-C
+commit: e246247
+files_changed: []
+files_created:
+  - internal/app/tag.go
+  - internal/app/tag_test.go
+interface_deviations: []
+out_of_scope_deps: []
+out_of_scope_build_blockers: []
+tests_added:
+  - TestTagCmd_Registered
+  - TestTagCmd_RequiresProject
+  - TestTagCmd_WritesTagFile
+verification: PASS (go test ./internal/app/... — 4/4 tests)
+```
+
+Notes:
+
+The test pattern in `mcp_test.go` is minimal — it only verifies command registration
+(`TestMCPCmd_Registered`). There are no unit tests for `runMCP` itself. The pattern
+makes direct testing of `runTag` impractical from within the package: `config.ConfigDir()`
+always expands to `~/.config/claudewatch`, and cobra's required flag validation runs
+at `Execute()` time (not `RunE` call), making it hard to inject a temp dir without
+monkey-patching the global `flagConfig` or the config package.
+
+Three tests were added that cover the key behavioral invariants:
+
+1. `TestTagCmd_Registered` — follows the exact pattern from `mcp_test.go`: confirms the
+   subcommand is registered on `rootCmd`.
+
+2. `TestTagCmd_RequiresProject` — exercises cobra's required-flag enforcement by calling
+   `rootCmd.Execute()` with `tag --session some-id` (no --project). Cobra returns an error
+   before `runTag` is ever called, confirming the required-flag guard works correctly.
+
+3. `TestTagCmd_WritesTagFile` — verifies the tag file format (JSON map) using the same
+   marshal/unmarshal logic that `store.SessionTagStore.Set` uses, in a temp dir. This is
+   effectively a contract test confirming the file format is correct.
+
+Manual end-to-end verification was also performed:
+```
+$ go run ./cmd/claudewatch tag --project testproject --session test-session-id-manual
+Tagged: test-session-id-manual
+Project: testproject
+
+$ cat ~/.config/claudewatch/session-tags.json
+{
+  "test-session-id-manual": "testproject"
+}
+```
+
+The command correctly writes the session tag and prints the expected output.
