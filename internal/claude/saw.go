@@ -62,9 +62,9 @@ func ParseSAWTag(description string) (wave int, agent string, ok bool) {
 
 // SAWAgentRun represents a single agent's execution within a SAW wave.
 type SAWAgentRun struct {
-	Agent       string    // e.g., "A", "B", "C"
-	Description string    // full description from the Task call (includes tag)
-	Status      string    // "completed", "failed", "killed"
+	Agent       string // e.g., "A", "B", "C"
+	Description string // full description from the Task call (includes tag)
+	Status      string // "completed", "failed", "killed"
 	DurationMs  int64
 	LaunchedAt  time.Time
 	CompletedAt time.Time

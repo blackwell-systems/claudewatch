@@ -61,7 +61,7 @@ type SAWSessionSummary struct {
 
 // SAWWaveBreakdownResult holds per-wave timing and agent status for a SAW session.
 type SAWWaveBreakdownResult struct {
-	SessionID string         `json:"session_id"`
+	SessionID string          `json:"session_id"`
 	Waves     []SAWWaveDetail `json:"waves"`
 }
 
