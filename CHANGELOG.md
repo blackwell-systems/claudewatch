@@ -6,6 +6,16 @@ All notable changes to claudewatch are documented here.
 
 ### Added
 
+- **Live/active session reading** — closes the gap where `get_session_stats` returned the previous completed session instead of the current one. Implemented via a 2-wave SAW run (3 agents total):
+
+  - `internal/claude.FindActiveSessionPath(claudeHome)` — detects the currently-open JSONL session file using `lsof` (3s timeout) with mtime heuristic fallback (5-minute threshold). Returns `("", nil)` when no active session is found; never errors on missing directory.
+
+  - `internal/claude.ParseActiveSession(path)` — reads a partial (still-being-written) JSONL transcript with line-atomic truncation at the last `\n` byte. Populates `SessionID`, `ProjectPath`, `StartTime`, `InputTokens`, `OutputTokens`, `UserMessageCount`, `AssistantMessageCount`. Best-effort: returns non-nil `*SessionMeta` even from partially parseable files.
+
+  - `get_session_stats` MCP tool — now checks for an active session first; returns live token and cost data mid-session with `"live": true` in the response. Falls through to the previous completed-session logic when no active session is found. Enables real-time self-model: Claude can now see its own current-session token spend and cost while working.
+
+  - `claudewatch scan --include-active` — surfaces the live session as a tagged row in the scan output. Useful for monitoring from the terminal while a session runs.
+
 - **Explicit session project tagging** — fixes wrong project attribution when Claude Code is launched from a different directory than the project being worked on (e.g. SAW worktrees). Implemented via a 2-wave SAW run (3 agents total):
 
   - `set_session_project` MCP tool — override the project name for any session by ID. Call with the `session_id` from `get_session_stats` and the correct project name. The override is stored in `~/.config/claudewatch/session-tags.json` and takes precedence over the launch-directory-derived name everywhere: `get_session_stats`, `get_recent_sessions`, `get_saw_sessions`, `get_project_health`, `get_project_comparison`.

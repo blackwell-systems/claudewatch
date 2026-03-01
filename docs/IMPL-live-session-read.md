@@ -1177,8 +1177,8 @@ git branch -d wave1-agent-a wave2-agent-b wave2-agent-c
 ### Status
 
 - [ ] Agent A — Wave 1: active session detection and parsing
-- [ ] Agent B — Wave 2: MCP get_session_stats live enhancement
-- [ ] Agent C — Wave 2: scan --include-active flag
+- [x] Agent B — Wave 2: MCP get_session_stats live enhancement
+- [x] Agent C — Wave 2: scan --include-active flag
 - [ ] Post-merge verification: go test ./... passes
 - [ ] Post-merge verification: no store imports in live path
 - [ ] Post-merge verification: --include-active flag registered in scan --help
@@ -1214,4 +1214,41 @@ tests_added:
   - TestParseActiveSession_ReadError
   - TestActiveSessionInfo_EmbedsMeta
 verification: PASS (go test ./internal/claude/... -count=1 -timeout 30s — 14/14 new tests, 111/111 total)
+```
+
+### Agent B — Completion Report
+```yaml
+status: complete
+worktree: .claude/worktrees/wave2-agent-b
+commit: 0d462f4
+files_changed:
+  - internal/mcp/tools.go
+  - internal/mcp/tools_test.go
+files_created: []
+interface_deviations: []
+out_of_scope_deps: []
+tests_added:
+  - TestGetSessionStats_LiveSession_TakesPrecedence
+  - TestGetSessionStats_LiveSession_Fields
+  - TestGetSessionStats_NoActiveFallsBackToClosed
+  - TestGetSessionStats_LiveField_False_WhenClosed
+verification: PASS (go test ./internal/mcp/... -count=1 -timeout 30s — 4/4 new tests, 67/67 total; go test ./... -count=1 -timeout 60s — all packages green)
+```
+
+### Agent C — Completion Report
+```yaml
+status: complete
+worktree: .claude/worktrees/wave2-agent-c
+commit: e1ff4a2
+files_changed:
+  - internal/app/scan.go
+files_created:
+  - internal/app/scan_test.go
+interface_deviations: []
+out_of_scope_deps: []
+tests_added:
+  - TestRenderScanTable_WithActiveMeta
+  - TestRenderScanTable_NilActiveMeta
+  - TestFlagRegistration_IncludeActive
+verification: PASS (go test ./internal/app/... -count=1 -timeout 30s — 3/3 new tests, 6/6 total; go test ./... -count=1 -timeout 60s — all packages green)
 ```
