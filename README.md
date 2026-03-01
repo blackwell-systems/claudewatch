@@ -199,6 +199,17 @@ claudewatch track
 claudewatch track --compare
 ```
 
+## Documentation
+
+| | |
+|---|---|
+| 📗 [Quickstart](docs/quickstart.md) | Install, baseline, fix, measure — the full cycle in one guide |
+| 📘 [CLI Reference](docs/cli.md) | All commands and flags: `scan`, `metrics`, `gaps`, `suggest`, `fix`, `track`, `log`, `watch` |
+| 📙 [MCP Reference](docs/mcp.md) | All 12 MCP tools, setup, recommended usage pattern, and data freshness notes |
+| 📕 [Effectiveness Scoring](docs/effectiveness.md) | How CLAUDE.md before/after scoring works, how to read verdicts, and what to do with regressions |
+
+---
+
 ## Commands
 
 | Command | What it does |
