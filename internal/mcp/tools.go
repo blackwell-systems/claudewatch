@@ -9,6 +9,7 @@ import (
 
 	"github.com/blackwell-systems/claudewatch/internal/analyzer"
 	"github.com/blackwell-systems/claudewatch/internal/claude"
+	"github.com/blackwell-systems/claudewatch/internal/store"
 )
 
 // SessionStatsResult holds token usage, cost, and duration for the most recent session.
@@ -137,6 +138,12 @@ func addTools(s *Server) {
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"session_id":{"type":"string","description":"Session ID to inspect. Use the current session ID from get_session_stats."}},"required":["session_id"],"additionalProperties":false}`),
 		Handler:     s.handleGetSessionFriction,
 	})
+	s.registerTool(toolDef{
+		Name:        "set_session_project",
+		Description: "Override the project name attributed to a session. Use when the session was launched from a different directory than the project being worked on (e.g. SAW worktrees). Call with the session_id from get_session_stats and the correct project name.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"session_id":{"type":"string","description":"The session ID to tag. Use the session_id from get_session_stats."},"project_name":{"type":"string","description":"The project name to attribute this session to (e.g. 'brewprune')."}},"required":["session_id","project_name"],"additionalProperties":false}`),
+		Handler:     s.handleSetSessionProject,
+	})
 	addAnalyticsTools(s)
 	addCostTools(s)
 	s.registerTool(toolDef{
@@ -151,6 +158,26 @@ func addTools(s *Server) {
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"threshold":{"type":"number","description":"Minimum recurrence rate to flag a pattern (default 0.3)"},"lookback":{"type":"integer","description":"Number of recent sessions to analyze (default 10)"}},"additionalProperties":false}`),
 		Handler:     s.handleGetStalePatterns,
 	})
+}
+
+// loadTags loads the session tag override store.
+// Returns an empty map on any error (non-fatal: missing tag file is normal).
+func (s *Server) loadTags() map[string]string {
+	ts := store.NewSessionTagStore(s.tagStorePath)
+	tags, err := ts.Load()
+	if err != nil || tags == nil {
+		return map[string]string{}
+	}
+	return tags
+}
+
+// resolveProjectName returns tags[sessionID] if an override exists,
+// falling back to filepath.Base(projectPath).
+func resolveProjectName(sessionID, projectPath string, tags map[string]string) string {
+	if name, ok := tags[sessionID]; ok && name != "" {
+		return name
+	}
+	return filepath.Base(projectPath)
 }
 
 // loadCacheRatio loads the stats cache and returns a CacheRatio; falls back to NoCacheRatio on error.
@@ -177,6 +204,7 @@ func (s *Server) handleGetSessionStats(args json.RawMessage) (any, error) {
 		return sessions[i].StartTime > sessions[j].StartTime
 	})
 
+	tags := s.loadTags()
 	session := sessions[0]
 	ratio := s.loadCacheRatio()
 	pricing := analyzer.DefaultPricing["sonnet"]
@@ -184,7 +212,7 @@ func (s *Server) handleGetSessionStats(args json.RawMessage) (any, error) {
 
 	return SessionStatsResult{
 		SessionID:     session.SessionID,
-		ProjectName:   filepath.Base(session.ProjectPath),
+		ProjectName:   resolveProjectName(session.SessionID, session.ProjectPath, tags),
 		StartTime:     session.StartTime,
 		DurationMin:   session.DurationMinutes,
 		InputTokens:   session.InputTokens,
@@ -271,6 +299,7 @@ func (s *Server) handleGetRecentSessions(args json.RawMessage) (any, error) {
 		sessions = sessions[:n]
 	}
 
+	tags := s.loadTags()
 	ratio := s.loadCacheRatio()
 	pricing := analyzer.DefaultPricing["sonnet"]
 
@@ -287,7 +316,7 @@ func (s *Server) handleGetRecentSessions(args json.RawMessage) (any, error) {
 
 		result = append(result, RecentSession{
 			SessionID:     session.SessionID,
-			ProjectName:   filepath.Base(session.ProjectPath),
+			ProjectName:   resolveProjectName(session.SessionID, session.ProjectPath, tags),
 			StartTime:     session.StartTime,
 			DurationMin:   session.DurationMinutes,
 			EstimatedCost: cost,
@@ -329,9 +358,10 @@ func (s *Server) handleGetSAWSessions(args json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	tags := s.loadTags()
 	metaMap := make(map[string]string, len(metas))
 	for _, meta := range metas {
-		metaMap[meta.SessionID] = filepath.Base(meta.ProjectPath)
+		metaMap[meta.SessionID] = resolveProjectName(meta.SessionID, meta.ProjectPath, tags)
 	}
 
 	result := make([]SAWSessionSummary, 0, len(sawSessions))

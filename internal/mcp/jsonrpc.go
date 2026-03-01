@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path/filepath"
 
 	"github.com/blackwell-systems/claudewatch/internal/config"
 )
@@ -13,9 +14,10 @@ import (
 // Server is an MCP stdio server. It reads JSON-RPC requests from r and
 // writes JSON-RPC responses to w. Calls are dispatched to registered tools.
 type Server struct {
-	tools      []toolDef
-	claudeHome string
-	budgetUSD  float64
+	tools        []toolDef
+	claudeHome   string
+	budgetUSD    float64
+	tagStorePath string
 }
 
 // toolDef describes a registered MCP tool.
@@ -80,8 +82,9 @@ type toolListEntry struct {
 // budgetUSD of 0.0 means no budget configured.
 func NewServer(cfg *config.Config, budgetUSD float64) *Server {
 	s := &Server{
-		claudeHome: cfg.ClaudeHome,
-		budgetUSD:  budgetUSD,
+		claudeHome:   cfg.ClaudeHome,
+		budgetUSD:    budgetUSD,
+		tagStorePath: filepath.Join(config.ConfigDir(), "session-tags.json"),
 	}
 	addTools(s)
 	return s

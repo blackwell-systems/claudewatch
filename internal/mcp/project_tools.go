@@ -35,14 +35,16 @@ func (s *Server) handleGetProjectComparison(args json.RawMessage) (any, error) {
 		return ProjectComparisonResult{Projects: []ProjectSummary{}}, nil
 	}
 
-	// Group sessions by project base name.
+	tags := s.loadTags()
+
+	// Group sessions by project base name (with tag override).
 	type projectGroup struct {
 		sessions    []claude.SessionMeta
 		projectPath string
 	}
 	groups := make(map[string]*projectGroup)
 	for _, sess := range sessions {
-		name := filepath.Base(sess.ProjectPath)
+		name := resolveProjectName(sess.SessionID, sess.ProjectPath, tags)
 		g, ok := groups[name]
 		if !ok {
 			g = &projectGroup{}
