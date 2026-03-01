@@ -9,21 +9,6 @@ import (
 	"testing"
 )
 
-// newTestServerWithSuggest creates a Server that also includes the get_suggestions tool.
-func newTestServerWithSuggest(tmpDir string) *Server {
-	s := &Server{
-		claudeHome: tmpDir,
-		budgetUSD:  0,
-	}
-	addTools(s)
-	s.registerTool(toolDef{
-		Name:        "get_suggestions",
-		Description: "Generate ranked improvement suggestions.",
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"project":{"type":"string"},"limit":{"type":"integer"}},"additionalProperties":false}`),
-		Handler:     s.handleGetSuggestions,
-	})
-	return s
-}
 
 // callSuggestions is a convenience wrapper that calls handleGetSuggestions
 // and type-asserts to SuggestionsResult.
@@ -179,4 +164,3 @@ func TestGetSuggestions_MissingClaudeMD(t *testing.T) {
 			len(r.Suggestions), r.Suggestions)
 	}
 }
-

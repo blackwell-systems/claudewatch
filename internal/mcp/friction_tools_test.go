@@ -117,7 +117,7 @@ func TestGetSessionFriction_WithFriction(t *testing.T) {
 func TestGetSessionFriction_TopFrictionType(t *testing.T) {
 	dir := t.TempDir()
 	writeFacet(t, dir, "top-friction-sess", map[string]int{
-		"wrong_approach":  1,
+		"wrong_approach":   1,
 		"miscommunication": 10,
 		"off_track":        3,
 	})
@@ -146,9 +146,9 @@ func TestGetSessionFriction_TopFrictionType(t *testing.T) {
 func TestGetSessionFriction_TieBreak(t *testing.T) {
 	dir := t.TempDir()
 	writeFacet(t, dir, "tiebreak-sess", map[string]int{
-		"zebra":  5,
-		"apple":  5,
-		"mango":  5,
+		"zebra": 5,
+		"apple": 5,
+		"mango": 5,
 	})
 
 	s := newTestServer(dir, 0)

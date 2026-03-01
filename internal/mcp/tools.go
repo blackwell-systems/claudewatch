@@ -119,6 +119,25 @@ func addTools(s *Server) {
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"session_id":{"type":"string","description":"Session ID from get_saw_sessions"}},"required":["session_id"],"additionalProperties":false}`),
 		Handler:     s.handleGetSAWWaveBreakdown,
 	})
+	s.registerTool(toolDef{
+		Name:        "get_project_health",
+		Description: "Project-specific health metrics: friction rate, agent success rate, zero-commit rate, top error types, and whether a CLAUDE.md exists. Call at session start to calibrate behavior for the current project.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"project":{"type":"string","description":"Project name (e.g. 'commitmux'). Omit to use the current session's project."}},"additionalProperties":false}`),
+		Handler:     s.handleGetProjectHealth,
+	})
+	s.registerTool(toolDef{
+		Name:        "get_suggestions",
+		Description: "Ranked improvement suggestions based on session history: missing CLAUDE.md, recurring friction, low agent success rates, parallelization opportunities. Returns top N by impact score.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"project":{"type":"string","description":"Filter suggestions for a specific project name (optional)."},"limit":{"type":"integer","description":"Maximum suggestions to return (default 5, max 20)."}},"additionalProperties":false}`),
+		Handler:     s.handleGetSuggestions,
+	})
+	s.registerTool(toolDef{
+		Name:        "get_session_friction",
+		Description: "Friction events recorded for a specific session. Pass the current session ID to see what friction patterns have been logged so far this session.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"session_id":{"type":"string","description":"Session ID to inspect. Use the current session ID from get_session_stats."}},"required":["session_id"],"additionalProperties":false}`),
+		Handler:     s.handleGetSessionFriction,
+	})
+	addAnalyticsTools(s)
 }
 
 // loadCacheRatio loads the stats cache and returns a CacheRatio; falls back to NoCacheRatio on error.

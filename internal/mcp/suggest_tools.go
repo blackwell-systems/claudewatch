@@ -237,15 +237,15 @@ func (s *Server) buildSuggestContext() *suggest.AnalysisContext {
 		}
 
 		projectContexts = append(projectContexts, suggest.ProjectContext{
-			Path:          projPath,
-			Name:          filepath.Base(projPath),
-			HasClaudeMD:   hasClaudeMD,
-			SessionCount:  len(projSessions),
-			ToolErrors:    toolErrors,
-			Interruptions: interruptions,
-			Score:         0.0, // not available without scanner
-			HasFacets:     hasFacets,
-			AgentCount:    agentCount,
+			Path:            projPath,
+			Name:            filepath.Base(projPath),
+			HasClaudeMD:     hasClaudeMD,
+			SessionCount:    len(projSessions),
+			ToolErrors:      toolErrors,
+			Interruptions:   interruptions,
+			Score:           0.0, // not available without scanner
+			HasFacets:       hasFacets,
+			AgentCount:      agentCount,
 			SequentialCount: sequentialCount,
 		})
 	}
@@ -267,16 +267,16 @@ func (s *Server) buildSuggestContext() *suggest.AnalysisContext {
 	}
 
 	return &suggest.AnalysisContext{
-		Projects:            projectContexts,
-		TotalSessions:       len(sessions),
-		AvgToolErrors:       avgToolErrors,
-		RecurringFriction:   recurringFriction,
-		HookCount:           hookCount,
-		CommandCount:        len(commands),
-		PluginCount:         len(plugins),
-		AgentSuccessRate:    agentOverallSuccess,
-		AgentTypeStats:      agentTypeStats,
-		CustomMetricTrends:  make(map[string]string),
+		Projects:           projectContexts,
+		TotalSessions:      len(sessions),
+		AvgToolErrors:      avgToolErrors,
+		RecurringFriction:  recurringFriction,
+		HookCount:          hookCount,
+		CommandCount:       len(commands),
+		PluginCount:        len(plugins),
+		AgentSuccessRate:   agentOverallSuccess,
+		AgentTypeStats:     agentTypeStats,
+		CustomMetricTrends: make(map[string]string),
 		// ClaudeMDSectionCorrelation is left nil (no project scanner available)
 		ZeroCommitRate:      commitAnalysis.ZeroCommitRate,
 		CacheSavingsPercent: cacheSavingsPercent,

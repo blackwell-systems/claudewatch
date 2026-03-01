@@ -84,10 +84,10 @@ func (s *Server) handleGetProjectHealth(args json.RawMessage) (any, error) {
 	// Return zero-value result if no sessions exist for the project.
 	if len(projectSessions) == 0 {
 		return ProjectHealthResult{
-			Project:     project,
+			Project:      project,
 			SessionCount: 0,
-			TopFriction: []string{},
-			ByAgentType: map[string]AgentTypeSummary{},
+			TopFriction:  []string{},
+			ByAgentType:  map[string]AgentTypeSummary{},
 		}, nil
 	}
 
