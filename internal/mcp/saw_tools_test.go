@@ -111,9 +111,10 @@ func TestGetSAWSessions_LimitsN(t *testing.T) {
 		toolUseID := "tu-" + string(rune('1'+i))
 		projectHash := "proj-" + string(rune('1'+i))
 		endTs := "2026-01-10T10:05:00Z"
-		if i == 1 {
+		switch i {
+		case 1:
 			endTs = "2026-01-11T10:05:00Z"
-		} else if i == 2 {
+		case 2:
 			endTs = "2026-01-12T10:05:00Z"
 		}
 		lines := sawTranscriptLines(sessionID, toolUseID, "wave1", "A", ts, endTs)
