@@ -207,7 +207,7 @@ claudewatch track --compare
 | `track` | Snapshot metrics to SQLite, diff against previous |
 | `log` | Inject custom metrics (scale, boolean, counter, duration) |
 | `watch` | Background daemon with desktop alerts on friction spikes |
-| `mcp` | Run an MCP stdio server for Claude Code integration |
+| `mcp` | Run an MCP stdio server — gives Claude real-time access to its own session metrics |
 
 ### `claudewatch fix`
 
@@ -238,7 +238,13 @@ Notifies on: friction spikes, new stale patterns, agent kill rate increases, zer
 
 ### `claudewatch mcp`
 
-Run claudewatch as an MCP ([Model Context Protocol](https://modelcontextprotocol.io)) stdio server. This makes your session data directly queryable from inside Claude Code sessions without leaving the terminal.
+Claude doesn't understand itself. It has no native access to its own session history, cost, friction patterns, or agent timing — that data lives in JSONL transcript files that require significant domain knowledge to parse correctly. Claude could read those files directly, but doing so burns context budget on infrastructure, and some data is structurally misleading without correction (background agent completion timestamps, for example, require joining across two different JSONL entry types to get accurate durations).
+
+claudewatch is the mirror that lets Claude see itself in real time. The MCP server transforms raw transcript data into structured, queryable tools so that Claude can ask "how long did that parallel agent run take?" or "what has this session cost so far?" and get an answer it can immediately reason about — without leaving the session, without parsing JSONL, and without spending context on plumbing.
+
+This is what makes the MCP server qualitatively different from the CLI commands: it closes the feedback loop *inside* the session where decisions are being made.
+
+Run claudewatch as an MCP ([Model Context Protocol](https://modelcontextprotocol.io)) stdio server.
 
 ```bash
 claudewatch mcp                    # start MCP server on stdio
