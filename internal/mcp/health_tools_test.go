@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // writeSessionMetaFull writes a session-meta JSON file with all relevant fields.
@@ -311,6 +312,113 @@ func TestGetProjectHealth_UnknownProject(t *testing.T) {
 	}
 	if len(r.TopFriction) != 0 {
 		t.Errorf("len(TopFriction) = %d, want 0", len(r.TopFriction))
+	}
+}
+
+// TestGetProjectHealth_DefaultsToActiveSession verifies that when an active JSONL
+// session exists, the no-arg call uses the active session's project (not the most
+// recently indexed session).
+func TestGetProjectHealth_DefaultsToActiveSession(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write an indexed session for "oldproject" (more recent start time).
+	writeSessionMetaFull(t, dir, "sess-old", "2026-01-20T10:00:00Z", "/home/user/oldproject", 0, 1)
+
+	// Write an active JSONL under projects/activeproject/<sessionID>.jsonl.
+	// The hash directory name "activeproject" becomes meta.ProjectPath after parsing,
+	// so filepath.Base(meta.ProjectPath) == "activeproject".
+	writeActiveJSONL(t, dir, "activeproject", "active-sess-001", 100_000, 20_000)
+
+	s := newTestServer(dir, 0)
+	addHealthTool(s)
+
+	result, err := callTool(s, "get_project_health", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	r, ok := result.(ProjectHealthResult)
+	if !ok {
+		t.Fatalf("expected ProjectHealthResult, got %T", result)
+	}
+
+	if r.Project != "activeproject" {
+		t.Errorf("Project = %q, want %q", r.Project, "activeproject")
+	}
+}
+
+// TestGetProjectHealth_FallsBackToRecentWhenNoActive verifies that when no active
+// JSONL exists (or it is stale), the no-arg call falls back to the most recently
+// indexed session's project.
+func TestGetProjectHealth_FallsBackToRecentWhenNoActive(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write two indexed sessions; "sess-new" is more recent and maps to "oldproject".
+	writeSessionMetaFull(t, dir, "sess-early", "2026-01-10T10:00:00Z", "/home/user/projectA", 0, 0)
+	writeSessionMetaFull(t, dir, "sess-new", "2026-01-20T10:00:00Z", "/home/user/oldproject", 0, 1)
+
+	// Write a stale JSONL (mtime > 5 minutes ago) so FindActiveSessionPath returns "".
+	stalePath := filepath.Join(dir, "projects", "staleproject", "stale-sess.jsonl")
+	if err := os.MkdirAll(filepath.Dir(stalePath), 0755); err != nil {
+		t.Fatalf("mkdir stale dir: %v", err)
+	}
+	if err := os.WriteFile(stalePath, []byte(`{"type":"user","sessionId":"stale-sess","timestamp":"2026-01-01T00:00:00Z"}`+"\n"), 0644); err != nil {
+		t.Fatalf("write stale jsonl: %v", err)
+	}
+	oldTime := time.Now().Add(-10 * time.Minute)
+	if err := os.Chtimes(stalePath, oldTime, oldTime); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+
+	s := newTestServer(dir, 0)
+	addHealthTool(s)
+
+	result, err := callTool(s, "get_project_health", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	r, ok := result.(ProjectHealthResult)
+	if !ok {
+		t.Fatalf("expected ProjectHealthResult, got %T", result)
+	}
+
+	if r.Project != "oldproject" {
+		t.Errorf("Project = %q, want %q", r.Project, "oldproject")
+	}
+}
+
+// TestGetProjectHealth_ExplicitProjectOverridesActive verifies that an explicit
+// "project" arg always takes priority over the active session's project.
+func TestGetProjectHealth_ExplicitProjectOverridesActive(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write indexed sessions for "oldproject".
+	writeSessionMetaFull(t, dir, "sess-indexed", "2026-01-15T10:00:00Z", "/home/user/oldproject", 0, 1)
+
+	// Write an active JSONL for "activeproject".
+	writeActiveJSONL(t, dir, "activeproject", "active-sess-002", 100_000, 20_000)
+
+	s := newTestServer(dir, 0)
+	addHealthTool(s)
+
+	// Explicitly request "oldproject".
+	result, err := callTool(s, "get_project_health", json.RawMessage(`{"project":"oldproject"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	r, ok := result.(ProjectHealthResult)
+	if !ok {
+		t.Fatalf("expected ProjectHealthResult, got %T", result)
+	}
+
+	if r.Project != "oldproject" {
+		t.Errorf("Project = %q, want %q", r.Project, "oldproject")
+	}
+	// Should have 1 session from "oldproject".
+	if r.SessionCount != 1 {
+		t.Errorf("SessionCount = %d, want 1", r.SessionCount)
 	}
 }
 
