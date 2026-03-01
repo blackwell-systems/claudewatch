@@ -230,3 +230,150 @@ func TestGetRecentSessions_FrictionScore(t *testing.T) {
 		t.Errorf("FrictionScore = %d, want 3", r.Sessions[0].FrictionScore)
 	}
 }
+
+// writeActiveJSONL writes a minimal JSONL transcript to
+// <claudeHome>/projects/<hash>/<sessionID>.jsonl
+// with a recent mtime (just-created), simulating an in-progress session.
+func writeActiveJSONL(t *testing.T, claudeHome, hash, sessionID string, inputTokens, outputTokens int) string {
+	t.Helper()
+	projDir := filepath.Join(claudeHome, "projects", hash)
+	if err := os.MkdirAll(projDir, 0755); err != nil {
+		t.Fatalf("mkdir projects dir: %v", err)
+	}
+
+	// Build a minimal 2-line JSONL: one user entry, one assistant entry with usage.
+	userLine := fmt.Sprintf(`{"type":"user","sessionId":%q,"timestamp":"2026-03-01T10:00:00Z"}`, sessionID)
+	assistantLine := fmt.Sprintf(
+		`{"type":"assistant","sessionId":%q,"timestamp":"2026-03-01T10:01:00Z","message":{"usage":{"input_tokens":%d,"output_tokens":%d}}}`,
+		sessionID, inputTokens, outputTokens,
+	)
+	content := userLine + "\n" + assistantLine + "\n"
+
+	path := filepath.Join(projDir, sessionID+".jsonl")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("write active JSONL: %v", err)
+	}
+	return path
+}
+
+// TestGetSessionStats_LiveSession_TakesPrecedence verifies that when both an
+// active JSONL file and a closed session meta file exist, the live session is
+// returned (Live: true).
+func TestGetSessionStats_LiveSession_TakesPrecedence(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write a closed session meta file (older).
+	writeSessionMeta(t, dir, "closed-sess", "2026-01-01T08:00:00Z", "/home/user/oldproject", 500_000, 50_000)
+
+	// Write an active JSONL file (recent mtime — created right now).
+	writeActiveJSONL(t, dir, "proj-hash-abc", "live-sess-001", 1_000_000, 200_000)
+
+	s := newTestServer(dir, 0)
+	result, err := callTool(s, "get_session_stats", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	r, ok := result.(SessionStatsResult)
+	if !ok {
+		t.Fatalf("expected SessionStatsResult, got %T", result)
+	}
+
+	if !r.Live {
+		t.Errorf("Live = false, want true (live session should take precedence)")
+	}
+	if r.SessionID != "live-sess-001" {
+		t.Errorf("SessionID = %q, want %q", r.SessionID, "live-sess-001")
+	}
+}
+
+// TestGetSessionStats_LiveSession_Fields verifies that SessionID, ProjectName,
+// InputTokens, OutputTokens, EstimatedCost, and Live are correctly populated
+// from the active JSONL.
+func TestGetSessionStats_LiveSession_Fields(t *testing.T) {
+	dir := t.TempDir()
+
+	writeActiveJSONL(t, dir, "my-project-hash", "test-session-xyz", 800_000, 100_000)
+
+	s := newTestServer(dir, 0)
+	result, err := callTool(s, "get_session_stats", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	r, ok := result.(SessionStatsResult)
+	if !ok {
+		t.Fatalf("expected SessionStatsResult, got %T", result)
+	}
+
+	if !r.Live {
+		t.Error("Live = false, want true")
+	}
+	if r.SessionID != "test-session-xyz" {
+		t.Errorf("SessionID = %q, want %q", r.SessionID, "test-session-xyz")
+	}
+	if r.ProjectName != "my-project-hash" {
+		t.Errorf("ProjectName = %q, want %q", r.ProjectName, "my-project-hash")
+	}
+	if r.InputTokens != 800_000 {
+		t.Errorf("InputTokens = %d, want %d", r.InputTokens, 800_000)
+	}
+	if r.OutputTokens != 100_000 {
+		t.Errorf("OutputTokens = %d, want %d", r.OutputTokens, 100_000)
+	}
+	if r.EstimatedCost <= 0 {
+		t.Errorf("EstimatedCost = %f, want > 0", r.EstimatedCost)
+	}
+	if r.StartTime == "" {
+		t.Error("StartTime is empty, want non-empty")
+	}
+}
+
+// TestGetSessionStats_NoActiveFallsBackToClosed verifies that when no active
+// session exists (empty projects dir), the closed session is returned with Live: false.
+func TestGetSessionStats_NoActiveFallsBackToClosed(t *testing.T) {
+	dir := t.TempDir()
+
+	// Only a closed session meta file; no active JSONL.
+	writeSessionMeta(t, dir, "closed-only", "2026-01-10T09:00:00Z", "/home/user/closedproject", 200_000, 30_000)
+
+	s := newTestServer(dir, 0)
+	result, err := callTool(s, "get_session_stats", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	r, ok := result.(SessionStatsResult)
+	if !ok {
+		t.Fatalf("expected SessionStatsResult, got %T", result)
+	}
+
+	if r.Live {
+		t.Error("Live = true, want false (no active session present)")
+	}
+	if r.SessionID != "closed-only" {
+		t.Errorf("SessionID = %q, want %q", r.SessionID, "closed-only")
+	}
+}
+
+// TestGetSessionStats_LiveField_False_WhenClosed explicitly verifies that the
+// Live field is false for the normal closed-session path.
+func TestGetSessionStats_LiveField_False_WhenClosed(t *testing.T) {
+	dir := t.TempDir()
+	writeSessionMeta(t, dir, "sess-001", "2026-01-15T10:00:00Z", "/home/user/myproject", 1_000_000, 100_000)
+
+	s := newTestServer(dir, 0)
+	result, err := callTool(s, "get_session_stats", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	r, ok := result.(SessionStatsResult)
+	if !ok {
+		t.Fatalf("expected SessionStatsResult, got %T", result)
+	}
+
+	if r.Live {
+		t.Errorf("Live = true, want false for closed session")
+	}
+}
