@@ -46,8 +46,9 @@ func writeFacet(t *testing.T, dir, id string, frictionCounts map[string]int) {
 // newTestServer creates a Server pointing at the given tmpDir with no budget.
 func newTestServer(tmpDir string, budgetUSD float64) *Server {
 	s := &Server{
-		claudeHome: tmpDir,
-		budgetUSD:  budgetUSD,
+		claudeHome:   tmpDir,
+		budgetUSD:    budgetUSD,
+		tagStorePath: filepath.Join(tmpDir, "session-tags.json"),
 	}
 	addTools(s)
 	return s

@@ -47,6 +47,8 @@ func (s *Server) handleGetProjectHealth(args json.RawMessage) (any, error) {
 		return nil, err
 	}
 
+	tags := s.loadTags()
+
 	// Determine the target project name.
 	project := ""
 	if params.Project != nil && *params.Project != "" {
@@ -64,19 +66,19 @@ func (s *Server) handleGetProjectHealth(args json.RawMessage) (any, error) {
 		sort.Slice(sorted, func(i, j int) bool {
 			return sorted[i].StartTime > sorted[j].StartTime
 		})
-		project = filepath.Base(sorted[0].ProjectPath)
+		project = resolveProjectName(sorted[0].SessionID, sorted[0].ProjectPath, tags)
 	}
 
 	// Filter sessions for the target project.
 	var projectSessions []claude.SessionMeta
 	var projectPath string
 	sessionIDs := make(map[string]struct{})
-	for _, s := range sessions {
-		if filepath.Base(s.ProjectPath) == project {
-			projectSessions = append(projectSessions, s)
-			sessionIDs[s.SessionID] = struct{}{}
-			if projectPath == "" && s.ProjectPath != "" {
-				projectPath = s.ProjectPath
+	for _, sess := range sessions {
+		if resolveProjectName(sess.SessionID, sess.ProjectPath, tags) == project {
+			projectSessions = append(projectSessions, sess)
+			sessionIDs[sess.SessionID] = struct{}{}
+			if projectPath == "" && sess.ProjectPath != "" {
+				projectPath = sess.ProjectPath
 			}
 		}
 	}
