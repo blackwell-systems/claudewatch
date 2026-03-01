@@ -962,11 +962,11 @@ Append to `docs/IMPL-mcp-self-model-tools.md` under `### Agent D — Completion 
 
 ### Status
 
-- [ ] Wave 1 Agent A — `get_project_health` (health_tools.go)
-- [ ] Wave 1 Agent B — `get_suggestions` (suggest_tools.go)
-- [ ] Wave 1 Agent C — `get_agent_performance` + `get_effectiveness` (analytics_tools.go)
-- [ ] Wave 1 Agent D — `get_session_friction` (friction_tools.go)
-- [ ] Orchestrator — merge, add registerTool calls, lint auto-fix, full test run
+- [x] Wave 1 Agent A — `get_project_health` (health_tools.go)
+- [x] Wave 1 Agent B — `get_suggestions` (suggest_tools.go)
+- [x] Wave 1 Agent C — `get_agent_performance` + `get_effectiveness` (analytics_tools.go)
+- [x] Wave 1 Agent D — `get_session_friction` (friction_tools.go)
+- [x] Orchestrator — merge, add registerTool calls, lint auto-fix, full test run
 
 ---
 
