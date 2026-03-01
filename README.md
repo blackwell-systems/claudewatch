@@ -5,13 +5,17 @@
 [![Release](https://img.shields.io/github/v/release/blackwell-systems/claudewatch)](https://github.com/blackwell-systems/claudewatch/releases/latest)
 [![Go Report Card](https://goreportcard.com/badge/github.com/blackwell-systems/claudewatch)](https://goreportcard.com/report/github.com/blackwell-systems/claudewatch)
 
-Get measurably better at AI-assisted development.
+A dual observability layer for Claude Code — for developers, and for Claude itself.
 
-claudewatch generates CLAUDE.md improvements from your actual Claude Code session data, then proves whether they worked with before/after effectiveness scoring. It reads local files under `~/.claude/`, finds what's costing you time and money, fixes it, and measures the result. No network calls, no telemetry, everything stays on your machine.
+claudewatch gives developers structured visibility into their Claude Code sessions: friction patterns, cost-per-outcome, agent success rates, and before/after CLAUDE.md effectiveness scoring. It reads local files under `~/.claude/`, finds what's costing you time and money, fixes it, and measures the result. No network calls, no telemetry, everything stays on your machine.
+
+It also gives Claude visibility into itself. Via an MCP server, Claude can query its own session history, friction patterns, agent performance, and project health — in real time, inside the session where decisions are being made.
 
 ## Why
 
-Every developer using AI tools is guessing at how to get better. You tweak your CLAUDE.md, try different prompting styles, maybe add a hook -- and hope things improve. There's no feedback loop. Did that scope constraint actually reduce unrequested edits? Did the testing section cut your debugging cycles? You have no idea. You can't improve what you can't measure.
+Every developer using AI tools is guessing at how to get better. You tweak your CLAUDE.md, try different prompting styles, maybe add a hook — and hope things improve. There's no feedback loop. Did that scope constraint actually reduce unrequested edits? Did the testing section cut your debugging cycles? You have no idea. You can't improve what you can't measure.
+
+Claude is guessing too. Every session starts fresh: no memory of which agent types failed on this project, what friction it generated last time, whether the approach it's about to take has a poor track record here. Claude makes decisions about parallelization, tool selection, and scope without any feedback from its own history. claudewatch closes that loop for both parties at once.
 
 ## What claudewatch does
 
