@@ -23,6 +23,7 @@ CLI observability and improvement tracking for AI-assisted development workflows
 | Package | Purpose |
 |---------|---------|
 | `app/` | Cobra command handlers (scan, metrics, gaps, suggest, track, log, fix, watch) |
+| `mcp/` | MCP stdio server (`mcp` command): JSON-RPC 2.0 tool handlers, one file per tool group |
 | `claude/` | Data parsers: history, stats-cache, session-meta, facets, settings, projects, agents, **session transcripts**, todos, file-history |
 | `scanner/` | Project discovery, readiness scoring algorithm |
 | `analyzer/` | Friction, velocity, satisfaction, efficiency, agent metrics, cost-per-outcome (cache-adjusted), CLAUDE.md effectiveness scoring, model usage analysis, token breakdown, project confidence scoring, task planning & file churn |
@@ -57,6 +58,31 @@ make test
 2. **No network calls** - Data comes from local files only. Tests must not make HTTP requests.
 3. **Metric types** - Custom metrics can be scale (float), boolean (0/1), counter (cumulative), or duration (seconds). Define in config.yaml under `custom_metrics`.
 4. **Suggest rules** - Implement as `func(ctx *AnalysisContext) []Suggestion`. Register in `suggest.NewEngine()`.
+5. **MCP import cycle** — `internal/mcp` must NOT import `internal/app`. The app package imports mcp indirectly via config. MCP tool handlers build their own context inline using `claude`, `analyzer`, and `suggest` directly.
+
+## Adding a new MCP tool
+
+1. Create `internal/mcp/<name>_tools.go` (handler + result types) and `internal/mcp/<name>_tools_test.go`
+2. Handler signature: `func (s *Server) handleGet<Name>(args json.RawMessage) (any, error)`
+3. Register in `addTools` in `internal/mcp/tools.go` via `s.registerTool(toolDef{Name, Description, InputSchema, Handler})`
+4. Use `noArgsSchema` for no-argument tools; write inline JSON schema for tools with args
+5. Data loading is always non-fatal — on error, return zero-value result, not error
+6. Result slices must be `[]T{}` (not nil); maps must be `map[K]V{}` (not nil) for clean JSON
+
+Test helpers (all in `internal/mcp/tools_test.go`):
+- `newTestServer(tmpDir)` — server with all tools registered
+- `callTool(t, s, "tool_name", args)` — invoke and decode
+- `writeSessionMeta`, `writeFacet`, `writeTranscriptJSONL` — synthetic data setup
+
+Install updated binary after changes: `go build -o /opt/homebrew/bin/claudewatch ./cmd/claudewatch`
+
+## SAW workflow for parallel features
+
+Features with ≥2 independent file groups use Scout-and-Wave parallel agents:
+- IMPL docs live in `docs/IMPL-<slug>.md` — single source of truth
+- Worktrees go in `.claude/worktrees/` (gitignored)
+- Agents create new files only; `tools.go` registration is always orchestrator-owned post-merge
+- Run `/saw scout` to analyze, `/saw wave` to execute
 
 ## Multi-Agent Analytics (Active Development)
 
