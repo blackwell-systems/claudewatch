@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -24,6 +25,7 @@ type AgentSpan struct {
 	Success      bool          `json:"success"`
 	ResultLength int           `json:"result_length"`
 	ToolUseID    string        `json:"tool_use_id"`
+	TotalTokens  int           `json:"total_tokens"`
 }
 
 // ParseSessionTranscripts scans all JSONL files under claudeDir/projects/
@@ -97,6 +99,9 @@ func ParseSingleTranscript(path string) ([]AgentSpan, error) {
 	// Map agentId -> tool_use_id from progress entries.
 	agentToToolUse := make(map[string]string)
 
+	// Real completion data for background agents, keyed by tool_use_id.
+	taskNotifications := make(map[string]taskNotification)
+
 	var spans []AgentSpan
 
 	scanner := bufio.NewScanner(f)
@@ -118,6 +123,8 @@ func ParseSingleTranscript(path string) ([]AgentSpan, error) {
 			processUserEntry(&entry, pending, &spans)
 		case "progress":
 			processProgressEntry(&entry, agentToToolUse)
+		case "queue-operation":
+			processQueueOperationEntry(&entry, taskNotifications)
 		}
 	}
 
@@ -146,6 +153,24 @@ func ParseSingleTranscript(path string) ([]AgentSpan, error) {
 		spans = append(spans, p.span)
 	}
 
+	// Backfill real completion times for background agents. Background task
+	// tool_results fire at launch time, so CompletedAt/Duration from
+	// processUserEntry is inaccurate. queue-operation/enqueue entries carry
+	// the real timestamp, duration_ms, and total_tokens.
+	for i := range spans {
+		if n, ok := taskNotifications[spans[i].ToolUseID]; ok {
+			if !n.completedAt.IsZero() {
+				spans[i].CompletedAt = n.completedAt
+				if !spans[i].LaunchedAt.IsZero() {
+					spans[i].Duration = n.completedAt.Sub(spans[i].LaunchedAt)
+				}
+			}
+			if n.totalTokens > 0 {
+				spans[i].TotalTokens = n.totalTokens
+			}
+		}
+	}
+
 	return spans, nil
 }
 
@@ -157,6 +182,8 @@ type TranscriptEntry struct {
 	Message         json.RawMessage `json:"message"`
 	Data            json.RawMessage `json:"data"`
 	ParentToolUseID string          `json:"parentToolUseID"`
+	Operation       string          `json:"operation"` // queue-operation: "enqueue" | "dequeue"
+	Content         string          `json:"content"`   // queue-operation: raw text content
 }
 
 // AssistantMessage represents an assistant-role message.
@@ -204,6 +231,15 @@ type progressData struct {
 
 type pendingTask struct {
 	span AgentSpan
+}
+
+// taskNotification holds real completion data for background agents, extracted
+// from queue-operation/enqueue entries. Background task tool_results fire at
+// launch time (not completion), so the real CompletedAt and TotalTokens live
+// in these notification entries.
+type taskNotification struct {
+	completedAt time.Time
+	totalTokens int
 }
 
 // processAssistantEntry handles assistant-type entries, extracting Task
@@ -320,6 +356,51 @@ func processProgressEntry(entry *TranscriptEntry, agentToToolUse map[string]stri
 	if data.AgentID != "" && data.Type == "agent_progress" {
 		agentToToolUse[data.AgentID] = entry.ParentToolUseID
 	}
+}
+
+// processQueueOperationEntry handles queue-operation entries with operation
+// "enqueue". These carry real completion data for background Task agents inside
+// a <task-notification> XML block in the Content field: tool_use_id, duration_ms,
+// and total_tokens. The entry's Timestamp is the true completion time.
+func processQueueOperationEntry(entry *TranscriptEntry, notifications map[string]taskNotification) {
+	if entry.Operation != "enqueue" || entry.Content == "" {
+		return
+	}
+
+	toolUseID := extractXMLTag(entry.Content, "tool-use-id")
+	if toolUseID == "" {
+		return
+	}
+
+	n := taskNotification{
+		completedAt: ParseTimestamp(entry.Timestamp),
+	}
+
+	if raw := extractXMLTag(entry.Content, "total_tokens"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil {
+			n.totalTokens = v
+		}
+	}
+
+	notifications[toolUseID] = n
+}
+
+// extractXMLTag returns the text content of the first occurrence of <tag>…</tag>
+// in s, or "" if not found. Uses simple string search — no XML parser needed
+// since the content format is controlled and well-structured.
+func extractXMLTag(s, tag string) string {
+	open := "<" + tag + ">"
+	close := "</" + tag + ">"
+	start := strings.Index(s, open)
+	if start == -1 {
+		return ""
+	}
+	start += len(open)
+	end := strings.Index(s[start:], close)
+	if end == -1 {
+		return ""
+	}
+	return strings.TrimSpace(s[start : start+end])
 }
 
 // resultContentLength computes the total text length of a tool_result's content.

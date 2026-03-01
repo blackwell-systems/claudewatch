@@ -2,6 +2,19 @@
 
 All notable changes to claudewatch are documented here.
 
+## [v0.4.2] - 2026-03-01
+
+### Fixed
+
+- **Background agent timing** — `AgentSpan.CompletedAt` and `Duration` are now accurate for
+  background Task agents. Previously, the tool_result for a background task fires at launch
+  time (~1.5s), not completion, causing SAW wave timings to be severely understated. The fix
+  parses `queue-operation` / `enqueue` entries in JSONL transcripts, which carry a
+  `<task-notification>` payload with the real completion timestamp, `<tool-use-id>`, and
+  `<total_tokens>`. These values are backfilled onto matching spans after the scan. For the
+  SAW observability session: Agent A now shows 46s (was 1.5s), Agent B 108s (was 1.5s).
+  `TotalTokens` is now propagated from `AgentSpan` through `ParseAgentTasks` into `AgentTask`.
+
 ## [v0.4.1] - 2026-03-01
 
 ### Added

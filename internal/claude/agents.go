@@ -25,7 +25,7 @@ func ParseAgentTasks(claudeDir string) ([]AgentTask, error) {
 			SessionID:   span.SessionID,
 			Status:      status,
 			DurationMs:  span.Duration.Milliseconds(),
-			TotalTokens: 0, // Token counts not available in transcript data.
+			TotalTokens: span.TotalTokens,
 			ToolUses:    0, // Tool use counts not available in transcript data.
 			Background:  span.Background,
 			CreatedAt:   span.LaunchedAt.Format("2006-01-02T15:04:05Z"),
