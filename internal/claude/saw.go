@@ -93,11 +93,6 @@ type SAWSession struct {
 // sorted by wave number. Agents within each wave are sorted by Agent letter.
 // Returns an empty slice (not nil) if no SAW-tagged spans are found.
 func ComputeSAWWaves(spans []AgentSpan) []SAWSession {
-	// sessionID -> waveN -> runs
-	type waveKey struct {
-		sessionID string
-		waveNum   int
-	}
 	// Track session metadata
 	sessionMeta := make(map[string]string) // sessionID -> projectHash
 
