@@ -2,6 +2,42 @@
 
 All notable changes to claudewatch are documented here.
 
+## [Unreleased]
+
+### Added
+
+- **5 new MCP self-model tools** — closes the gap between Claude's session data and Claude's
+  in-session awareness. All five tools are thin wrappers over existing `analyzer` and `claude`
+  packages, implemented via a SAW Wave 1 (4 parallel agents):
+
+  - `get_project_health` — per-project health snapshot: friction rate, agent success rate,
+    zero-commit rate, top friction types, avg tool errors, and whether a `CLAUDE.md` exists.
+    Call at session start to calibrate behavior for the current project before making approach
+    decisions.
+
+  - `get_suggestions` — ranked improvement suggestions derived from session history: missing
+    `CLAUDE.md`, recurring friction patterns, low agent success rates, parallelization
+    opportunities. Returns top N by impact score, optionally filtered by project.
+
+  - `get_agent_performance` — aggregate agent metrics across all session transcripts: overall
+    success rate, kill rate, background ratio, avg duration and tokens. Broken down by agent
+    type (Explore, Plan, general-purpose, etc.).
+
+  - `get_effectiveness` — before/after `CLAUDE.md` effectiveness scoring per project. Compares
+    friction rate, tool errors, and goal achievement across sessions before and after each
+    `CLAUDE.md` change. Tells Claude whether its previous CLAUDE.md edits actually helped.
+
+  - `get_session_friction` — live friction events for a specific session ID. Pass the current
+    session ID (from `get_session_stats`) to see what friction patterns have been recorded so
+    far this session, with per-type counts and the dominant friction type.
+
+### Changed
+
+- **README repositioned** — claudewatch is now described as a dual observability layer: for
+  developers, and for Claude itself. The `## Why` section now names both blind parties — the
+  developer who can't see whether their CLAUDE.md changes worked, and Claude who starts every
+  session with no memory of its own failure patterns. GitHub repo description updated to match.
+
 ## [v0.4.2] - 2026-03-01
 
 ### Fixed
