@@ -45,6 +45,43 @@ type RecentSession struct {
 	FrictionScore int     `json:"friction_score"`
 }
 
+// SAWSessionsResult holds a list of SAW sessions.
+type SAWSessionsResult struct {
+	Sessions []SAWSessionSummary `json:"sessions"`
+}
+
+// SAWSessionSummary holds summary data for a single SAW session.
+type SAWSessionSummary struct {
+	SessionID   string `json:"session_id"`
+	ProjectName string `json:"project_name"` // filepath.Base of ProjectPath, or ProjectHash if unknown
+	StartTime   string `json:"start_time"`   // RFC3339 of earliest wave's StartedAt
+	WaveCount   int    `json:"wave_count"`
+	AgentCount  int    `json:"total_agents"`
+}
+
+// SAWWaveBreakdownResult holds per-wave timing and agent status for a SAW session.
+type SAWWaveBreakdownResult struct {
+	SessionID string         `json:"session_id"`
+	Waves     []SAWWaveDetail `json:"waves"`
+}
+
+// SAWWaveDetail holds details for a single wave within a SAW session.
+type SAWWaveDetail struct {
+	Wave       int              `json:"wave"`
+	AgentCount int              `json:"agent_count"`
+	DurationMs int64            `json:"duration_ms"`
+	StartedAt  string           `json:"started_at"` // RFC3339
+	EndedAt    string           `json:"ended_at"`   // RFC3339
+	Agents     []SAWAgentDetail `json:"agents"`
+}
+
+// SAWAgentDetail holds details for a single agent within a SAW wave.
+type SAWAgentDetail struct {
+	Agent      string `json:"agent"`
+	Status     string `json:"status"`
+	DurationMs int64  `json:"duration_ms"`
+}
+
 var (
 	noArgsSchema  = json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)
 	recentNSchema = json.RawMessage(`{"type":"object","properties":{"n":{"type":"integer","description":"Number of sessions to return (default 5)"}},"additionalProperties":false}`)
@@ -69,6 +106,18 @@ func addTools(s *Server) {
 		Description: "Last N sessions with cost, friction score, and project name.",
 		InputSchema: recentNSchema,
 		Handler:     s.handleGetRecentSessions,
+	})
+	s.registerTool(toolDef{
+		Name:        "get_saw_sessions",
+		Description: "Recent Claude Code sessions that used Scout-and-Wave parallel agents, with wave count and agent count.",
+		InputSchema: recentNSchema,
+		Handler:     s.handleGetSAWSessions,
+	})
+	s.registerTool(toolDef{
+		Name:        "get_saw_wave_breakdown",
+		Description: "Per-wave timing and agent status breakdown for a SAW session.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"session_id":{"type":"string","description":"Session ID from get_saw_sessions"}},"required":["session_id"],"additionalProperties":false}`),
+		Handler:     s.handleGetSAWWaveBreakdown,
 	})
 }
 
@@ -215,4 +264,128 @@ func (s *Server) handleGetRecentSessions(args json.RawMessage) (any, error) {
 	}
 
 	return RecentSessionsResult{Sessions: result}, nil
+}
+
+// handleGetSAWSessions returns the last N SAW sessions with wave and agent counts.
+func (s *Server) handleGetSAWSessions(args json.RawMessage) (any, error) {
+	// Parse optional n argument.
+	n := 5
+	if len(args) > 0 && string(args) != "null" {
+		var params struct {
+			N *int `json:"n"`
+		}
+		if err := json.Unmarshal(args, &params); err == nil && params.N != nil {
+			n = *params.N
+		}
+	}
+	if n <= 0 {
+		n = 5
+	}
+	if n > 50 {
+		n = 50
+	}
+
+	spans, err := claude.ParseSessionTranscripts(s.claudeHome)
+	if err != nil {
+		return nil, err
+	}
+
+	sawSessions := claude.ComputeSAWWaves(spans)
+
+	// Build project name lookup from session meta.
+	metas, err := claude.ParseAllSessionMeta(s.claudeHome)
+	if err != nil {
+		return nil, err
+	}
+	metaMap := make(map[string]string, len(metas))
+	for _, meta := range metas {
+		metaMap[meta.SessionID] = filepath.Base(meta.ProjectPath)
+	}
+
+	result := make([]SAWSessionSummary, 0, len(sawSessions))
+	for _, session := range sawSessions {
+		projectName := session.ProjectHash
+		if name, ok := metaMap[session.SessionID]; ok {
+			projectName = name
+		}
+
+		startTime := ""
+		if len(session.Waves) > 0 {
+			startTime = session.Waves[0].StartedAt.Format(time.RFC3339)
+		}
+
+		result = append(result, SAWSessionSummary{
+			SessionID:   session.SessionID,
+			ProjectName: projectName,
+			StartTime:   startTime,
+			WaveCount:   len(session.Waves),
+			AgentCount:  session.TotalAgents,
+		})
+	}
+
+	// Sort descending by StartTime (lexicographic on RFC3339 works correctly).
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].StartTime > result[j].StartTime
+	})
+
+	// Take first n.
+	if n < len(result) {
+		result = result[:n]
+	}
+
+	return SAWSessionsResult{Sessions: result}, nil
+}
+
+// handleGetSAWWaveBreakdown returns per-wave timing and agent status for a SAW session.
+func (s *Server) handleGetSAWWaveBreakdown(args json.RawMessage) (any, error) {
+	var params struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := json.Unmarshal(args, &params); err != nil || params.SessionID == "" {
+		return nil, errors.New("session_id is required")
+	}
+
+	spans, err := claude.ParseSessionTranscripts(s.claudeHome)
+	if err != nil {
+		return nil, err
+	}
+
+	sawSessions := claude.ComputeSAWWaves(spans)
+
+	// Find the matching session.
+	var found *claude.SAWSession
+	for i := range sawSessions {
+		if sawSessions[i].SessionID == params.SessionID {
+			found = &sawSessions[i]
+			break
+		}
+	}
+	if found == nil {
+		return nil, errors.New("session not found: " + params.SessionID)
+	}
+
+	waves := make([]SAWWaveDetail, 0, len(found.Waves))
+	for _, wave := range found.Waves {
+		agents := make([]SAWAgentDetail, 0, len(wave.Agents))
+		for _, agent := range wave.Agents {
+			agents = append(agents, SAWAgentDetail{
+				Agent:      agent.Agent,
+				Status:     agent.Status,
+				DurationMs: agent.DurationMs,
+			})
+		}
+		waves = append(waves, SAWWaveDetail{
+			Wave:       wave.Wave,
+			AgentCount: len(wave.Agents),
+			DurationMs: wave.DurationMs,
+			StartedAt:  wave.StartedAt.Format(time.RFC3339),
+			EndedAt:    wave.EndedAt.Format(time.RFC3339),
+			Agents:     agents,
+		})
+	}
+
+	return SAWWaveBreakdownResult{
+		SessionID: found.SessionID,
+		Waves:     waves,
+	}, nil
 }
