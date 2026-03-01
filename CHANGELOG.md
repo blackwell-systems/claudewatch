@@ -2,6 +2,23 @@
 
 All notable changes to claudewatch are documented here.
 
+## [v0.4.1] - 2026-03-01
+
+### Added
+
+- **SAW observability** — two new MCP tools surface Scout-and-Wave parallel agent sessions
+  from session transcripts. `get_saw_sessions` lists recent sessions that used SAW-tagged
+  agents (wave count, agent count, project name). `get_saw_wave_breakdown` returns per-wave
+  timing and per-agent status for a given session ID. Both tools consume the structured
+  `[SAW:wave{N}:agent-{X}]` prefix that `saw-skill.md` v0.3.1 now writes to Task
+  `description` parameters during wave execution. Zero overhead: tags are parsed from
+  existing JSONL transcripts with no additional instrumentation required.
+
+- **`internal/claude/saw.go`** — `ParseSAWTag(description string) (wave int, agent string, ok bool)`
+  parses the structured SAW tag prefix. `ComputeSAWWaves(spans []AgentSpan) []SAWSession`
+  groups tagged spans into `SAWSession` / `SAWWave` / `SAWAgentRun` hierarchies with
+  wall-clock timing per wave.
+
 ## [v0.4.0] - 2026-02-28
 
 ### Added
