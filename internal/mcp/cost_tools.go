@@ -39,8 +39,8 @@ func addCostTools(s *Server) {
 // all time, and broken down by project.
 func (s *Server) handleGetCostSummary(args json.RawMessage) (any, error) {
 	sessions, err := claude.ParseAllSessionMeta(s.claudeHome)
-	if err != nil || len(sessions) == 0 {
-		return CostSummaryResult{ByProject: []ProjectSpend{}}, nil
+	if err != nil {
+		sessions = nil
 	}
 
 	ratio := s.loadCacheRatio()
@@ -57,6 +57,12 @@ func (s *Server) handleGetCostSummary(args json.RawMessage) (any, error) {
 	byProject := make(map[string]*projectAccum)
 
 	var todayUSD, weekUSD, allTimeUSD float64
+
+	// Build a set of indexed session IDs for deduplication against the live session.
+	indexedIDs := make(map[string]bool, len(sessions))
+	for _, session := range sessions {
+		indexedIDs[session.SessionID] = true
+	}
 
 	for _, session := range sessions {
 		cost := analyzer.EstimateSessionCost(session, pricing, ratio)
@@ -82,6 +88,41 @@ func (s *Server) handleGetCostSummary(args json.RawMessage) (any, error) {
 		}
 		a.totalUSD += cost
 		a.sessions++
+	}
+
+	// Attempt to include the live (in-progress) session. Errors are non-fatal.
+	activePath, activeErr := claude.FindActiveSessionPath(s.claudeHome)
+	if activeErr == nil && activePath != "" {
+		liveMeta, parseErr := claude.ParseActiveSession(activePath)
+		if parseErr == nil && liveMeta != nil && !indexedIDs[liveMeta.SessionID] {
+			liveCost := analyzer.EstimateSessionCost(*liveMeta, pricing, ratio)
+			allTimeUSD += liveCost
+
+			t := claude.ParseTimestamp(liveMeta.StartTime)
+			if !t.IsZero() {
+				tUTC := t.UTC()
+				if tUTC.Format("2006-01-02") == todayStr {
+					todayUSD += liveCost
+				}
+				sessionYear, sessionWeek := tUTC.ISOWeek()
+				if sessionYear == nowYear && sessionWeek == nowWeek {
+					weekUSD += liveCost
+				}
+			}
+
+			projectName := filepath.Base(liveMeta.ProjectPath)
+			a, ok := byProject[projectName]
+			if !ok {
+				a = &projectAccum{}
+				byProject[projectName] = a
+			}
+			a.totalUSD += liveCost
+			a.sessions++
+		}
+	}
+
+	if len(sessions) == 0 && len(byProject) == 0 {
+		return CostSummaryResult{ByProject: []ProjectSpend{}}, nil
 	}
 
 	projectSpends := make([]ProjectSpend, 0, len(byProject))
