@@ -4,6 +4,8 @@ All notable changes to claudewatch are documented here.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-03-01
+
 ### Added
 
 - **Live/active session reading** — closes the gap where `get_session_stats` returned the previous completed session instead of the current one. Implemented via a 2-wave SAW run (3 agents total):
