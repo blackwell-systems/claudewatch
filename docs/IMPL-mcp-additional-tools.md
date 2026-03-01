@@ -1033,6 +1033,113 @@ If verification fails (especially the full test run after merging), fix before d
 ## Status
 
 - [ ] Wave 1 Agent A — `get_cost_summary`: implement `cost_tools.go` + `cost_tools_test.go`
-- [ ] Wave 1 Agent B — `get_project_comparison`: implement `project_tools.go` + `project_tools_test.go`
+- [x] Wave 1 Agent B — `get_project_comparison`: implement `project_tools.go` + `project_tools_test.go`
 - [ ] Wave 1 Agent C — `get_stale_patterns`: implement `stale_tools.go` + `stale_tools_test.go`
+
+---
+
+### Agent B — Completion Report
+
+**Status**: COMPLETE
+
+**Files created**:
+- `internal/mcp/project_tools.go` — implements `ProjectComparisonResult`, `ProjectSummary` types and `handleGetProjectComparison` handler
+- `internal/mcp/project_tools_test.go` — 5 tests covering all specified scenarios
+
+**Test count**: 5
+
+**Verification gate result**:
+```
+go build ./...   — PASS (no output)
+go vet ./...     — PASS (no output)
+go test ./internal/mcp -run TestGetProjectComparison -v
+
+=== RUN   TestGetProjectComparison_NoProjects
+--- PASS: TestGetProjectComparison_NoProjects (0.00s)
+=== RUN   TestGetProjectComparison_SingleProject
+--- PASS: TestGetProjectComparison_SingleProject (0.05s)
+=== RUN   TestGetProjectComparison_RankedByHealthScore
+--- PASS: TestGetProjectComparison_RankedByHealthScore (0.08s)
+=== RUN   TestGetProjectComparison_HasClaudeMD
+--- PASS: TestGetProjectComparison_HasClaudeMD (0.03s)
+=== RUN   TestGetProjectComparison_FrictionRate
+--- PASS: TestGetProjectComparison_FrictionRate (0.03s)
+PASS
+ok      github.com/blackwell-systems/claudewatch/internal/mcp   0.615s
+```
+
+**Deviations**:
+- `TestGetProjectComparison_HasClaudeMD`: The test was adjusted to avoid health score clamping at 100 masking the CLAUDE.md bonus. Both projects were given 50% zero-commit rate so their baseline scores were 85 (without CLAUDE.md) vs 95 (with CLAUDE.md), making the 10-point bonus observable. This correctly validates the HealthScore formula and CLAUDE.md detection without changing the implementation.
+- Added `almostEqualPT()` helper (renamed to avoid collision with `almostEqual` defined in `health_tools_test.go` in the same package).
+
+---
+
+### Agent C — Completion Report
+
+**Status:** COMPLETE
+
+**Files created:**
+- `internal/mcp/stale_tools.go` — implements `handleGetStalePatterns`, `StalePatternsResult`, and `StalePattern` types with `stalePatternsSchema`
+- `internal/mcp/stale_tools_test.go` — 7 tests covering all specified scenarios
+
+**Test count:** 7
+
+**Tests written:**
+1. `TestGetStalePatterns_NoSessions` — empty dir returns empty Patterns (non-nil slice), no error
+2. `TestGetStalePatterns_DefaultParams` — omitting args uses threshold=0.3, lookback=10
+3. `TestGetStalePatterns_RecurrenceRate` — 3 sessions in window, 2 with "wrong_approach" → recurrence_rate≈0.667
+4. `TestGetStalePatterns_IsStale` — recurrenceRate > threshold AND no CLAUDE.md → IsStale: true
+5. `TestGetStalePatterns_NotStaleWithRecentClaudeMD` — CLAUDE.md modified after oldest window session → IsStale: false
+6. `TestGetStalePatterns_SortedByRecurrence` — multiple patterns sorted descending by RecurrenceRate
+7. `TestGetStalePatterns_LookbackLimit` — lookback=2 uses only 2 most recent sessions
+
+**Verification gate result:**
+```
+go build ./...   — PASS (no output)
+go vet ./...     — PASS (no output)
+go test ./internal/mcp -run TestGetStalePatterns -v
+=== RUN   TestGetStalePatterns_NoSessions
+--- PASS: TestGetStalePatterns_NoSessions (0.00s)
+=== RUN   TestGetStalePatterns_DefaultParams
+--- PASS: TestGetStalePatterns_DefaultParams (0.00s)
+=== RUN   TestGetStalePatterns_RecurrenceRate
+--- PASS: TestGetStalePatterns_RecurrenceRate (0.00s)
+=== RUN   TestGetStalePatterns_IsStale
+--- PASS: TestGetStalePatterns_IsStale (0.00s)
+=== RUN   TestGetStalePatterns_NotStaleWithRecentClaudeMD
+--- PASS: TestGetStalePatterns_NotStaleWithRecentClaudeMD (0.00s)
+=== RUN   TestGetStalePatterns_SortedByRecurrence
+--- PASS: TestGetStalePatterns_SortedByRecurrence (0.00s)
+=== RUN   TestGetStalePatterns_LookbackLimit
+--- PASS: TestGetStalePatterns_LookbackLimit (0.00s)
+PASS
+ok  	github.com/blackwell-systems/claudewatch/internal/mcp	0.510s
+```
+
+**Deviations from spec:**
+- `SessionMeta.StartTime` is a `string` (RFC3339), not `time.Time` as the spec suggested to verify. Parsing is done with `time.Parse(time.RFC3339, ...)` inline in the handler.
+- `lastClaudeMDAge` is always set to 0 per the spec instruction: "0 if CLAUDE.md doesn't exist or was never changed during window." The staleness determination relies entirely on `IsStale`.
+- The "unaddressed" check aggregates across ALL unique project paths in the window (not per-pattern per-project), which is the most conservative and correct interpretation given the interface contract.
+- `tools.go` was not modified — registration is orchestrator-owned post-merge per spec.
 - [ ] Orchestrator: merge worktrees, update `tools.go` registrations, run full verification
+
+---
+
+### Agent A — Completion Report
+
+- **Status:** complete
+- **Files created:**
+  - `internal/mcp/cost_tools.go` — implements `CostSummaryResult`, `ProjectSpend`, `addCostTools`, and `handleGetCostSummary`
+  - `internal/mcp/cost_tools_test.go` — 4 tests covering all specified scenarios
+- **Test count:** 4
+  - `TestGetCostSummary_NoSessions`
+  - `TestGetCostSummary_TodayBucket`
+  - `TestGetCostSummary_ByProjectSorted`
+  - `TestGetCostSummary_NonNilByProject`
+- **Verification gate result:** pass
+  - `go build ./...` — clean
+  - `go vet ./...` — clean
+  - `go test ./internal/mcp -run TestGetCostSummary -v` — all 4 PASS
+- **Deviations from spec:**
+  - Added `addCostTools(s *Server)` function (not specified in spec) to enable test registration without touching `tools.go`. The orchestrator can call this from `addTools` in `tools.go` at merge time.
+  - The spec pseudocode showed `session.StartTime.UTC().Format(...)` as if `StartTime` were a `time.Time`, but the actual field is a `string`. Used `claude.ParseTimestamp(session.StartTime).UTC()` instead, consistent with the rest of the codebase.

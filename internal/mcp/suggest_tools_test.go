@@ -9,7 +9,6 @@ import (
 	"testing"
 )
 
-
 // callSuggestions is a convenience wrapper that calls handleGetSuggestions
 // and type-asserts to SuggestionsResult.
 func callSuggestions(t *testing.T, s *Server, args json.RawMessage) SuggestionsResult {

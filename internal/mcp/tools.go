@@ -138,6 +138,19 @@ func addTools(s *Server) {
 		Handler:     s.handleGetSessionFriction,
 	})
 	addAnalyticsTools(s)
+	addCostTools(s)
+	s.registerTool(toolDef{
+		Name:        "get_project_comparison",
+		Description: "All projects compared side by side in a single call. Returns a ranked list of all projects with health score, friction rate, has_claude_md, agent success rate, and session count.",
+		InputSchema: noArgsSchema,
+		Handler:     s.handleGetProjectComparison,
+	})
+	s.registerTool(toolDef{
+		Name:        "get_stale_patterns",
+		Description: "Chronic recurring friction: friction types that appear in >N% of recent sessions AND have no corresponding CLAUDE.md change in the past K sessions. Returns a ranked list by recurrence rate.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"threshold":{"type":"number","description":"Minimum recurrence rate to flag a pattern (default 0.3)"},"lookback":{"type":"integer","description":"Number of recent sessions to analyze (default 10)"}},"additionalProperties":false}`),
+		Handler:     s.handleGetStalePatterns,
+	})
 }
 
 // loadCacheRatio loads the stats cache and returns a CacheRatio; falls back to NoCacheRatio on error.

@@ -21,14 +21,12 @@ type StalePatternsResult struct {
 
 // StalePattern represents a recurring friction type that may be unaddressed.
 type StalePattern struct {
-	FrictionType   string  `json:"friction_type"`
-	RecurrenceRate float64 `json:"recurrence_rate"`
-	SessionCount   int     `json:"session_count"`
-	LastClaudeMDAge int    `json:"last_claude_md_age"`
-	IsStale        bool    `json:"is_stale"`
+	FrictionType    string  `json:"friction_type"`
+	RecurrenceRate  float64 `json:"recurrence_rate"`
+	SessionCount    int     `json:"session_count"`
+	LastClaudeMDAge int     `json:"last_claude_md_age"`
+	IsStale         bool    `json:"is_stale"`
 }
-
-var stalePatternsSchema = json.RawMessage(`{"type":"object","properties":{"threshold":{"type":"number","description":"Minimum recurrence rate to flag a pattern (default 0.3)"},"lookback":{"type":"integer","description":"Number of recent sessions to analyze (default 10)"}},"additionalProperties":false}`)
 
 // handleGetStalePatterns analyzes recent sessions to find recurring friction patterns
 // that haven't been addressed by a CLAUDE.md update.
