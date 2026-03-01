@@ -248,6 +248,23 @@ tests_added:
 verification: PASS | FAIL
 ```
 
+### Agent A — Completion Report
+status: complete
+worktree: .claude/worktrees/wave1-agent-A
+commit: ad6b121
+files_changed:
+  - internal/mcp/cost_tools.go
+  - internal/mcp/cost_tools_test.go
+files_created: []
+interface_deviations:
+  - "analyzer.DefaultPricing uses ModelPricing type (not Pricing as stated in spec); already used correctly in existing code — no code change needed"
+out_of_scope_deps: []
+tests_added:
+  - TestGetCostSummary_LiveSessionIncluded
+  - TestGetCostSummary_LiveSessionNoDuplicate
+  - TestGetCostSummary_LiveSessionByProject
+verification: PASS
+
 ---
 
 ### Wave 1 Agent B: fix get_project_health active-session default
@@ -585,6 +602,48 @@ After Wave 1 completes:
 
 ## Status
 
-- [ ] Wave 1 Agent A — include live session in get_cost_summary
-- [ ] Wave 1 Agent B — fix get_project_health active-session default
+- [x] Wave 1 Agent A — include live session in get_cost_summary
+- [x] Wave 1 Agent B — fix get_project_health active-session default
 - [ ] Wave 1 Agent C — add min_sessions filter to get_project_comparison
+
+---
+
+### Agent B — Completion Report
+
+```yaml
+status: complete
+worktree: .claude/worktrees/wave1-agent-B
+commit: ba20acf
+files_changed:
+  - internal/mcp/health_tools.go
+  - internal/mcp/health_tools_test.go
+files_created: []
+interface_deviations: []
+out_of_scope_deps: []
+tests_added:
+  - TestGetProjectHealth_DefaultsToActiveSession
+  - TestGetProjectHealth_FallsBackToRecentWhenNoActive
+  - TestGetProjectHealth_ExplicitProjectOverridesActive
+verification: PASS
+```
+
+---
+
+### Agent C — Completion Report
+```yaml
+status: complete
+worktree: .claude/worktrees/wave1-agent-C
+commit: 3914f327bfb7d1655278ba278bc6601072692779
+files_changed:
+  - internal/mcp/project_tools.go
+  - internal/mcp/project_tools_test.go
+files_created: []
+interface_deviations: []
+out_of_scope_deps:
+  - "file: internal/mcp/tools.go, change: update get_project_comparison InputSchema to include min_sessions, reason: orchestrator-owned registration"
+tests_added:
+  - TestGetProjectComparison_MinSessionsFilter
+  - TestGetProjectComparison_MinSessionsZeroNoFilter
+  - TestGetProjectComparison_MinSessionsDefaultNoFilter
+verification: PASS
+```

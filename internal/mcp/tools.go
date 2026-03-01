@@ -150,7 +150,7 @@ func addTools(s *Server) {
 	s.registerTool(toolDef{
 		Name:        "get_project_comparison",
 		Description: "All projects compared side by side in a single call. Returns a ranked list of all projects with health score, friction rate, has_claude_md, agent success rate, and session count.",
-		InputSchema: noArgsSchema,
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"min_sessions":{"type":"integer","description":"Minimum session count to include a project (default 0 = no filter)"}},"additionalProperties":false}`),
 		Handler:     s.handleGetProjectComparison,
 	})
 	s.registerTool(toolDef{
