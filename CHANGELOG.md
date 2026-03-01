@@ -4,6 +4,16 @@ All notable changes to claudewatch are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`get_cost_summary` live session gap** — the current in-progress session was invisible to cost aggregates, causing a ~$212 hole in today/week/all-time totals and by-project breakdowns. `handleGetCostSummary` now calls `FindActiveSessionPath` + `ParseActiveSession` after loading indexed sessions, deduplicates by SessionID to prevent double-counting if the session closes between calls, and applies the same time-bucket and by-project logic as indexed sessions. Non-fatal: any active session error falls through to indexed-only path.
+
+- **`get_project_health` wrong default** — with no `project` arg the tool sorted indexed sessions by `StartTime` and picked the most recent closed session, which was wrong when a session was actively running. The default now checks for an active session first via `FindActiveSessionPath` + `ParseActiveSession`, uses `filepath.Base(meta.ProjectPath)` as the project name, and falls back to the existing sort-by-StartTime logic only when no active session is available. Priority: explicit arg > active session > most-recent indexed session.
+
+### Added
+
+- **`get_project_comparison` `min_sessions` filter** — optional integer parameter to exclude low-confidence projects from the ranked comparison. Projects with fewer sessions than `min_sessions` are filtered before sorting. Default 0 (no filter). Fixes the rezmakr skew where a single high-volume zero-commit project (81% of 43 sessions, ZeroCommitRate: 1.0) dominated aggregate health signals.
+
 ## [0.6.0] - 2026-03-01
 
 ### Added
