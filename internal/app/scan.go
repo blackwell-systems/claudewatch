@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -17,10 +18,11 @@ import (
 )
 
 var (
-	scanFlagPaths    []string
-	scanFlagMinScore float64
-	scanFlagJSON     bool
-	scanFlagSort     string
+	scanFlagPaths         []string
+	scanFlagMinScore      float64
+	scanFlagJSON          bool
+	scanFlagSort          string
+	scanFlagIncludeActive bool
 )
 
 var scanCmd = &cobra.Command{
@@ -37,6 +39,8 @@ func init() {
 	scanCmd.Flags().Float64Var(&scanFlagMinScore, "min-score", 0, "Only show projects with score >= this value")
 	scanCmd.Flags().BoolVar(&scanFlagJSON, "json", false, "Output as JSON")
 	scanCmd.Flags().StringVar(&scanFlagSort, "sort", "score", "Sort by: score, name, sessions, last-active")
+	scanCmd.Flags().BoolVar(&scanFlagIncludeActive, "include-active", false,
+		"Include any currently active (live) Claude Code session in scan output")
 
 	rootCmd.AddCommand(scanCmd)
 }
@@ -52,6 +56,19 @@ func runScan(cmd *cobra.Command, args []string) error {
 	cfg, err := config.Load(flagConfig)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
+	}
+
+	// Optionally detect any currently active (live) Claude Code session.
+	// Errors are non-fatal; if detection fails, activeMeta remains nil and
+	// the live row is simply omitted. The live session is NOT included in
+	// --json output (JSON schema stability takes priority over completeness).
+	var activeMeta *claude.SessionMeta
+	if scanFlagIncludeActive {
+		activePath, err := claude.FindActiveSessionPath(cfg.ClaudeHome)
+		if err == nil && activePath != "" {
+			activeMeta, _ = claude.ParseActiveSession(activePath)
+			// Ignore error — display nothing for the live row if parsing fails.
+		}
 	}
 
 	// Determine scan paths: config defaults + any --path flags.
@@ -113,9 +130,11 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	// Render output.
 	if scanFlagJSON || flagJSON {
+		// Note: --include-active has no effect on JSON output. The live session
+		// is intentionally excluded to keep the JSON schema stable.
 		return renderScanJSON(results)
 	}
-	renderScanTable(results)
+	renderScanTable(results, activeMeta)
 	renderScanSummary(results)
 	return nil
 }
@@ -141,11 +160,18 @@ func renderScanJSON(results []scanResult) error {
 	return enc.Encode(results)
 }
 
-func renderScanTable(results []scanResult) {
+func renderScanTable(results []scanResult, activeMeta *claude.SessionMeta) {
 	fmt.Println(output.Section("Project Readiness Scan"))
 	fmt.Println()
 
 	tbl := output.NewTable("Score", "Project", "CLAUDE.md", "Sessions", "Last Active")
+
+	// If an active session was found, prepend a live row at the top of the table.
+	// The live row is excluded from summary statistics (see renderScanSummary).
+	if activeMeta != nil {
+		projectDisplay := output.StyleBold.Render(filepath.Base(activeMeta.ProjectPath) + " (live)")
+		tbl.AddRow("  ---", projectDisplay, output.StyleMuted.Render("---"), "--", output.StyleBold.Render("now"))
+	}
 
 	for _, r := range results {
 		// Score column.
