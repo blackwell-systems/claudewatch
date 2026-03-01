@@ -28,7 +28,19 @@ type ProjectSummary struct {
 }
 
 // handleGetProjectComparison returns health metrics for all projects, sorted by health score descending.
+// Optional arg: min_sessions (int) — if > 0, projects with fewer sessions are excluded.
 func (s *Server) handleGetProjectComparison(args json.RawMessage) (any, error) {
+	var params struct {
+		MinSessions *int `json:"min_sessions"`
+	}
+	if len(args) > 0 && string(args) != "null" {
+		_ = json.Unmarshal(args, &params)
+	}
+	minSessions := 0
+	if params.MinSessions != nil && *params.MinSessions > 0 {
+		minSessions = *params.MinSessions
+	}
+
 	// Load all session metadata; non-fatal on error.
 	sessions, err := claude.ParseAllSessionMeta(s.claudeHome)
 	if err != nil || len(sessions) == 0 {
@@ -162,6 +174,17 @@ func (s *Server) handleGetProjectComparison(args json.RawMessage) (any, error) {
 			ZeroCommitRate:   zeroCommitRate,
 			TopFriction:      topFriction,
 		})
+	}
+
+	// Filter out low-confidence projects when min_sessions is specified.
+	if minSessions > 0 {
+		filtered := summaries[:0]
+		for _, s := range summaries {
+			if s.SessionCount >= minSessions {
+				filtered = append(filtered, s)
+			}
+		}
+		summaries = filtered
 	}
 
 	// Sort descending by HealthScore, then ascending by project name for determinism.
