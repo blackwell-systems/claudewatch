@@ -9,12 +9,13 @@ import (
 )
 
 // addProjectComparisonTool registers the get_project_comparison tool on the server.
-// Registration in tools.go is orchestrator-owned post-merge.
+// Registration in tools.go is orchestrator-owned post-merge; this test helper includes
+// the min_sessions schema so tests can exercise the filter.
 func addProjectComparisonTool(s *Server) {
 	s.registerTool(toolDef{
 		Name:        "get_project_comparison",
 		Description: "Project-level health metrics comparison across all projects, ranked by health score.",
-		InputSchema: noArgsSchema,
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"min_sessions":{"type":"integer","description":"Minimum session count for a project to be included (default 0, no filter)."}},"additionalProperties":false}`),
 		Handler:     s.handleGetProjectComparison,
 	})
 }
@@ -209,6 +210,117 @@ func TestGetProjectComparison_HasClaudeMD(t *testing.T) {
 	if withClaude.HealthScore <= withoutClaude.HealthScore {
 		t.Errorf("Project with CLAUDE.md HealthScore=%d should be > project without CLAUDE.md HealthScore=%d",
 			withClaude.HealthScore, withoutClaude.HealthScore)
+	}
+}
+
+// TestGetProjectComparison_MinSessionsFilter verifies that projects with fewer sessions
+// than min_sessions are excluded from the result.
+func TestGetProjectComparison_MinSessionsFilter(t *testing.T) {
+	dir := t.TempDir()
+
+	// "alpha": 1 session — should be filtered out with min_sessions=3.
+	writeSessionMetaFull(t, dir, "alpha-1", "2026-01-10T10:00:00Z", "/home/user/alpha", 0, 1)
+
+	// "beta": 3 sessions — should pass filter (exactly meets threshold).
+	writeSessionMetaFull(t, dir, "beta-1", "2026-01-10T10:00:00Z", "/home/user/beta", 0, 1)
+	writeSessionMetaFull(t, dir, "beta-2", "2026-01-11T10:00:00Z", "/home/user/beta", 0, 1)
+	writeSessionMetaFull(t, dir, "beta-3", "2026-01-12T10:00:00Z", "/home/user/beta", 0, 1)
+
+	// "gamma": 5 sessions — should pass filter.
+	writeSessionMetaFull(t, dir, "gamma-1", "2026-01-10T10:00:00Z", "/home/user/gamma", 0, 1)
+	writeSessionMetaFull(t, dir, "gamma-2", "2026-01-11T10:00:00Z", "/home/user/gamma", 0, 1)
+	writeSessionMetaFull(t, dir, "gamma-3", "2026-01-12T10:00:00Z", "/home/user/gamma", 0, 1)
+	writeSessionMetaFull(t, dir, "gamma-4", "2026-01-13T10:00:00Z", "/home/user/gamma", 0, 1)
+	writeSessionMetaFull(t, dir, "gamma-5", "2026-01-14T10:00:00Z", "/home/user/gamma", 0, 1)
+
+	s := newTestServer(dir, 0)
+	addProjectComparisonTool(s)
+
+	result, err := callTool(s, "get_project_comparison", json.RawMessage(`{"min_sessions":3}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	r, ok := result.(ProjectComparisonResult)
+	if !ok {
+		t.Fatalf("expected ProjectComparisonResult, got %T", result)
+	}
+
+	if len(r.Projects) != 2 {
+		t.Fatalf("len(Projects) = %d, want 2 (alpha with 1 session should be filtered out)", len(r.Projects))
+	}
+
+	for _, p := range r.Projects {
+		if p.Project == "alpha" {
+			t.Errorf("project %q with 1 session should have been filtered out by min_sessions=3", p.Project)
+		}
+		if p.SessionCount < 3 {
+			t.Errorf("project %q has SessionCount=%d, want >= 3", p.Project, p.SessionCount)
+		}
+	}
+}
+
+// TestGetProjectComparison_MinSessionsZeroNoFilter verifies that min_sessions=0 returns all projects.
+func TestGetProjectComparison_MinSessionsZeroNoFilter(t *testing.T) {
+	dir := t.TempDir()
+
+	writeSessionMetaFull(t, dir, "p1-sess-1", "2026-01-10T10:00:00Z", "/home/user/project1", 0, 1)
+	writeSessionMetaFull(t, dir, "p2-sess-1", "2026-01-10T10:00:00Z", "/home/user/project2", 0, 1)
+	writeSessionMetaFull(t, dir, "p2-sess-2", "2026-01-11T10:00:00Z", "/home/user/project2", 0, 1)
+	writeSessionMetaFull(t, dir, "p2-sess-3", "2026-01-12T10:00:00Z", "/home/user/project2", 0, 1)
+	writeSessionMetaFull(t, dir, "p3-sess-1", "2026-01-10T10:00:00Z", "/home/user/project3", 0, 1)
+	writeSessionMetaFull(t, dir, "p3-sess-2", "2026-01-11T10:00:00Z", "/home/user/project3", 0, 1)
+	writeSessionMetaFull(t, dir, "p3-sess-3", "2026-01-12T10:00:00Z", "/home/user/project3", 0, 1)
+	writeSessionMetaFull(t, dir, "p3-sess-4", "2026-01-13T10:00:00Z", "/home/user/project3", 0, 1)
+	writeSessionMetaFull(t, dir, "p3-sess-5", "2026-01-14T10:00:00Z", "/home/user/project3", 0, 1)
+
+	s := newTestServer(dir, 0)
+	addProjectComparisonTool(s)
+
+	result, err := callTool(s, "get_project_comparison", json.RawMessage(`{"min_sessions":0}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	r, ok := result.(ProjectComparisonResult)
+	if !ok {
+		t.Fatalf("expected ProjectComparisonResult, got %T", result)
+	}
+
+	if len(r.Projects) != 3 {
+		t.Fatalf("len(Projects) = %d, want 3 (min_sessions=0 should not filter anything)", len(r.Projects))
+	}
+}
+
+// TestGetProjectComparison_MinSessionsDefaultNoFilter verifies that omitting min_sessions returns all projects.
+func TestGetProjectComparison_MinSessionsDefaultNoFilter(t *testing.T) {
+	dir := t.TempDir()
+
+	writeSessionMetaFull(t, dir, "d1-sess-1", "2026-01-10T10:00:00Z", "/home/user/delta1", 0, 1)
+	writeSessionMetaFull(t, dir, "d2-sess-1", "2026-01-10T10:00:00Z", "/home/user/delta2", 0, 1)
+	writeSessionMetaFull(t, dir, "d2-sess-2", "2026-01-11T10:00:00Z", "/home/user/delta2", 0, 1)
+	writeSessionMetaFull(t, dir, "d2-sess-3", "2026-01-12T10:00:00Z", "/home/user/delta2", 0, 1)
+	writeSessionMetaFull(t, dir, "d3-sess-1", "2026-01-10T10:00:00Z", "/home/user/delta3", 0, 1)
+	writeSessionMetaFull(t, dir, "d3-sess-2", "2026-01-11T10:00:00Z", "/home/user/delta3", 0, 1)
+	writeSessionMetaFull(t, dir, "d3-sess-3", "2026-01-12T10:00:00Z", "/home/user/delta3", 0, 1)
+	writeSessionMetaFull(t, dir, "d3-sess-4", "2026-01-13T10:00:00Z", "/home/user/delta3", 0, 1)
+	writeSessionMetaFull(t, dir, "d3-sess-5", "2026-01-14T10:00:00Z", "/home/user/delta3", 0, 1)
+
+	s := newTestServer(dir, 0)
+	addProjectComparisonTool(s)
+
+	result, err := callTool(s, "get_project_comparison", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	r, ok := result.(ProjectComparisonResult)
+	if !ok {
+		t.Fatalf("expected ProjectComparisonResult, got %T", result)
+	}
+
+	if len(r.Projects) != 3 {
+		t.Fatalf("len(Projects) = %d, want 3 (absent min_sessions should not filter anything)", len(r.Projects))
 	}
 }
 
