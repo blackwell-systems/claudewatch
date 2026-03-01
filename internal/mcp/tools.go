@@ -21,6 +21,7 @@ type SessionStatsResult struct {
 	InputTokens   int     `json:"input_tokens"`
 	OutputTokens  int     `json:"output_tokens"`
 	EstimatedCost float64 `json:"estimated_cost_usd"`
+	Live          bool    `json:"live"` // true when data is from an active (in-progress) session
 }
 
 // CostBudgetResult holds today's spend vs a configured daily budget.
@@ -190,7 +191,37 @@ func (s *Server) loadCacheRatio() analyzer.CacheRatio {
 }
 
 // handleGetSessionStats returns stats for the most recent session.
+// It first checks for an active (live) session using FindActiveSessionPath;
+// if one is found, it returns its stats with Live: true without touching the DB.
+// Only if no active session is found does it fall through to the closed-session path.
 func (s *Server) handleGetSessionStats(args json.RawMessage) (any, error) {
+	ratio := s.loadCacheRatio()
+	pricing := analyzer.DefaultPricing["sonnet"]
+
+	// Step 1: check for an active (live) session.
+	activePath, err := claude.FindActiveSessionPath(s.claudeHome)
+	if err == nil && activePath != "" {
+		// Step 2: parse the active session.
+		meta, err := claude.ParseActiveSession(activePath)
+		if err == nil && meta != nil {
+			// Step 3: build and return the live result. Do NOT write to the DB.
+			cost := analyzer.EstimateSessionCost(*meta, pricing, ratio)
+			return SessionStatsResult{
+				SessionID:     meta.SessionID,
+				ProjectName:   filepath.Base(meta.ProjectPath),
+				StartTime:     meta.StartTime,
+				DurationMin:   meta.DurationMinutes, // 0 for live sessions — expected
+				InputTokens:   meta.InputTokens,
+				OutputTokens:  meta.OutputTokens,
+				EstimatedCost: cost,
+				Live:          true,
+			}, nil
+		}
+		// ParseActiveSession error is non-fatal; fall through to closed-session path.
+	}
+	// FindActiveSessionPath error is non-fatal; fall through to closed-session path.
+
+	// Step 4: closed-session fallback — existing logic.
 	sessions, err := claude.ParseAllSessionMeta(s.claudeHome)
 	if err != nil {
 		return nil, err
@@ -206,8 +237,6 @@ func (s *Server) handleGetSessionStats(args json.RawMessage) (any, error) {
 
 	tags := s.loadTags()
 	session := sessions[0]
-	ratio := s.loadCacheRatio()
-	pricing := analyzer.DefaultPricing["sonnet"]
 	cost := analyzer.EstimateSessionCost(session, pricing, ratio)
 
 	return SessionStatsResult{
@@ -218,6 +247,7 @@ func (s *Server) handleGetSessionStats(args json.RawMessage) (any, error) {
 		InputTokens:   session.InputTokens,
 		OutputTokens:  session.OutputTokens,
 		EstimatedCost: cost,
+		Live:          false,
 	}, nil
 }
 
