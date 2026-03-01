@@ -1186,3 +1186,32 @@ git branch -d wave1-agent-a wave2-agent-b wave2-agent-c
 ---
 
 <!-- Completion reports appended below by agents -->
+
+### Agent A — Completion Report
+```yaml
+status: complete
+worktree: main (solo wave)
+commit: 8b1e5e7fae8bdea659b6266ade5c7063380ef218
+files_changed: []
+files_created:
+  - internal/claude/active.go
+  - internal/claude/active_test.go
+interface_deviations: []
+out_of_scope_deps: []
+tests_added:
+  - TestFindActiveSessionPath_NoProjectsDir
+  - TestFindActiveSessionPath_EmptyProjectsDir
+  - TestFindActiveSessionPath_MtimeFallback_RecentFile
+  - TestFindActiveSessionPath_MtimeFallback_OldFile
+  - TestParseActiveSession_Empty
+  - TestParseActiveSession_NoTrailingNewline
+  - TestParseActiveSession_PartialLastLine
+  - TestParseActiveSession_SessionIDFromEntry
+  - TestParseActiveSession_SessionIDFromFilename
+  - TestParseActiveSession_TokenAccumulation
+  - TestParseActiveSession_MessageCounts
+  - TestParseActiveSession_ProjectPathIsHash
+  - TestParseActiveSession_ReadError
+  - TestActiveSessionInfo_EmbedsMeta
+verification: PASS (go test ./internal/claude/... -count=1 -timeout 30s — 14/14 new tests, 111/111 total)
+```
