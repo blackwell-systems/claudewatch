@@ -54,19 +54,32 @@ func (s *Server) handleGetProjectHealth(args json.RawMessage) (any, error) {
 	if params.Project != nil && *params.Project != "" {
 		project = *params.Project
 	} else {
-		// Default: most recent session's project.
-		if len(sessions) == 0 {
-			return ProjectHealthResult{
-				TopFriction: []string{},
-				ByAgentType: map[string]AgentTypeSummary{},
-			}, nil
+		// Default: prefer the active session's project, fall back to most recent indexed session.
+
+		// Attempt to use the active session.
+		activePath, activeErr := claude.FindActiveSessionPath(s.claudeHome)
+		if activeErr == nil && activePath != "" {
+			meta, parseErr := claude.ParseActiveSession(activePath)
+			if parseErr == nil && meta != nil && meta.ProjectPath != "" {
+				project = filepath.Base(meta.ProjectPath)
+			}
 		}
-		sorted := make([]claude.SessionMeta, len(sessions))
-		copy(sorted, sessions)
-		sort.Slice(sorted, func(i, j int) bool {
-			return sorted[i].StartTime > sorted[j].StartTime
-		})
-		project = resolveProjectName(sorted[0].SessionID, sorted[0].ProjectPath, tags)
+
+		// Fall back to most-recently-closed session if active session was not available.
+		if project == "" {
+			if len(sessions) == 0 {
+				return ProjectHealthResult{
+					TopFriction: []string{},
+					ByAgentType: map[string]AgentTypeSummary{},
+				}, nil
+			}
+			sorted := make([]claude.SessionMeta, len(sessions))
+			copy(sorted, sessions)
+			sort.Slice(sorted, func(i, j int) bool {
+				return sorted[i].StartTime > sorted[j].StartTime
+			})
+			project = resolveProjectName(sorted[0].SessionID, sorted[0].ProjectPath, tags)
+		}
 	}
 
 	// Filter sessions for the target project.
