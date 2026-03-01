@@ -22,9 +22,17 @@ Scores every project's AI readiness on a scale from 0 to 100. Walks `~/.claude/p
 ```bash
 claudewatch scan
 claudewatch scan --json
+claudewatch scan --include-active
 ```
 
-**Output:** Table of projects with readiness score, session count, last active date, friction rate, and confidence tier (low / medium / high).
+**Flags:**
+
+| Flag | Description |
+|---|---|
+| `--json` | Output as JSON instead of a table |
+| `--include-active` | Include the currently running session as a live row in the output |
+
+**Output:** Table of projects with readiness score, session count, last active date, friction rate, and confidence tier (low / medium / high). With `--include-active`, the live session appears as an additional row tagged `(live)`.
 
 ---
 

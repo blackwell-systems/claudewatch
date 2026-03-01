@@ -57,7 +57,7 @@ Call these to understand patterns over time or validate prior changes:
 
 #### `get_session_stats`
 
-Returns metrics for the current active session: cost, duration, token usage, and friction score.
+Returns metrics for the current active session: cost, duration, token usage, and friction score. When the session JSONL file is actively open (detected via `lsof` or recent mtime), the response includes live token and cost data read directly from the in-progress transcript.
 
 No input parameters.
 
@@ -71,6 +71,7 @@ No input parameters.
 | `friction_score` | float | Friction intensity for this session (higher is worse) |
 | `model_breakdown` | object | Token counts keyed by model name |
 | `total_tokens` | int | Sum of input and output tokens |
+| `live` | bool | `true` when data was read from the active in-progress session file |
 
 ---
 
