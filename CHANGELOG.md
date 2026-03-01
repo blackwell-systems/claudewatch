@@ -6,6 +6,14 @@ All notable changes to claudewatch are documented here.
 
 ### Added
 
+- **Explicit session project tagging** — fixes wrong project attribution when Claude Code is launched from a different directory than the project being worked on (e.g. SAW worktrees). Implemented via a 2-wave SAW run (3 agents total):
+
+  - `set_session_project` MCP tool — override the project name for any session by ID. Call with the `session_id` from `get_session_stats` and the correct project name. The override is stored in `~/.config/claudewatch/session-tags.json` and takes precedence over the launch-directory-derived name everywhere: `get_session_stats`, `get_recent_sessions`, `get_saw_sessions`, `get_project_health`, `get_project_comparison`.
+
+  - `claudewatch tag --project <name> [--session <id>]` CLI command — same override from the terminal. Defaults to the most recent session when `--session` is omitted. Useful for correcting attribution after the fact or from outside a Claude session.
+
+  - `internal/store.SessionTagStore` — atomic JSON file store backing both surfaces. Write-to-temp-then-rename for POSIX atomicity; mutex-protected for concurrent access.
+
 - **3 additional MCP self-model tools** — cross-session spend visibility, full project landscape, and chronic friction detection. Implemented via SAW Wave 1 (3 parallel agents, 3m 45s wall-clock vs ~41m sequential):
 
   - `get_cost_summary` — cross-session spend aggregated by period (today, this week, all time) and broken down by project, sorted by total spend. Answers "how much have I spent this week and which project is driving it?"
