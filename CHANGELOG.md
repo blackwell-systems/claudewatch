@@ -6,6 +6,14 @@ All notable changes to claudewatch are documented here.
 
 ### Added
 
+- **3 additional MCP self-model tools** — cross-session spend visibility, full project landscape, and chronic friction detection. Implemented via SAW Wave 1 (3 parallel agents, 3m 45s wall-clock vs ~41m sequential):
+
+  - `get_cost_summary` — cross-session spend aggregated by period (today, this week, all time) and broken down by project, sorted by total spend. Answers "how much have I spent this week and which project is driving it?"
+
+  - `get_project_comparison` — all known projects ranked side-by-side by health score in a single call. Health score formula: 100 − friction penalty − zero-commit penalty + agent success bonus + CLAUDE.md bonus. Enables project triage at session start without knowing project names upfront.
+
+  - `get_stale_patterns` — friction types that recur in >N% of recent sessions AND have no corresponding CLAUDE.md change in the lookback window. Parameterized: `threshold` (default 0.3) and `lookback` (default 10 sessions). The "chronically ignored" view, distinct from `get_suggestions`.
+
 - **5 new MCP self-model tools** — closes the gap between Claude's session data and Claude's
   in-session awareness. All five tools are thin wrappers over existing `analyzer` and `claude`
   packages, implemented via a SAW Wave 1 (4 parallel agents):
