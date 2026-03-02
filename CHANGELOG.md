@@ -6,6 +6,8 @@ All notable changes to claudewatch are documented here.
 
 ### Added
 
+- **`claudewatch install`** — writes the claudewatch behavioral contract into `~/.claude/CLAUDE.md`, delimited by HTML comment markers (`<!-- claudewatch:start -->` / `<!-- claudewatch:end -->`). Idempotent: re-running updates the section in place rather than appending. Ensures the behavioral instructions (when to call which MCP tool, how to respond to hook alerts) persist across the full session depth rather than eroding with context. Always uses `$HOME/.claude/CLAUDE.md` regardless of `claude_home` config overrides.
+
 - **`claudewatch startup`** — `SessionStart` shell hook subcommand that orients Claude at the start of every session. Prints a compact 4-line briefing to stdout, which Claude Code injects directly into Claude's context before the first user message:
   - **Line 1:** Project name, session count, friction level and dominant friction type
   - **Line 2:** CLAUDE.md presence, agent success rate, and a context-specific tip derived from the top friction pattern (e.g. "verify Bash commands before running" when `retry:Bash` dominates)
