@@ -2,6 +2,20 @@
 
 All notable changes to claudewatch are documented here.
 
+## [0.7.9] - Unreleased
+
+### Added
+
+- **`attribute` subcommand** — break down token cost by tool type for a session. Defaults to the most recent session; `--session` flag to target a specific one.
+
+- **`replay` subcommand** — walk through a session as a structured turn-by-turn timeline with role, tool name, token counts, estimated cost, and friction markers. `--from`/`--to` flags for windowing.
+
+- **`experiment` subcommand** with four sub-subcommands: `start`, `stop`, `tag`, `report` — implements CLAUDE.md A/B testing workflow; tag sessions to variants and get a statistical comparison report.
+
+- **`get_cost_attribution` MCP tool** — per-turn tool-type cost breakdown; answers "which tool calls consumed most of my budget this session?"
+
+- **Schema migration v3** — `experiments` and `experiment_sessions` tables for A/B experiment tracking.
+
 ## [0.7.8] - 2026-03-02
 
 ### Added

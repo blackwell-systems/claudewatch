@@ -52,6 +52,7 @@ Call these to understand patterns over time or validate prior changes:
 11. **`get_saw_sessions`** + **`get_saw_wave_breakdown`** — Scout-and-Wave parallel agent workflow timing and status
 12. **`search_transcripts`** — find sessions where a specific topic, error, or tool was discussed; useful before tackling a recurring problem to see how it was approached before
 13. **`get_project_anomalies`** — identify sessions that deviated significantly from the project's cost or friction baseline; useful for diagnosing what went wrong in a particularly expensive or high-friction session
+14. **`get_cost_attribution`** — break down token cost by tool type for a session to identify which tool types (Agent, Bash, Read, etc.) drove spending; call after high-cost sessions to identify which tool types drove spending
 
 ## Tool reference
 
@@ -488,6 +489,33 @@ Each anomaly:
 | `friction_z` | float | Z-score for friction (positive = above average) |
 | `severity` | string | `warning` (z ≥ threshold) or `critical` (z ≥ 3× threshold) |
 | `reason` | string | Human-readable explanation of which signal triggered the anomaly |
+
+---
+
+#### `get_cost_attribution`
+
+Breaks down token cost by tool type for a session. Answers "which tool calls consumed most of my budget this session?"
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `session_id` | string | no | Session to analyze. Defaults to the most recent session if omitted. |
+| `project` | string | no | Reserved for future filtering. |
+
+| Output field | Type | Description |
+|---|---|---|
+| `session_id` | string | The session analyzed |
+| `rows` | array | Per-tool-type cost breakdown |
+| `total_cost_usd` | float | Total estimated cost for the session |
+
+Each entry in `rows`:
+
+| Field | Type | Description |
+|---|---|---|
+| `tool_type` | string | Tool type name (e.g. `Agent`, `Bash`, `Read`, `Edit`) |
+| `calls` | int | Number of calls of this tool type in the session |
+| `input_tokens` | int | Input tokens consumed by this tool type |
+| `output_tokens` | int | Output tokens consumed by this tool type |
+| `est_cost_usd` | float | Estimated cost for this tool type |
 
 ---
 

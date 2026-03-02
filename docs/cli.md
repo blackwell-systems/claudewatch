@@ -331,6 +331,72 @@ claudewatch anomalies --json
 
 ---
 
+### attribute
+
+Break down token cost by tool type for a session. Answers "which tool calls consumed most of my budget?"
+
+```bash
+claudewatch attribute
+claudewatch attribute --session abc123def456
+claudewatch attribute --json
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--session <id>` | most recent session | Session ID to analyze |
+
+**Output:** Table with columns: `Tool Type | Calls | Input Tokens | Output Tokens | Est. Cost`. A summary total line appears below the table.
+
+---
+
+### replay
+
+Walk through a session as a structured turn-by-turn timeline. Useful for post-mortems on expensive or high-friction sessions.
+
+```bash
+claudewatch replay abc123def456
+claudewatch replay abc123 --from 10 --to 20
+claudewatch replay abc123 --json
+```
+
+**Args:** `<session-id>` (required)
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--from <n>` | 1 | First turn to include (1-indexed) |
+| `--to <n>` | last turn | Last turn to include |
+
+**Output:** Section header with session summary (total turns, total cost, friction count), then a table with columns: `Turn | Role | Tool | In Tok | Out Tok | Cost | F`. The `F` column is a friction marker.
+
+---
+
+### experiment
+
+Manage CLAUDE.md A/B experiments. Tag sessions to variants (a/b) and compare outcome metrics.
+
+```bash
+claudewatch experiment start --project myproject --note "testing new CLAUDE.md instructions"
+claudewatch experiment tag --project myproject --variant a
+claudewatch experiment report --project myproject
+```
+
+**Subcommands:**
+
+| Subcommand | Flags | Description |
+|---|---|---|
+| `start` | `--project <name>`, `--note <text>` | Start a new experiment for a project |
+| `stop` | `--project <name>` | Stop the active experiment |
+| `tag` | `--project <name>`, `--variant <a\|b>`, `--session <id>` | Assign a session to a variant; defaults to most recent session |
+| `report` | `--project <name>`, `--json` | Compare variant outcomes and declare a winner or "inconclusive" |
+
+**Output of `report`:** Comparison table showing avg cost, avg friction, and avg commits per variant, followed by a winner declaration or "inconclusive" if the difference is not statistically meaningful. With `--json`, returns the full per-variant metric breakdown.
+
+---
+
 ## The fix-measure loop
 
 These commands are designed to work together in a repeated cycle:
@@ -352,7 +418,7 @@ The `get_effectiveness` MCP tool surfaces the same before/after data inside sess
 
 ## JSON output
 
-`--json` is supported by `scan`, `metrics`, `gaps`, `suggest`, `track`, `search`, `compare`, and `anomalies`. All JSON output goes to stdout; errors go to stderr. Pipe into `jq` or redirect to a file for integration with dashboards, time-series tools, or custom queries.
+`--json` is supported by `scan`, `metrics`, `gaps`, `suggest`, `track`, `search`, `compare`, `anomalies`, `attribute`, `replay`, and `experiment report`. All JSON output goes to stdout; errors go to stderr. Pipe into `jq` or redirect to a file for integration with dashboards, time-series tools, or custom queries.
 
 ```bash
 claudewatch metrics --days 30 --json | jq '.agents.by_type'
