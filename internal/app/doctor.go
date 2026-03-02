@@ -9,6 +9,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/blackwell-systems/claudewatch/internal/analyzer"
 	"github.com/blackwell-systems/claudewatch/internal/claude"
 	"github.com/blackwell-systems/claudewatch/internal/config"
 	"github.com/blackwell-systems/claudewatch/internal/output"
@@ -96,6 +97,11 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 			Passed:  false,
 			Message: fmt.Sprintf("could not open database: %v", dbOpenErr),
 		})
+	}
+
+	// 10. Regression detection — warn if any project's friction or cost has regressed.
+	if db != nil {
+		checks = append(checks, checkRegressionStatus(db, sessions, cfg))
 	}
 
 	// Count passes.
@@ -390,6 +396,72 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// checkRegressionStatus checks whether any project's friction or cost has regressed
+// relative to its stored baseline. Uses the default threshold (1.5x).
+func checkRegressionStatus(db *store.DB, sessions []claude.SessionMeta, _ *config.Config) doctorCheck {
+	baselines, err := db.ListProjectBaselines()
+	if err != nil {
+		return doctorCheck{
+			Name:    "Regression detection",
+			Passed:  false,
+			Message: fmt.Sprintf("could not list baselines: %v", err),
+		}
+	}
+	if len(baselines) == 0 {
+		return doctorCheck{
+			Name:    "Regression detection",
+			Passed:  true,
+			Message: "no baselines stored — nothing to compare",
+		}
+	}
+
+	// Group sessions by project name.
+	byProject := make(map[string][]claude.SessionMeta)
+	for _, s := range sessions {
+		proj := filepath.Base(s.ProjectPath)
+		if proj == "" || proj == "." {
+			continue
+		}
+		byProject[proj] = append(byProject[proj], s)
+	}
+
+	pricing := analyzer.DefaultPricing["sonnet"]
+	ratio := analyzer.NoCacheRatio()
+
+	var regressed []string
+	for _, b := range baselines {
+		projectSessions := byProject[b.Project]
+		// Cap at 10 most recent.
+		if len(projectSessions) > 10 {
+			projectSessions = projectSessions[len(projectSessions)-10:]
+		}
+		status := analyzer.ComputeRegressionStatus(analyzer.RegressionInput{
+			Project:        b.Project,
+			Baseline:       &b,
+			RecentSessions: projectSessions,
+			Pricing:        pricing,
+			CacheRatio:     ratio,
+			Threshold:      0, // default 1.5
+		})
+		if status.Regressed {
+			regressed = append(regressed, fmt.Sprintf("%s (%s)", b.Project, status.Message))
+		}
+	}
+
+	if len(regressed) == 0 {
+		return doctorCheck{
+			Name:    "Regression detection",
+			Passed:  true,
+			Message: fmt.Sprintf("%d project(s) within baseline thresholds", len(baselines)),
+		}
+	}
+	return doctorCheck{
+		Name:    "Regression detection",
+		Passed:  false,
+		Message: fmt.Sprintf("%d project(s) regressed: %s", len(regressed), strings.Join(regressed, "; ")),
+	}
 }
 
 // checkAnomalyBaselines verifies that all projects with ≥5 sessions have a stored

@@ -910,9 +910,74 @@ After Wave 1 completes:
 
 ### Status
 
-- [ ] Wave 1 Agent A — `internal/analyzer/regression.go` + `regression_test.go` (ComputeRegressionStatus)
-- [ ] Wave 1 Agent B — `internal/mcp/regression_tools.go` + `regression_tools_test.go` + tools.go registration (get_regression_status MCP tool)
-- [ ] Post-merge: remove `//go:build integration` tag from Agent B's test file
-- [ ] Post-merge: add `checkRegressionStatus` doctor check to `internal/app/doctor.go`
-- [ ] Post-merge: `go build ./... && go vet ./... && go test ./...` passes
+- [x] Wave 1 Agent A — `internal/analyzer/regression.go` + `regression_test.go` (ComputeRegressionStatus)
+- [x] Wave 1 Agent B — `internal/mcp/regression_tools.go` + `regression_tools_test.go` + tools.go registration (get_regression_status MCP tool)
+- [x] Post-merge: remove `//go:build integration` tag from Agent B's test file
+- [x] Post-merge: add `checkRegressionStatus` doctor check to `internal/app/doctor.go`
+- [x] Post-merge: `go build ./... && go vet ./... && go test ./...` passes
 - [ ] Post-merge: commit
+
+---
+
+### Agent B - Completion Report
+status: complete
+worktree: .claude/worktrees/wave1-agent-b
+commit: dc334d4
+files_changed:
+  - internal/mcp/tools.go
+files_created:
+  - internal/mcp/regression_tools.go
+  - internal/mcp/regression_tools_test.go
+interface_deviations:
+  - []
+out_of_scope_deps:
+  - "file: internal/analyzer/regression.go, change: must exist with ComputeRegressionStatus, RegressionInput, and RegressionStatus, reason: build dependency"
+  - "file: internal/mcp/regression_tools_test.go, change: remove //go:build integration tag after merge, reason: workaround for missing analyzer symbol"
+tests_added:
+  - TestGetRegressionStatus_EmptyDir
+  - TestGetRegressionStatus_NoBaseline
+  - TestGetRegressionStatus_NoRegression
+  - TestGetRegressionStatus_FrictionRegression
+  - TestGetRegressionStatus_ExplicitProject
+  - TestGetRegressionStatus_CustomThreshold
+verification: FAIL (build blocked on analyzer.ComputeRegressionStatus — Agent A out-of-scope symbol)
+notes:
+  - Isolation verified before any file modifications
+  - Handler follows handleGetProjectAnomalies exactly for project resolution, DB usage, session filtering
+  - Returns analyzer.RegressionStatus directly (no wrapper struct)
+  - threshold=0 is passed through as-is to RegressionInput; Agent A defaults 0 to 1.5
+  - go vet confirms only undefined symbols are analyzer.RegressionStatus, analyzer.RegressionInput, analyzer.ComputeRegressionStatus
+
+### Agent A - Completion Report
+status: complete
+worktree: .claude/worktrees/wave1-agent-a
+commit: f0f2a72
+files_changed: []
+files_created:
+  - internal/analyzer/regression.go
+  - internal/analyzer/regression_test.go
+interface_deviations:
+  - "The task spec listed sessionFriction and buildFacetIndex signatures with pointer map values (map[string]*claude.SessionFacet). The actual implementations in compare.go use value maps (map[string]claude.SessionFacet). Implementation matches the actual code, not the spec."
+out_of_scope_deps:
+  - []
+tests_added:
+  - TestComputeRegressionStatus_NoBaseline
+  - TestComputeRegressionStatus_InsufficientData
+  - TestComputeRegressionStatus_NoRegression
+  - TestComputeRegressionStatus_FrictionRegression
+  - TestComputeRegressionStatus_CostRegression
+  - TestComputeRegressionStatus_BothRegressed
+  - TestComputeRegressionStatus_ThresholdDefault
+  - TestComputeRegressionStatus_ZeroBaselineSkipped
+  - TestComputeRegressionStatus_MessageContent
+  - TestComputeRegressionStatus_ExactlyAtThreshold
+  - TestComputeRegressionStatus_FacetsUsed (bonus: verifies facets override ToolErrors)
+verification: PASS (go build ./... && go vet ./... && go test ./internal/analyzer/... - all tests pass)
+notes:
+  - Isolation verified before any file modifications
+  - sessionFriction and buildFacetIndex are in compare.go (not anomaly.go as spec suggested); both are package-private and accessible within package analyzer
+  - ComputeRegressionStatus is a pure function: no I/O, no DB access, no global state
+  - frictionRate is computed as fraction of sessions with any friction (0.0–1.0), not raw count
+  - Threshold default applies when Threshold <= 1 (spec says <= 1, not just == 0)
+  - Zero baseline guard skips comparison entirely to avoid spurious regressions
+  - Both-regressed message omits threshold per spec; single-regression messages include threshold
