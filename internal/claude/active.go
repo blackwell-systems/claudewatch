@@ -94,7 +94,9 @@ func FindActiveSessionPath(claudeHome string) (string, error) {
 }
 
 // findOpenFileWithLsof runs lsof -F n with a 3-second timeout and returns
-// the first path from jsonlFiles that appears in the lsof output.
+// the most recently modified path from jsonlFiles that appears in the lsof
+// output. When multiple JSONL files are open (e.g. stale FDs from previous
+// sessions), mtime selects the genuinely active one.
 // Returns "" if lsof is unavailable, times out, or no match is found.
 func findOpenFileWithLsof(jsonlFiles []string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -113,8 +115,8 @@ func findOpenFileWithLsof(jsonlFiles []string) string {
 		pathSet[p] = true
 	}
 
-	// Parse lsof output: lines starting with 'n' carry a filename.
-	// Example: n/Users/dayna/.claude/projects/abc/session.jsonl
+	// Collect all JSONL paths that lsof reports as open.
+	var matches []string
 	scanner := bufio.NewScanner(bytes.NewReader(out))
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -123,11 +125,25 @@ func findOpenFileWithLsof(jsonlFiles []string) string {
 		}
 		filePath := line[1:] // strip leading 'n'
 		if pathSet[filePath] {
-			return filePath
+			matches = append(matches, filePath)
 		}
 	}
 
-	return ""
+	// Among all matches, return the most recently modified file.
+	// Old sessions can leave stale open FDs; the newest mtime is the live session.
+	var bestPath string
+	var bestMtime time.Time
+	for _, p := range matches {
+		fi, err := os.Stat(p)
+		if err != nil {
+			continue
+		}
+		if fi.ModTime().After(bestMtime) {
+			bestMtime = fi.ModTime()
+			bestPath = p
+		}
+	}
+	return bestPath
 }
 
 // ParseActiveSession reads the JSONL file at path as a partial transcript
