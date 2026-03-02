@@ -384,7 +384,9 @@ Each component covers a gap the others leave open:
 
 **1. Startup briefing** (`claudewatch startup` as a SessionStart hook)
 
-Fires at session start and prints a compact 4-line briefing directly into Claude's context: project name, session count, friction level, CLAUDE.md status, agent success rate, a context-specific tip, the full MCP tool manifest, and a PostToolUse hook reminder. This orients Claude to the project and the tools available before the first user message. Because it's injected context, it erodes as the conversation grows — useful for orientation at the start, not for behavioral rules that need to survive a 100-turn session.
+Fires at session start and prints a compact briefing directly into Claude's context: project name, session count, friction level, CLAUDE.md status, agent success rate, a context-specific tip, the full MCP tool manifest, and a PostToolUse hook reminder. This orients Claude to the project and the tools available before the first user message. Because it's injected context, it erodes as the conversation grows — useful for orientation at the start, not for behavioral rules that need to survive a 100-turn session.
+
+Two elements of the briefing are dynamic. First, an optional regression warning line appears between the tip line and the tools line when the project's friction rate or avg cost has exceeded 1.5× its stored baseline — it is omitted entirely when the project is within baseline. Second, the tip is friction-based by default but is replaced with a SAW-correlation insight (`tip: SAW reduces zero-commit rate (X% vs Y% without)`) when there are ≥10 SAW sessions and ≥10 non-SAW sessions and the data shows a meaningful difference in zero-commit rate.
 
 **2. Behavioral contract** (`claudewatch install` → `~/.claude/CLAUDE.md`)
 
@@ -392,7 +394,7 @@ Fires at session start and prints a compact 4-line briefing directly into Claude
 
 **3. Reactive alerts** (`claudewatch hook` as a PostToolUse hook)
 
-Fires after every tool use, rate-limited to once per 30 seconds via `~/.cache/claudewatch-hook.ts`. Checks three conditions in priority order: (1) three or more consecutive tool errors, (2) context pressure at "pressure" or "critical", (3) cost velocity "burning". Exits 0 silently if all clear. If a condition is met, exits 2 with a self-contained stderr message that names the MCP server, the tool to call (`get_session_dashboard`), and what that tool returns — so Claude with zero prior context about claudewatch knows exactly what to do.
+Fires after every tool use, rate-limited to once per 30 seconds via `~/.cache/claudewatch-hook.ts`. Checks three conditions in priority order: (1) three or more consecutive tool errors, (2) context pressure at "pressure" or "critical", (3) cost velocity "burning". Exits 0 silently if all clear. If a condition is met, exits 2 with a self-contained stderr message that names the MCP server, the tool to call (`get_session_dashboard`), and what that tool returns — so Claude with zero prior context about claudewatch knows exactly what to do. When a consecutive error alert fires, the message also names the chronic friction pattern if one is detected (a friction type appearing in >30% of the project's last 10 sessions with no recent CLAUDE.md update), surfacing it as `(chronic: {type} in N% of recent sessions)` so Claude knows whether this is a systemic issue or an isolated event.
 
 **Why CLAUDE.md persistence matters**
 

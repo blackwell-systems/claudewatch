@@ -204,6 +204,14 @@ claudewatch watch --stop              # stop background daemon
 
 PostToolUse shell hook subcommand. Checks the active session for three warning conditions in priority order: (1) ≥3 consecutive tool errors, (2) context window at "pressure" or "critical", (3) cost velocity "burning". Exits 0 silently if all clear; exits 2 with a self-contained stderr message naming `get_session_dashboard` and what it returns when a threshold is crossed. Rate-limited to one alert per 30 seconds via a timestamp file at `~/.cache/claudewatch-hook.ts`.
 
+When the consecutive error condition fires, the alert includes chronic pattern context if a friction type appears in more than 30% of the project's last 10 sessions and CLAUDE.md has not been updated in the past 14 days. In that case the alert reads:
+
+```
+⚠ 3 consecutive tool errors detected (chronic: wrong_approach in 33% of recent sessions). Stop and diagnose: call get_session_dashboard ...
+```
+
+Without a chronic pattern, the alert omits the parenthetical.
+
 ```bash
 claudewatch hook   # run from a PostToolUse shell hook
 ```
@@ -243,9 +251,14 @@ No flags.
 ```
 ╔ claudewatch | <project> | <N> sessions | friction: <level> (<top-type> dominant)
 ║ CLAUDE.md: ✓/✗ | agent success: <pct>% | tip: <contextual tip>
+║ ⚠ regression: friction rate regressed (0.80 vs baseline 0.20, threshold 1.5x)   ← only present when regressed
 ║ tools: get_session_dashboard · get_project_health · get_live_friction · get_context_pressure · get_cost_velocity · get_suggestions
 ╚ PostToolUse hook active → fires on errors/context/cost → call get_session_dashboard
 ```
+
+The optional regression line (line 3 above) appears only when a baseline exists for the project and friction rate or avg cost has exceeded 1.5× that baseline. It is omitted entirely when the project is within baseline.
+
+The tip on line 2 is dynamically computed. By default it is derived from the top friction pattern for the project (e.g. "verify Bash commands before running" when `retry:Bash` dominates). When there are ≥10 SAW sessions and ≥10 non-SAW sessions for the project and SAW sessions show a meaningfully lower zero-commit rate (delta < -0.1), the tip is replaced with a data-driven SAW insight: `tip: SAW reduces zero-commit rate (X% vs Y% without)`. Falls back to the friction-based tip when session counts are insufficient for a confident comparison.
 
 **Hook routing note:** SessionStart hooks must write to stdout and exit 0 to inject into Claude's context. stderr output or exit 2 routes only to the user's terminal.
 

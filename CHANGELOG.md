@@ -22,6 +22,14 @@ All notable changes to claudewatch are documented here.
 
 - **Factor analysis** — `claudewatch correlate <outcome> [--factor <field>] [--project <name>]` and `get_causal_insights` MCP tool. Correlates session attributes (has_claude_md, is_saw, tool_call_count, etc.) against outcomes (friction, commits, cost, etc.) using Pearson correlation for numeric factors and grouped comparison for boolean factors. Groups with fewer than 10 sessions are flagged as low-confidence.
 
+### Improved
+
+- **`startup` hook regression warning** — on startup, `claudewatch startup` now opens the SQLite DB and runs `ComputeRegressionStatus` for the current project. When a baseline exists and friction rate or avg cost has exceeded 1.5× that baseline, an extra warning line is printed between the tip line and the tools line: `║ ⚠ regression: friction rate regressed (0.80 vs baseline 0.20, threshold 1.5x)`. The line is omitted entirely when the project is within baseline.
+
+- **`startup` hook SAW-correlation tip** — when there are ≥10 SAW sessions and ≥10 non-SAW sessions for the project and SAW sessions show a meaningfully lower zero-commit rate (delta < -0.1), the generic friction-based tip on line 2 is replaced with a data-driven insight: `tip: SAW reduces zero-commit rate (X% vs Y% without)`. Falls back to the friction-based tip when session counts are insufficient for a confident comparison.
+
+- **`hook` chronic pattern naming** — consecutive error alerts now include chronic pattern context when a single friction type appears in more than 30% of the project's last 10 sessions and CLAUDE.md has not been updated in the past 14 days. The alert changes from `⚠ 3 consecutive tool errors detected. Stop and diagnose: ...` to `⚠ 3 consecutive tool errors detected (chronic: wrong_approach in 33% of recent sessions). Stop and diagnose: ...`. Omitted when no chronic pattern is detected or CLAUDE.md was recently updated.
+
 ## [0.7.8] - 2026-03-02
 
 ### Added

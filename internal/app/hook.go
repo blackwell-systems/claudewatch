@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -62,6 +63,8 @@ func runHook(cmd *cobra.Command, args []string) {
 		return
 	}
 
+	cwd, _ := os.Getwd()
+
 	activePath, err := claude.FindActiveSessionPath(cfg.ClaudeHome)
 	if err != nil || activePath == "" {
 		return
@@ -69,7 +72,11 @@ func runHook(cmd *cobra.Command, args []string) {
 
 	// Priority 1: consecutive tool errors.
 	if n, err := claude.ParseLiveConsecutiveErrors(activePath, 50); err == nil && n >= hookThreshold {
-		fmt.Fprintf(os.Stderr, "⚠ %d consecutive tool errors detected. Stop and diagnose: call get_session_dashboard (claudewatch MCP) to check token velocity, friction patterns, and context pressure before continuing.\n", n)
+		if note := hookChronicPatternNote(cfg, cwd); note != "" {
+			fmt.Fprintf(os.Stderr, "⚠ %d consecutive tool errors detected (%s). Stop and diagnose: call get_session_dashboard (claudewatch MCP) to check token velocity, friction patterns, and context pressure before continuing.\n", n, note)
+		} else {
+			fmt.Fprintf(os.Stderr, "⚠ %d consecutive tool errors detected. Stop and diagnose: call get_session_dashboard (claudewatch MCP) to check token velocity, friction patterns, and context pressure before continuing.\n", n)
+		}
 		os.Exit(2)
 	}
 
@@ -91,4 +98,81 @@ func runHook(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(os.Stderr, "⚠ Cost velocity burning ($%.3f/min over last 10 min). Call get_session_dashboard (claudewatch MCP) to identify the source before continuing.\n", cost.CostPerMinute)
 		os.Exit(2)
 	}
+}
+
+// hookChronicPatternNote returns a short description of the top friction type
+// for the current project if it appears in >30% of recent sessions and CLAUDE.md
+// has not been updated recently. Returns "" when no chronic pattern is found.
+func hookChronicPatternNote(cfg *config.Config, cwd string) string {
+	if cwd == "" {
+		return ""
+	}
+	projectName := filepath.Base(cwd)
+
+	sessions, _ := claude.ParseAllSessionMeta(cfg.ClaudeHome)
+	facets, _ := claude.ParseAllFacets(cfg.ClaudeHome)
+
+	// Filter sessions to current project and take last 10.
+	var projectSessions []claude.SessionMeta
+	for _, sess := range sessions {
+		if filepath.Base(sess.ProjectPath) == projectName {
+			projectSessions = append(projectSessions, sess)
+		}
+	}
+	if len(projectSessions) < 3 {
+		return ""
+	}
+	// sessions are returned newest-first by ParseAllSessionMeta; take up to 10.
+	window := projectSessions
+	if len(window) > 10 {
+		window = window[:10]
+	}
+
+	// Build friction session counts.
+	idSet := make(map[string]struct{}, len(window))
+	for _, sess := range window {
+		idSet[sess.SessionID] = struct{}{}
+	}
+	frictionSessionCount := make(map[string]int)
+	for _, f := range facets {
+		if _, ok := idSet[f.SessionID]; !ok {
+			continue
+		}
+		seen := make(map[string]bool)
+		for ft, count := range f.FrictionCounts {
+			if count > 0 && !seen[ft] {
+				seen[ft] = true
+				frictionSessionCount[ft]++
+			}
+		}
+	}
+	if len(frictionSessionCount) == 0 {
+		return ""
+	}
+
+	// Find top friction type.
+	var topType string
+	var topCount int
+	for ft, count := range frictionSessionCount {
+		if count > topCount {
+			topCount = count
+			topType = ft
+		}
+	}
+
+	// Must appear in >30% of window sessions.
+	rate := float64(topCount) / float64(len(window))
+	if rate < 0.3 {
+		return ""
+	}
+
+	// Only report as chronic if CLAUDE.md is absent or hasn't been updated recently.
+	claudeMDPath := filepath.Join(cwd, "CLAUDE.md")
+	if info, err := os.Stat(claudeMDPath); err == nil {
+		if time.Since(info.ModTime()) < 14*24*time.Hour {
+			return "" // Recently updated — pattern may already be addressed.
+		}
+	}
+
+	return fmt.Sprintf("chronic: %s in %.0f%% of recent sessions", topType, rate*100)
 }

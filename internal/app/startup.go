@@ -7,8 +7,10 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/blackwell-systems/claudewatch/internal/analyzer"
 	"github.com/blackwell-systems/claudewatch/internal/claude"
 	"github.com/blackwell-systems/claudewatch/internal/config"
+	"github.com/blackwell-systems/claudewatch/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -98,6 +100,58 @@ func runStartup(cmd *cobra.Command, args []string) {
 		agentSuccessStr = fmt.Sprintf("%d%%", pct)
 	}
 
+	// Regression check: warn if the project's friction or cost has regressed vs baseline.
+	var regressionWarning string
+	if db, dbErr := store.Open(config.DBPath()); dbErr == nil {
+		defer func() { _ = db.Close() }()
+		baseline, _ := db.GetProjectBaseline(projectName)
+		regStatus := analyzer.ComputeRegressionStatus(analyzer.RegressionInput{
+			Project:        projectName,
+			Baseline:       baseline,
+			RecentSessions: projectSessions,
+			Facets:         facets,
+			Pricing:        analyzer.DefaultPricing["sonnet"],
+			CacheRatio:     analyzer.NoCacheRatio(),
+			Threshold:      1.5,
+		})
+		if regStatus.Regressed {
+			regressionWarning = fmt.Sprintf("║ ⚠ regression: %s\n", regStatus.Message)
+		}
+	}
+
+	// SAW correlation: does SAW reduce zero-commit rate for this project?
+	tip := startupTip(topFriction)
+	spans, spanErr := claude.ParseSessionTranscripts(cfg.ClaudeHome)
+	if spanErr == nil {
+		sawSessionMap := make(map[string]bool)
+		for _, saw := range claude.ComputeSAWWaves(spans) {
+			sawSessionMap[saw.SessionID] = true
+		}
+		projectPathMap := make(map[string]string, len(sessions))
+		for _, sess := range sessions {
+			projectPathMap[sess.SessionID] = sess.ProjectPath
+		}
+		report, corrErr := analyzer.CorrelateFactors(analyzer.CorrelateInput{
+			Sessions:    sessions,
+			Facets:      facets,
+			SAWSessions: sawSessionMap,
+			ProjectPath: projectPathMap,
+			Pricing:     analyzer.DefaultPricing["sonnet"],
+			CacheRatio:  analyzer.NoCacheRatio(),
+			Project:     projectName,
+			Outcome:     analyzer.OutcomeZeroCommit,
+			Factor:      analyzer.FactorIsSAW,
+		})
+		if corrErr == nil && report.SingleGroupComparison != nil {
+			gc := report.SingleGroupComparison
+			// SAW (true group) has meaningfully lower zero-commit rate than non-SAW sessions.
+			if !gc.LowConfidence && gc.Delta < -0.1 {
+				tip = fmt.Sprintf("tip: SAW reduces zero-commit rate (%.0f%% vs %.0f%% without)",
+					gc.TrueGroup.AvgOutcome*100, gc.FalseGroup.AvgOutcome*100)
+			}
+		}
+	}
+
 	// Build line 1: identity + friction signal.
 	sessionStr := fmt.Sprintf("%d session", sessionCount)
 	if sessionCount != 1 {
@@ -108,13 +162,13 @@ func runStartup(cmd *cobra.Command, args []string) {
 		frictionStr = fmt.Sprintf("%s (%s dominant)", frictionLabel, topFriction)
 	}
 
-	// Build line 2: readiness + tip.
-	tip := startupTip(topFriction)
-
 	// Print to stdout so Claude Code injects this into Claude's context at session start.
 	// SessionStart hooks: stdout → Claude's context. stderr + exit 2 → user terminal only.
 	fmt.Printf("╔ claudewatch | %s | %s | friction: %s\n", projectName, sessionStr, frictionStr)
 	fmt.Printf("║ CLAUDE.md: %s | agent success: %s | %s\n", claudeMD, agentSuccessStr, tip)
+	if regressionWarning != "" {
+		fmt.Print(regressionWarning)
+	}
 	fmt.Printf("║ tools: get_session_dashboard · get_project_health · get_live_friction · get_context_pressure · get_cost_velocity · get_suggestions\n")
 	fmt.Printf("╚ PostToolUse hook active → fires on errors/context/cost → call get_session_dashboard\n")
 }
