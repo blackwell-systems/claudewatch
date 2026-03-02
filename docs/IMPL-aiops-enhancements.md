@@ -865,8 +865,8 @@ of this IMPL doc.
 
 ## Status
 
-- [ ] Wave 1: Agent A complete
-- [ ] Wave 1: Agent C complete
+- [x] Wave 1: Agent A complete
+- [x] Wave 1: Agent C complete
 - [ ] Wave 2: Agent B complete
 - [ ] Wave 2: Agent D complete
 - [ ] Final verification: `go test ./... -race` passes
@@ -878,7 +878,75 @@ of this IMPL doc.
 
 ### Agent A — Completion Report
 
-_To be written by Agent A upon completion._
+**Status:** Complete. All verification gates pass.
+
+**Files modified/created:**
+
+1. `internal/store/types.go` — MODIFIED. Added four new types at the bottom of the file:
+   - `TranscriptIndexEntry`
+   - `TranscriptSearchResult`
+   - `ProjectBaseline`
+   - `AnomalyResult` (computed-only, no persistence table)
+
+2. `internal/store/migrations.go` — MODIFIED.
+   - Bumped `currentSchemaVersion` from 1 to 2.
+   - Fixed `migrateV1()` to insert version `1` (not the current constant) so incremental
+     migrations work correctly on existing databases.
+   - Added `migrateV2()` inside a transaction following the exact `migrateV1()` pattern.
+     Creates: `transcript_index` (backing table with PK `(session_id, line_number)`),
+     `transcript_index_fts` (FTS5 virtual table with `content='transcript_index'`),
+     `project_baselines` (project TEXT PRIMARY KEY), and
+     `idx_transcript_index_project` index.
+
+3. `internal/store/fts.go` — CREATED. Implements:
+   - `extractEntryContent()` — extracts text from `TranscriptEntry.Content` and
+     `TranscriptEntry.Message` (text/tool_use blocks), capped at 500 chars.
+   - `IndexTranscripts(claudeHome string, force bool)` — uses `claude.WalkTranscriptEntries`,
+     assigns per-session line numbers, skips empty-content entries, uses
+     `INSERT OR IGNORE` (force=false) or `INSERT OR REPLACE` (force=true), and manually
+     syncs new/replaced rows into the FTS virtual table.
+   - `SearchTranscripts(query string, limit int)` — FTS5 MATCH query joining backing table
+     for metadata; uses `snippet()` for highlighted excerpts; defaults limit to 20.
+   - `TranscriptIndexStatus()` — returns COUNT(*) and MAX(indexed_at) from transcript_index.
+
+4. `internal/store/baselines.go` — CREATED. Implements:
+   - `UpsertProjectBaseline(b ProjectBaseline)` — `INSERT OR REPLACE`.
+   - `GetProjectBaseline(project string)` — returns nil, nil for missing projects.
+   - `ListProjectBaselines()` — ORDER BY project ASC.
+
+5. `internal/store/store_test.go` — CREATED. 9 new tests using `OpenInMemory()`:
+   - `TestOpenInMemory` — migration smoke test
+   - `TestUpsertAndGetProjectBaseline` — round-trip all fields
+   - `TestGetProjectBaseline_NotFound` — nil return for missing project
+   - `TestUpsertProjectBaseline_Overwrite` — INSERT OR REPLACE semantics
+   - `TestListProjectBaselines` — empty, three-project insert, sort order
+   - `TestTranscriptIndexStatus_Empty` — count=0, lastIndexed="" on fresh DB
+   - `TestSearchTranscripts_Empty` — no error, empty results on empty index
+   - `TestSearchTranscripts_IndexAndSearch` — direct row insert + FTS5 MATCH, snippet, rank
+   - `TestSearchTranscripts_DefaultLimit` — limit=0 defaults to 20 (no panic/error)
+
+**Deviations from interface contracts:** None. All function signatures match the specified
+contracts exactly.
+
+**Issues encountered:**
+
+1. The original `migrateV1()` used `currentSchemaVersion` as the version to store, which
+   would have broken incremental migrations on existing v1 databases after the bump to 2.
+   Fixed by hard-coding `1` in `migrateV1()` and `2` in `migrateV2()`.
+
+2. Go 1.26 has a builtin `min` function; a custom helper was not needed and would have
+   caused a redeclaration error. Inlined the length cap with a simple `if` instead.
+
+3. FTS5 with `content='transcript_index'` requires manual FTS index sync on insert/replace
+   (no automatic trigger support in pure-Go SQLite). `IndexTranscripts` explicitly syncs
+   each row into the FTS virtual table after the backing table insert succeeds.
+
+**Verification:**
+```
+go build ./...        — PASS
+go vet ./...          — PASS
+go test ./internal/store/... -v -race — 14 tests PASS (0 failures)
+```
 
 ### Agent B — Completion Report
 
@@ -886,7 +954,53 @@ _To be written by Agent B upon completion._
 
 ### Agent C — Completion Report
 
-_To be written by Agent C upon completion._
+**Status:** Complete. All verification gates passed.
+
+**Files modified/created:**
+
+1. `internal/analyzer/types.go` — Added three new types: `SessionComparison`, `ComparisonGroup`, `ComparisonReport`. No existing types were modified or duplicated.
+
+2. `internal/analyzer/compare.go` — New file implementing `CompareSAWVsSequential`. Also contains two unexported helpers: `sessionFriction` (shared with anomaly.go via same package), `buildFacetIndex`, and `computeComparisonGroup`.
+
+3. `internal/analyzer/anomaly.go` — New file implementing `ComputeProjectBaseline`, `DetectAnomalies`, and the `BaselineInput` type. Also contains unexported helpers: `mean`, `populationStddev`, `zScore`, `buildAnomalyReason`.
+
+4. `internal/store/aiops_types_temp.go` — **Temporary stub file** (created for parallel compilation only). Contains `store.ProjectBaseline` and `store.AnomalyResult` type stubs. This file was **NOT merged** to main — Agent A's real types from `internal/store/types.go` are in place.
+
+**Test files created:**
+
+- `internal/analyzer/compare_test.go` — 5 table-driven test cases for `CompareSAWVsSequential`:
+  - `TestCompareSAWVsSequential_AllSAW` — all sessions are SAW; verifies counts, sort order, IsSAW flags
+  - `TestCompareSAWVsSequential_AllSequential` — all sessions sequential; verifies includeSessions=false behavior
+  - `TestCompareSAWVsSequential_Mixed` — 2 SAW + 2 sequential; verifies friction fallback, CostPerCommit, wave/agent counts
+  - `TestCompareSAWVsSequential_ZeroCommits` — verifies CostPerCommit=0 (not Inf) when all commits=0
+  - `TestCompareSAWVsSequential_EmptySessions` — graceful handling of nil sessions
+
+- `internal/analyzer/anomaly_test.go` — Tests for `ComputeProjectBaseline`, `DetectAnomalies`, and helpers:
+  - `TestComputeProjectBaseline_TooFewSessions` — returns error for 2 sessions
+  - `TestComputeProjectBaseline_ZeroSessions` — returns error for 0 sessions
+  - `TestComputeProjectBaseline_Basic` — verifies AvgFriction, AvgCommits, SAWSessionFrac, StddevCostUSD=0 for uniform costs
+  - `TestComputeProjectBaseline_SAWFrac` — verifies 100% SAW fraction
+  - `TestDetectAnomalies_NormalSession` — z-score within threshold, no results
+  - `TestDetectAnomalies_HighCostAnomaly` — cost z=42.5, severity=critical
+  - `TestDetectAnomalies_HighFrictionAnomaly` — friction z=16, severity=critical, ToolErrors fallback
+  - `TestDetectAnomalies_WarningThreshold` — warning severity (|z|<3)
+  - `TestDetectAnomalies_DefaultThreshold` — threshold<=0 defaults to 2.0
+  - `TestDetectAnomalies_ZeroStddev` — no anomalies when stddev=0
+  - `TestDetectAnomalies_EmptySessions` — nil input handled gracefully
+  - Unit tests for `mean`, `populationStddev`, `zScore`
+
+**Verification gate results:**
+```
+go build ./...   → PASS
+go vet ./...     → PASS
+go test ./internal/analyzer/... -v -race → PASS (all existing + new tests)
+```
+
+**Deviations from contracts:**
+
+1. **`buildFacetIndex` and `sessionFriction` helpers** are defined in `compare.go` but used by both `compare.go` and `anomaly.go`. This is acceptable since both files are in the same package `analyzer`. No code duplication.
+
+2. **Temporary stub file** `internal/store/aiops_types_temp.go` was created for parallel compilation and intentionally excluded from the main branch merge.
 
 ### Agent D — Completion Report
 

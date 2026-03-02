@@ -3,7 +3,7 @@ package store
 import "fmt"
 
 // currentSchemaVersion is the latest schema version.
-const currentSchemaVersion = 1
+const currentSchemaVersion = 2
 
 // Migrate runs forward migrations to bring the database schema up to date.
 func (db *DB) Migrate() error {
@@ -26,6 +26,12 @@ func (db *DB) Migrate() error {
 	if version < 1 {
 		if err := db.migrateV1(); err != nil {
 			return fmt.Errorf("migration v1: %w", err)
+		}
+	}
+
+	if version < 2 {
+		if err := db.migrateV2(); err != nil {
+			return fmt.Errorf("migration v2: %w", err)
 		}
 	}
 
@@ -137,11 +143,82 @@ func (db *DB) migrateV1() error {
 		}
 	}
 
-	// Set schema version.
+	// Set schema version to 1 (this migration only brings DB to v1).
 	if _, err := tx.Exec("DELETE FROM schema_version"); err != nil {
 		return err
 	}
-	if _, err := tx.Exec("INSERT INTO schema_version (version) VALUES (?)", currentSchemaVersion); err != nil {
+	if _, err := tx.Exec("INSERT INTO schema_version (version) VALUES (?)", 1); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// migrateV2 adds the transcript FTS index tables and project baselines table.
+func (db *DB) migrateV2() error {
+	statements := []string{
+		// Backing table for FTS: stores metadata alongside indexed text.
+		`CREATE TABLE IF NOT EXISTS transcript_index (
+			session_id   TEXT    NOT NULL,
+			project_hash TEXT    NOT NULL,
+			line_number  INTEGER NOT NULL,
+			entry_type   TEXT    NOT NULL,
+			content      TEXT    NOT NULL,
+			timestamp    TEXT    NOT NULL,
+			indexed_at   TEXT    NOT NULL,
+			PRIMARY KEY (session_id, line_number)
+		)`,
+
+		// FTS5 virtual table backed by transcript_index.
+		`CREATE VIRTUAL TABLE IF NOT EXISTS transcript_index_fts
+			USING fts5(
+				session_id,
+				project_hash,
+				entry_type,
+				content,
+				timestamp,
+				content='transcript_index',
+				content_rowid='rowid'
+			)`,
+
+		// Project baselines table.
+		`CREATE TABLE IF NOT EXISTS project_baselines (
+			project          TEXT    PRIMARY KEY,
+			computed_at      TEXT    NOT NULL,
+			session_count    INTEGER NOT NULL DEFAULT 0,
+			avg_cost_usd     REAL    NOT NULL DEFAULT 0,
+			stddev_cost_usd  REAL    NOT NULL DEFAULT 0,
+			avg_friction     REAL    NOT NULL DEFAULT 0,
+			stddev_friction  REAL    NOT NULL DEFAULT 0,
+			avg_commits      REAL    NOT NULL DEFAULT 0,
+			saw_session_frac REAL    NOT NULL DEFAULT 0
+		)`,
+
+		// Index to speed up project_hash lookups on transcript_index.
+		`CREATE INDEX IF NOT EXISTS idx_transcript_index_project ON transcript_index(project_hash)`,
+	}
+
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for _, stmt := range statements {
+		if _, err := tx.Exec(stmt); err != nil {
+			l := len(stmt)
+			if l > 40 {
+				l = 40
+			}
+			return fmt.Errorf("executing %q: %w", stmt[:l], err)
+		}
+	}
+
+	// Update schema version.
+	if _, err := tx.Exec("DELETE FROM schema_version"); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("INSERT INTO schema_version (version) VALUES (?)", 2); err != nil {
 		return err
 	}
 

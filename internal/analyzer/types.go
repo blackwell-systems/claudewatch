@@ -193,3 +193,33 @@ type ToolAnomaly struct {
 	// Message is a human-readable explanation of the anomaly.
 	Message string `json:"message"`
 }
+
+// SessionComparison holds per-session cost/friction data with SAW flag.
+type SessionComparison struct {
+	SessionID  string  `json:"session_id"`
+	Project    string  `json:"project"`
+	StartTime  string  `json:"start_time"`
+	IsSAW      bool    `json:"is_saw"`
+	WaveCount  int     `json:"wave_count"`  // 0 if not SAW
+	AgentCount int     `json:"agent_count"` // 0 if not SAW
+	CostUSD    float64 `json:"cost_usd"`
+	GitCommits int     `json:"git_commits"`
+	Friction   int     `json:"friction"`
+}
+
+// ComparisonGroup holds aggregate stats for one group (SAW or sequential).
+type ComparisonGroup struct {
+	Count         int     `json:"count"`
+	AvgCostUSD    float64 `json:"avg_cost_usd"`
+	AvgCommits    float64 `json:"avg_commits"`
+	CostPerCommit float64 `json:"cost_per_commit"` // 0 if no commits
+	AvgFriction   float64 `json:"avg_friction"`
+}
+
+// ComparisonReport holds the full SAW vs sequential comparison for a project.
+type ComparisonReport struct {
+	Project    string             `json:"project"`
+	SAW        ComparisonGroup    `json:"saw"`
+	Sequential ComparisonGroup    `json:"sequential"`
+	Sessions   []SessionComparison `json:"sessions,omitempty"` // all sessions, sorted by start time desc
+}

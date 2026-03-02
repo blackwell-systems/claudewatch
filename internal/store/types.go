@@ -110,3 +110,51 @@ type MetricDelta struct {
 	Delta     float64 `json:"delta"`
 	Direction string  `json:"direction"` // "improved", "regressed", "unchanged"
 }
+
+// TranscriptIndexEntry represents one indexed JSONL line from a session transcript.
+type TranscriptIndexEntry struct {
+	SessionID   string `json:"session_id"`
+	ProjectHash string `json:"project_hash"`
+	LineNumber  int    `json:"line_number"`
+	EntryType   string `json:"entry_type"`
+	Content     string `json:"content"`
+	Timestamp   string `json:"timestamp"`
+	IndexedAt   string `json:"indexed_at"`
+}
+
+// TranscriptSearchResult is one FTS hit from a transcript search.
+type TranscriptSearchResult struct {
+	SessionID   string  `json:"session_id"`
+	ProjectHash string  `json:"project_hash"`
+	LineNumber  int     `json:"line_number"`
+	EntryType   string  `json:"entry_type"`
+	Snippet     string  `json:"snippet"`
+	Timestamp   string  `json:"timestamp"`
+	Rank        float64 `json:"rank"`
+}
+
+// ProjectBaseline holds the historical statistical baseline for a project.
+type ProjectBaseline struct {
+	Project        string  `json:"project"`
+	ComputedAt     string  `json:"computed_at"`
+	SessionCount   int     `json:"session_count"`
+	AvgCostUSD     float64 `json:"avg_cost_usd"`
+	StddevCostUSD  float64 `json:"stddev_cost_usd"`
+	AvgFriction    float64 `json:"avg_friction"`
+	StddevFriction float64 `json:"stddev_friction"`
+	AvgCommits     float64 `json:"avg_commits"`
+	SAWSessionFrac float64 `json:"saw_session_frac"`
+}
+
+// AnomalyResult is a detected anomaly for a session (computed type, not persisted).
+type AnomalyResult struct {
+	SessionID      string  `json:"session_id"`
+	Project        string  `json:"project"`
+	StartTime      string  `json:"start_time"`
+	CostUSD        float64 `json:"cost_usd"`
+	Friction       int     `json:"friction"`
+	CostZScore     float64 `json:"cost_z_score"`
+	FrictionZScore float64 `json:"friction_z_score"`
+	Severity       string  `json:"severity"`
+	Reason         string  `json:"reason"`
+}
