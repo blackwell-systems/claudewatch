@@ -2,6 +2,12 @@
 
 All notable changes to claudewatch are documented here.
 
+## [0.7.5] - 2026-03-02
+
+### Fixed
+
+- **`claudewatch sessions` shows stale stats for active sessions** — session metadata is cached in `~/.claude/usage-data/session-meta/*.json` and written by Claude Code, typically at session close. Long-running or resumed sessions would show message counts and duration frozen at the time the meta was last written (often the session start). Fix: `ParseAllSessionMeta` now builds a JSONL index from `~/.claude/projects/` and, for any session whose JSONL file is newer than its cached meta JSON, re-parses the transcript to overlay the live message counts, token totals, timestamps, and duration. Fields written exclusively by Claude Code (git commits, languages, lines changed, tool counts) are preserved from the JSON.
+
 ## [0.7.4] - 2026-03-02
 
 ### Fixed
