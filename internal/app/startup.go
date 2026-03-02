@@ -111,13 +111,12 @@ func runStartup(cmd *cobra.Command, args []string) {
 	// Build line 2: readiness + tip.
 	tip := startupTip(topFriction)
 
-	// Emit briefing to stderr so Claude Code surfaces it.
-	fmt.Fprintf(os.Stderr, "╔ claudewatch | %s | %s | friction: %s\n", projectName, sessionStr, frictionStr)
-	fmt.Fprintf(os.Stderr, "║ CLAUDE.md: %s | agent success: %s | %s\n", claudeMD, agentSuccessStr, tip)
-	fmt.Fprintf(os.Stderr, "║ tools: get_session_dashboard · get_project_health · get_live_friction · get_context_pressure · get_cost_velocity · get_suggestions\n")
-	fmt.Fprintf(os.Stderr, "╚ PostToolUse hook active → fires on errors/context/cost → call get_session_dashboard\n")
-
-	os.Exit(2)
+	// Print to stdout so Claude Code injects this into Claude's context at session start.
+	// SessionStart hooks: stdout → Claude's context. stderr + exit 2 → user terminal only.
+	fmt.Printf("╔ claudewatch | %s | %s | friction: %s\n", projectName, sessionStr, frictionStr)
+	fmt.Printf("║ CLAUDE.md: %s | agent success: %s | %s\n", claudeMD, agentSuccessStr, tip)
+	fmt.Printf("║ tools: get_session_dashboard · get_project_health · get_live_friction · get_context_pressure · get_cost_velocity · get_suggestions\n")
+	fmt.Printf("╚ PostToolUse hook active → fires on errors/context/cost → call get_session_dashboard\n")
 }
 
 func startupFrictionLabel(rate float64) string {
