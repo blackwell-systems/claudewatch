@@ -28,6 +28,7 @@ type LiveFrictionResult struct {
 	TotalFriction int                        `json:"total_friction"`
 	Truncated     bool                       `json:"truncated"`
 	TopType       string                     `json:"top_type,omitempty"`
+	Patterns      []claude.FrictionPattern   `json:"patterns,omitempty"`
 }
 
 const maxFrictionEvents = 50
@@ -150,5 +151,6 @@ func (s *Server) handleGetLiveFriction(args json.RawMessage) (any, error) {
 		TotalFriction: stats.TotalFriction,
 		Truncated:     truncated,
 		TopType:       topType,
+		Patterns:      stats.Patterns,
 	}, nil
 }
