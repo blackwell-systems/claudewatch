@@ -2,6 +2,14 @@
 
 All notable changes to claudewatch are documented here.
 
+## [0.7.6] - 2026-03-02
+
+### Fixed
+
+- **`claudewatch sessions` timestamp parsing** — date column and inspect view used `time.Parse(time.RFC3339, ...)` directly; timestamps in RFC3339Nano or plain datetime format would silently fail, rendering a blank date or raw string. Fixed to use `claude.ParseTimestamp()` which tries three formats in sequence.
+- **`claudewatch sessions` "Messages" column header** — column showed only user message count but was labelled "Messages". Renamed to "User Msgs" to match what is actually displayed.
+- **`claudewatch sessions` empty project path** — `filepath.Base("")` returns `"."`, causing sessions with no recorded project path to show `"."` as the project name. Now returns `"(unknown)"`.
+
 ## [0.7.5] - 2026-03-02
 
 ### Fixed
