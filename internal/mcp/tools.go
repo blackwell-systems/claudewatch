@@ -154,6 +154,7 @@ func addTools(s *Server) {
 	addDashboardTools(s)
 	addTranscriptTools(s)
 	addAnomalyTools(s)
+	addRegressionTools(s)
 	addAttributionTools(s)
 	s.registerTool(toolDef{
 		Name:        "get_project_comparison",
