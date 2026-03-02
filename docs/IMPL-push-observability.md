@@ -627,7 +627,7 @@ After Wave 1 completes (all 4 agents):
 
 - [SKIPPED] Wave 1 Agent A -- Friction alert hook (deferred — build hook separately after validating push model)
 - [x] Wave 1 Agent B -- `get_context_pressure` MCP tool
-- [ ] Wave 1 Agent C -- `get_cost_velocity` MCP tool
+- [x] Wave 1 Agent C -- `get_cost_velocity` MCP tool
 - [ ] Wave 1 Agent D -- Friction pattern classification
 - [ ] Post-merge -- Register tools in `tools.go`, fix test counts
 
@@ -655,3 +655,30 @@ After Wave 1 completes (all 4 agents):
 - `go test ./internal/mcp -run TestContextPressure` -- 5/5 pass
 
 **Post-merge required:** Add `addContextTools(s)` call in `internal/mcp/tools.go` `addTools` function.
+
+### Agent C — Completion Report
+
+**Status:** DONE
+
+**Files created (4):**
+- `internal/claude/active_live_cost.go` — `CostPricing` struct and `ParseLiveCostVelocity` function
+- `internal/claude/active_live_cost_test.go` — 6 tests covering empty file, outside window, within window, status thresholds, mixed entries
+- `internal/mcp/cost_velocity_tools.go` — `CostVelocityResult` struct, `addCostVelocityTools`, handler with Sonnet pricing constants
+- `internal/mcp/cost_velocity_tools_test.go` — 3 MCP integration tests (no session, active burning, active efficient)
+
+**Files modified:** None
+
+**Implementation details:**
+- `ParseLiveCostVelocity` follows the same pattern as `ParseLiveTokenWindow`: reads JSONL, filters by time window, sums tokens, computes cost using provided pricing
+- `CostPricing` defined locally in the `claude` package to avoid circular import with `analyzer`
+- Sonnet pricing constants (`3.0` input, `15.0` output per million) defined in the MCP handler file
+- Status thresholds: `< 0.05` efficient, `0.05-0.20` normal, `>= 0.20` burning
+- 10-minute rolling window hardcoded in MCP handler
+
+**Verification:**
+- `go build ./...` — pass
+- `go vet ./...` — pass
+- `go test ./internal/claude -run TestParseLiveCostVelocity` — 6/6 pass
+- `go test ./internal/mcp -run TestCostVelocity` — 3/3 pass
+
+**Post-merge required:** Add `addCostVelocityTools(s)` to `internal/mcp/tools.go`.
