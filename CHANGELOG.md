@@ -4,6 +4,8 @@ All notable changes to claudewatch are documented here.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-03-02
+
 ### Added
 
 - **`get_context_pressure`** — context window usage tracker for the current live session. Sums input/output tokens, counts compaction events, estimates usage ratio against 200k window. Status levels: "comfortable" (<50%), "filling" (50-75%), "pressure" (75-90%), "critical" (>=90%).
