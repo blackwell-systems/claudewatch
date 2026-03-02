@@ -2,6 +2,26 @@
 
 All notable changes to claudewatch are documented here.
 
+## [0.7.8] - 2026-03-02
+
+### Added
+
+- **`claudewatch search <query>`** — full-text search over all indexed session transcripts using SQLite FTS5. Auto-indexes on first use if the index is empty (prints "Indexing transcripts…", suppressed under `--json`). `--limit` flag controls result count (default 20). Results show session ID, entry type, timestamp, and a highlighted snippet.
+
+- **`claudewatch compare [--project <name>]`** — side-by-side comparison of SAW parallel sessions vs sequential sessions for a project. Detects SAW sessions by parsing transcripts via `ComputeSAWWaves`. Table columns: `Type | Sessions | Avg Cost | Avg Commits | Cost/Commit | Avg Friction`. SAW row appears first; totals footer. Defaults to the most recent session's project.
+
+- **`claudewatch anomalies [--project <name>] [--threshold <float>]`** — per-project anomaly detection using z-score statistics over per-project baselines. On first run, computes and stores a baseline automatically. `--threshold` defaults to 2.0 standard deviations. Reports severity as `warning` (|z| ≥ threshold) or `critical` (|z| ≥ 3×threshold). Table columns: `Session | Start | Cost | Friction | Cost Z | Friction Z | Severity`.
+
+- **`claudewatch doctor`** — new check #9: verifies that anomaly baselines have been computed for all projects with ≥5 sessions. Projects missing a baseline are reported as warnings. Passes vacuously if no project has ≥5 sessions. DB open failure is a soft failure (does not abort the doctor run).
+
+- **`search_transcripts` MCP tool** — FTS transcript search accessible directly from Claude Code sessions. Required `query` arg, optional `limit` (default 20). Returns count, indexed count, and result list. Returns a user-friendly error if the index is empty (directing to `claudewatch search` to build it).
+
+- **`get_project_anomalies` MCP tool** — project anomaly detection from within Claude Code sessions. Optional `project` arg (defaults to active session's project) and `threshold`. Computes and persists the baseline on first call. Returns baseline stats alongside anomaly results with z-scores and severity.
+
+- **Transcript FTS index** — new SQLite schema (v2) adds `transcript_index` backing table and `transcript_index_fts` FTS5 virtual table. Content is extracted from transcript entry text and tool_use blocks (capped at 500 chars). Manual FTS sync used for compatibility with pure-Go SQLite driver.
+
+- **Per-project anomaly baselines** — new `project_baselines` table stores `AvgCostUSD`, `StddevCostUSD`, `AvgFriction`, `StddevFriction`, `AvgCommits`, `SAWSessionFrac` per project. Baselines require ≥3 sessions; z-scores use population standard deviation.
+
 ## [0.7.7] - 2026-03-02
 
 ### Fixed

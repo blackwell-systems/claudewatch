@@ -50,6 +50,8 @@ Call these to understand patterns over time or validate prior changes:
 9. **`get_cost_summary`** — where budget is going across all projects
 10. **`get_stale_patterns`** — friction types that have recurred without any CLAUDE.md response
 11. **`get_saw_sessions`** + **`get_saw_wave_breakdown`** — Scout-and-Wave parallel agent workflow timing and status
+12. **`search_transcripts`** — find sessions where a specific topic, error, or tool was discussed; useful before tackling a recurring problem to see how it was approached before
+13. **`get_project_anomalies`** — identify sessions that deviated significantly from the project's cost or friction baseline; useful for diagnosing what went wrong in a particularly expensive or high-friction session
 
 ## Tool reference
 
@@ -411,6 +413,83 @@ Each agent within a wave:
 | `status` | string | `completed`, `killed`, or `failed` |
 | `duration_ms` | int | Agent task duration in milliseconds |
 | `tokens` | int | Total tokens consumed by this agent |
+
+### AI Ops
+
+#### `search_transcripts`
+
+Full-text search over all indexed session transcript entries. Searches the FTS5 index built from JSONL transcript files. Returns matching entries with session ID, type, timestamp, and highlighted snippet.
+
+If the transcript index is empty, returns a user-friendly error directing you to run `claudewatch search <query>` first (which builds the index automatically). The MCP handler does not auto-index — indexing is a slow CLI operation that should be initiated explicitly.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `query` | string | yes | Full-text search query. FTS5 operators supported (e.g. `"error" AND "build"`). |
+| `limit` | int | no | Maximum results to return. Default: 20. |
+
+| Output field | Type | Description |
+|---|---|---|
+| `count` | int | Number of results returned |
+| `indexed_count` | int | Total entries in the transcript index |
+| `results` | array | Matching entries |
+
+Each result:
+
+| Field | Type | Description |
+|---|---|---|
+| `session_id` | string | Session the entry came from |
+| `project_hash` | string | Project identifier for the session |
+| `entry_type` | string | Entry type (e.g. `message`, `tool_use`) |
+| `timestamp` | string | Entry timestamp (RFC3339) |
+| `snippet` | string | Highlighted excerpt showing where the query matched |
+| `rank` | float | FTS5 relevance rank (lower is more relevant) |
+
+---
+
+#### `get_project_anomalies`
+
+Detects anomalous sessions for a project using per-project z-score baselines. On first call for a project, computes and persists a baseline automatically from all available sessions. Subsequent calls load the stored baseline. Returns both the baseline stats and the list of anomalous sessions.
+
+Project resolution follows the same pattern as `get_project_health`: active session's project is used if no `project` arg is provided, falling back to the most recent closed session.
+
+Returns an error if fewer than 3 sessions exist for the project (insufficient data to compute a meaningful baseline).
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `project` | string | no | Project name. Defaults to the active session's project. |
+| `threshold` | float | no | Z-score threshold for anomaly detection. Default: 2.0. |
+
+| Output field | Type | Description |
+|---|---|---|
+| `project` | string | Project name used for the query |
+| `baseline` | object | Per-project baseline stats (omitted if not yet computed) |
+| `anomalies` | array | Sessions with z-scores exceeding the threshold |
+
+`baseline` fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `avg_cost_usd` | float | Mean session cost across all sessions |
+| `stddev_cost_usd` | float | Population standard deviation of session cost |
+| `avg_friction` | float | Mean friction score |
+| `stddev_friction` | float | Population standard deviation of friction score |
+| `avg_commits` | float | Mean commits per session |
+| `saw_session_frac` | float | Fraction of sessions that used SAW parallel agents |
+
+Each anomaly:
+
+| Field | Type | Description |
+|---|---|---|
+| `session_id` | string | Anomalous session identifier |
+| `start_time` | string | Session start time (RFC3339) |
+| `cost_usd` | float | Actual session cost |
+| `friction_score` | float | Actual friction score |
+| `cost_z` | float | Z-score for cost (positive = above average) |
+| `friction_z` | float | Z-score for friction (positive = above average) |
+| `severity` | string | `warning` (z ≥ threshold) or `critical` (z ≥ 3× threshold) |
+| `reason` | string | Human-readable explanation of which signal triggered the anomaly |
+
+---
 
 ## Data freshness
 

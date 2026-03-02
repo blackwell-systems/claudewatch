@@ -269,6 +269,68 @@ No flags.
 
 ---
 
+### search
+
+Full-text search over all indexed session transcripts using SQLite FTS5. Auto-indexes on first use if the index is empty, printing "Indexing transcripts…" while it runs. Use this to find sessions where a particular topic, error message, or tool was discussed.
+
+```bash
+claudewatch search "anomaly detection"
+claudewatch search "go build" --limit 5
+claudewatch search "friction spike" --json
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--limit <n>` | 20 | Maximum results to return |
+
+**Output:** Table of results with session ID, entry type, timestamp, and a highlighted snippet showing where the query matched. With `--json`, returns an array of result objects. On first use with an empty index, indexing runs automatically before the query; suppressed with `--json`.
+
+---
+
+### compare
+
+Side-by-side comparison of SAW parallel sessions vs sequential sessions for a project. Detects SAW sessions by parsing transcripts and identifying Scout-and-Wave patterns via `ComputeSAWWaves`. Useful for measuring whether parallelization is saving time and cost.
+
+```bash
+claudewatch compare
+claudewatch compare --project claudewatch
+claudewatch compare --json
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--project <name>` | most recent session's project | Project to compare |
+
+**Output:** Table with two rows (SAW and Sequential) and columns: `Type | Sessions | Avg Cost | Avg Commits | Cost/Commit | Avg Friction`. SAW row appears first. A totals footer summarizes across both groups. With `--json`, returns the full comparison report with per-session breakdowns.
+
+---
+
+### anomalies
+
+Per-project anomaly detection using z-score statistics over historical baselines. On first run for a project, computes and stores the baseline automatically from all available sessions (requires ≥3). Subsequent calls load the stored baseline for faster execution.
+
+```bash
+claudewatch anomalies
+claudewatch anomalies --project claudewatch
+claudewatch anomalies --threshold 3.0
+claudewatch anomalies --json
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--project <name>` | most recent session's project | Project to analyze |
+| `--threshold <float>` | 2.0 | Z-score threshold for anomaly detection |
+
+**Output:** Table of anomalous sessions with columns: `Session | Start | Cost | Friction | Cost Z | Friction Z | Severity`. Severity is `warning` when the z-score exceeds the threshold and `critical` when it exceeds 3× the threshold. Returns an empty table (no error) when no anomalies are detected. With `--json`, returns the baseline stats alongside the anomaly list.
+
+---
+
 ## The fix-measure loop
 
 These commands are designed to work together in a repeated cycle:
@@ -290,7 +352,7 @@ The `get_effectiveness` MCP tool surfaces the same before/after data inside sess
 
 ## JSON output
 
-`--json` is supported by `scan`, `metrics`, `gaps`, `suggest`, and `track`. All JSON output goes to stdout; errors go to stderr. Pipe into `jq` or redirect to a file for integration with dashboards, time-series tools, or custom queries.
+`--json` is supported by `scan`, `metrics`, `gaps`, `suggest`, `track`, `search`, `compare`, and `anomalies`. All JSON output goes to stdout; errors go to stderr. Pipe into `jq` or redirect to a file for integration with dashboards, time-series tools, or custom queries.
 
 ```bash
 claudewatch metrics --days 30 --json | jq '.agents.by_type'
