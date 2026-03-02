@@ -628,5 +628,36 @@ After Wave 1 completes (all 4 agents):
 - [SKIPPED] Wave 1 Agent A -- Friction alert hook (deferred — build hook separately after validating push model)
 - [ ] Wave 1 Agent B -- `get_context_pressure` MCP tool
 - [ ] Wave 1 Agent C -- `get_cost_velocity` MCP tool
-- [ ] Wave 1 Agent D -- Friction pattern classification
+- [x] Wave 1 Agent D -- Friction pattern classification
 - [ ] Post-merge -- Register tools in `tools.go`, fix test counts
+
+### Agent D -- Completion Report
+
+**Status:** COMPLETE
+
+**Commit:** `wave1-agent-D: add friction pattern classification`
+
+**Changes:**
+
+1. `internal/claude/active_live.go`:
+   - Added `FrictionPattern` struct with `Type`, `Count`, `Consecutive`, `FirstTurn`, `LastTurn` fields.
+   - Added `Patterns []FrictionPattern` field to `LiveFrictionStats`.
+   - Implemented `collapseFrictionPatterns(events []LiveFrictionEvent) []FrictionPattern`:
+     groups events by `type:tool` key, sums counts, detects consecutive runs,
+     tracks first/last turn positions, sorts by count descending then alphabetically.
+   - `ParseLiveFriction` now calls `collapseFrictionPatterns` before returning.
+
+2. `internal/mcp/live_tools.go`:
+   - Added `Patterns []claude.FrictionPattern` field to `LiveFrictionResult`.
+   - `handleGetLiveFriction` passes `stats.Patterns` (computed from full event
+     list before truncation) through to the MCP response.
+
+3. Tests added:
+   - `TestCollapseFrictionPatterns_NoEvents` -- empty/nil input returns empty slice.
+   - `TestCollapseFrictionPatterns_SingleType` -- all same key collapses to one pattern, Consecutive=true.
+   - `TestCollapseFrictionPatterns_MixedTypes` -- multiple keys sorted by count descending.
+   - `TestCollapseFrictionPatterns_ConsecutiveDetection` -- gap between same key sets Consecutive=false.
+   - `TestParseLiveFriction_PopulatesPatterns` -- integration test verifying ParseLiveFriction sets Patterns.
+   - `TestGetLiveFriction_PatternsInResponse` -- MCP handler includes patterns in response.
+
+**Verification:** `go build`, `go vet`, and all tests pass. Existing tests unaffected.
