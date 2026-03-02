@@ -179,6 +179,7 @@ type TranscriptEntry struct {
 	Type            string          `json:"type"`
 	Timestamp       string          `json:"timestamp"`
 	SessionID       string          `json:"sessionId"`
+	Cwd             string          `json:"cwd"` // present on the SessionStart progress entry
 	Message         json.RawMessage `json:"message"`
 	Data            json.RawMessage `json:"data"`
 	ParentToolUseID string          `json:"parentToolUseID"`

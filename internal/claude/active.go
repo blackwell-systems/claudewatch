@@ -170,6 +170,11 @@ func ParseActiveSession(path string) (*SessionMeta, error) {
 			meta.SessionID = entry.SessionID
 		}
 
+		// Populate ProjectPath from the cwd field on the SessionStart progress entry.
+		if meta.ProjectPath == "" && entry.Cwd != "" {
+			meta.ProjectPath = entry.Cwd
+		}
+
 		// Populate StartTime from the first entry with a non-zero timestamp.
 		if !startTimeSet && entry.Timestamp != "" {
 			t := ParseTimestamp(entry.Timestamp)
@@ -201,10 +206,11 @@ func ParseActiveSession(path string) (*SessionMeta, error) {
 		meta.SessionID = strings.TrimSuffix(filepath.Base(path), ".jsonl")
 	}
 
-	// ProjectPath is set to the project hash directory name (the parent directory
-	// of the JSONL file). This is the hashed project path, not the real filesystem
-	// path, but it is the best available identifier from the JSONL file alone.
-	meta.ProjectPath = filepath.Base(filepath.Dir(path))
+	// ProjectPath is populated from the cwd field in the JSONL (real filesystem path).
+	// Fall back to the hash directory name only when cwd was absent from all entries.
+	if meta.ProjectPath == "" {
+		meta.ProjectPath = filepath.Base(filepath.Dir(path))
+	}
 
 	return &meta, nil
 }

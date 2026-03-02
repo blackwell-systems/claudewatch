@@ -294,6 +294,7 @@ func TestParseActiveSession_MessageCounts(t *testing.T) {
 }
 
 func TestParseActiveSession_ProjectPathIsHash(t *testing.T) {
+	// When no cwd field is present, ProjectPath falls back to the hash dir name.
 	dir := t.TempDir()
 	hashDir := filepath.Join(dir, "the-project-hash")
 	if err := os.MkdirAll(hashDir, 0o755); err != nil {
@@ -310,6 +311,29 @@ func TestParseActiveSession_ProjectPathIsHash(t *testing.T) {
 	}
 	if meta.ProjectPath != "the-project-hash" {
 		t.Fatalf("expected ProjectPath=%q, got %q", "the-project-hash", meta.ProjectPath)
+	}
+}
+
+func TestParseActiveSession_ProjectPathFromCwd(t *testing.T) {
+	// When a cwd field is present (SessionStart progress entry), ProjectPath
+	// is set to the real filesystem path rather than the hash dir name.
+	dir := t.TempDir()
+	hashDir := filepath.Join(dir, "-Users-dayna-blackwell-code-commitmux")
+	if err := os.MkdirAll(hashDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(hashDir, "session1.jsonl")
+	writeJSONLFile(t, path, []map[string]any{
+		{"type": "progress", "cwd": "/Users/dayna.blackwell/code/commitmux", "sessionId": "session1", "timestamp": "2026-03-01T10:00:00Z"},
+		{"type": "user", "timestamp": "2026-03-01T10:01:00Z", "sessionId": "session1"},
+	})
+
+	meta, err := ParseActiveSession(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if meta.ProjectPath != "/Users/dayna.blackwell/code/commitmux" {
+		t.Fatalf("expected ProjectPath=%q, got %q", "/Users/dayna.blackwell/code/commitmux", meta.ProjectPath)
 	}
 }
 
