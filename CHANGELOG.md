@@ -2,6 +2,12 @@
 
 All notable changes to claudewatch are documented here.
 
+## [0.7.3] - 2026-03-02
+
+### Fixed
+
+- **`claudewatch track` live session gap** — snapshot metrics were computed from indexed session-meta files only, so any session still in progress would appear with week-old data. `avg_messages_per_session` and `avg_tokens_per_session` were significantly understated for long-running sessions. Fix mirrors the `get_cost_summary` pattern: calls `FindActiveSessionPath` + `ParseActiveSession` after loading the indexed list, replaces the stale indexed copy (matched by `SessionID`) or appends as a new entry, so snapshots always reflect the current session's message counts and token usage.
+
 ## [0.7.2] - 2026-03-02
 
 ### Added
