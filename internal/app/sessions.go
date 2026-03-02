@@ -60,6 +60,9 @@ type sessionRow struct {
 }
 
 func (s sessionRow) projectName() string {
+	if s.Meta.ProjectPath == "" {
+		return "(unknown)"
+	}
 	return filepath.Base(s.Meta.ProjectPath)
 }
 
@@ -117,8 +120,8 @@ func runSessions(cmd *cobra.Command, args []string) error {
 	cutoff := time.Now().AddDate(0, 0, -sessionsFlagDays)
 
 	for _, s := range sessions {
-		t, err := time.Parse(time.RFC3339, s.StartTime)
-		if err != nil {
+		t := claude.ParseTimestamp(s.StartTime)
+		if t.IsZero() {
 			continue
 		}
 		if t.Before(cutoff) {
@@ -247,7 +250,7 @@ func renderInspect(r sessionRow) {
 	label("Project Path", r.Meta.ProjectPath)
 
 	date := r.Meta.StartTime
-	if t, err := time.Parse(time.RFC3339, r.Meta.StartTime); err == nil {
+	if t := claude.ParseTimestamp(r.Meta.StartTime); !t.IsZero() {
 		date = t.Format("2006-01-02 15:04:05")
 	}
 	label("Date", date)
@@ -380,11 +383,11 @@ func renderSessions(rows []sessionRow, sortKey string) {
 		output.StyleMuted.Render(fmt.Sprintf("%d sessions", len(rows))),
 		output.StyleBold.Render(sortKey))
 
-	tbl := output.NewTable("Date", "Project", "Duration", "Messages", "Commits", "Friction", "Errors", "Cost", "Outcome")
+	tbl := output.NewTable("Date", "Project", "Duration", "User Msgs", "Commits", "Friction", "Errors", "Cost", "Outcome")
 
 	for _, r := range rows {
 		date := ""
-		if t, err := time.Parse(time.RFC3339, r.Meta.StartTime); err == nil {
+		if t := claude.ParseTimestamp(r.Meta.StartTime); !t.IsZero() {
 			date = t.Format("Jan 02 15:04")
 		}
 
