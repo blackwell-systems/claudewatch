@@ -20,6 +20,8 @@ All notable changes to claudewatch are documented here.
 
 - **Automated regression detection** — `get_regression_status` MCP tool checks whether a project's friction rate or avg cost has regressed beyond 1.5× its stored baseline. Also surfaces as check #10 in `claudewatch doctor`.
 
+- **Factor analysis** — `claudewatch correlate <outcome> [--factor <field>] [--project <name>]` and `get_causal_insights` MCP tool. Correlates session attributes (has_claude_md, is_saw, tool_call_count, etc.) against outcomes (friction, commits, cost, etc.) using Pearson correlation for numeric factors and grouped comparison for boolean factors. Groups with fewer than 10 sessions are flagged as low-confidence.
+
 ## [0.7.8] - 2026-03-02
 
 ### Added
