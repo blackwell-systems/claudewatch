@@ -6,7 +6,20 @@ All notable changes to claudewatch are documented here.
 
 ### Added
 
-- **`claudewatch startup`** — `SessionStart` shell hook subcommand. Prints a compact 4-line briefing to stdout at session start, injected directly into Claude's context: project identity, session count, friction level and dominant type, CLAUDE.md status, agent success rate, a context-specific tip, the full MCP tool manifest, and a reminder that the PostToolUse hook is active. Orients Claude at the start of every session without relying on user prompting. (`SessionStart` hooks must use stdout + exit 0 to reach Claude's context; stderr + exit 2 goes to the user terminal only.)
+- **`claudewatch startup`** — `SessionStart` shell hook subcommand that orients Claude at the start of every session. Prints a compact 4-line briefing to stdout, which Claude Code injects directly into Claude's context before the first user message:
+  - **Line 1:** Project name, session count, friction level and dominant friction type
+  - **Line 2:** CLAUDE.md presence, agent success rate, and a context-specific tip derived from the top friction pattern (e.g. "verify Bash commands before running" when `retry:Bash` dominates)
+  - **Line 3:** Full MCP tool manifest — every available claudewatch tool on one scannable line
+  - **Line 4:** Reminder that the PostToolUse hook is active and what triggers it
+
+  Data is pulled live from local Claude session files (`ParseAllSessionMeta`, `ParseAllFacets`, `ParseAgentTasks`) filtered to the current working directory. Requires no network calls.
+
+  **Hook routing note:** `SessionStart` hooks use stdout + exit 0 to inject context into Claude. stderr output or exit 2 routes to the user's terminal only and is invisible to Claude. This is the inverse of `PostToolUse`, where stderr + exit 2 is what surfaces feedback to Claude.
+
+  **settings.json configuration:**
+  ```json
+  {"SessionStart": [{"hooks": [{"type": "command", "command": "claudewatch startup"}]}]}
+  ```
 
 - **`claudewatch hook`** — `PostToolUse` shell hook subcommand for Claude Code. Checks the active session for three warning conditions in priority order: (1) ≥3 consecutive tool errors, (2) context window at "pressure" or "critical", (3) cost velocity "burning". Exits 0 silently if all clear; exits 2 with a self-contained stderr message naming `get_session_dashboard` and what it returns. Rate-limited to one check per 30 seconds via a timestamp file at `~/.cache/claudewatch-hook.ts`.
 
