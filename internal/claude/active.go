@@ -187,6 +187,9 @@ func ParseActiveSession(path string) (*SessionMeta, error) {
 		switch entry.Type {
 		case "user":
 			meta.UserMessageCount++
+			if entry.Timestamp != "" {
+				meta.UserMessageTimestamps = append(meta.UserMessageTimestamps, entry.Timestamp)
+			}
 		case "assistant":
 			meta.AssistantMessageCount++
 
