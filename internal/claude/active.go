@@ -33,6 +33,14 @@ type assistantMsgUsage struct {
 // Returns ("", nil) if no active session is found.
 // Returns ("", error) only on unexpected I/O failure.
 func FindActiveSessionPath(claudeHome string) (string, error) {
+	// Resolve symlinks so that paths match lsof output. On macOS it's common
+	// for ~/.claude to be a symlink (e.g. → ~/workspace/.claude); lsof reports
+	// the resolved path, so our pathSet must use resolved paths too.
+	resolved, err := filepath.EvalSymlinks(claudeHome)
+	if err == nil {
+		claudeHome = resolved
+	}
+
 	projectsDir := filepath.Join(claudeHome, "projects")
 
 	// Enumerate all .jsonl files under projects/<hash>/<session>.jsonl.
@@ -93,16 +101,16 @@ func FindActiveSessionPath(claudeHome string) (string, error) {
 	return "", nil
 }
 
-// findOpenFileWithLsof runs lsof -F n with a 3-second timeout and returns
-// the most recently modified path from jsonlFiles that appears in the lsof
-// output. When multiple JSONL files are open (e.g. stale FDs from previous
-// sessions), mtime selects the genuinely active one.
+// findOpenFileWithLsof runs lsof -c claude -F n with a 3-second timeout
+// and returns the most recently modified path from jsonlFiles that appears
+// in the lsof output. Scoped to Claude processes only (-c claude) to avoid
+// false positives from macOS Spotlight/mds indexing stale JSONL files.
 // Returns "" if lsof is unavailable, times out, or no match is found.
 func findOpenFileWithLsof(jsonlFiles []string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "lsof", "-F", "n")
+	cmd := exec.CommandContext(ctx, "lsof", "-c", "claude", "-F", "n")
 	out, err := cmd.Output()
 	if err != nil {
 		// lsof failure is non-fatal; fall through to mtime heuristic.
@@ -115,7 +123,7 @@ func findOpenFileWithLsof(jsonlFiles []string) string {
 		pathSet[p] = true
 	}
 
-	// Collect all JSONL paths that lsof reports as open.
+	// Collect all JSONL paths that lsof reports as open by Claude.
 	var matches []string
 	scanner := bufio.NewScanner(bytes.NewReader(out))
 	for scanner.Scan() {
@@ -130,7 +138,6 @@ func findOpenFileWithLsof(jsonlFiles []string) string {
 	}
 
 	// Among all matches, return the most recently modified file.
-	// Old sessions can leave stale open FDs; the newest mtime is the live session.
 	var bestPath string
 	var bestMtime time.Time
 	for _, p := range matches {

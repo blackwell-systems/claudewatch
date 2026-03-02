@@ -206,9 +206,10 @@ func (s *Server) handleGetSessionStats(args json.RawMessage) (any, error) {
 		if err == nil && meta != nil {
 			// Step 3: build and return the live result. Do NOT write to the DB.
 			cost := analyzer.EstimateSessionCost(*meta, pricing, ratio)
+			tags := s.loadTags()
 			return SessionStatsResult{
 				SessionID:     meta.SessionID,
-				ProjectName:   filepath.Base(meta.ProjectPath),
+				ProjectName:   resolveProjectName(meta.SessionID, meta.ProjectPath, tags),
 				StartTime:     meta.StartTime,
 				DurationMin:   meta.DurationMinutes, // 0 for live sessions — expected
 				InputTokens:   meta.InputTokens,

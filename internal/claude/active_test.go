@@ -54,7 +54,7 @@ func TestFindActiveSessionPath_EmptyProjectsDir(t *testing.T) {
 }
 
 func TestFindActiveSessionPath_MtimeFallback_RecentFile(t *testing.T) {
-	claudeHome := t.TempDir()
+	claudeHome, _ := filepath.EvalSymlinks(t.TempDir())
 	hashDir := filepath.Join(claudeHome, "projects", "abc123")
 	if err := os.MkdirAll(hashDir, 0o755); err != nil {
 		t.Fatal(err)
