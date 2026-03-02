@@ -61,7 +61,7 @@ func (s *Server) handleGetProjectHealth(args json.RawMessage) (any, error) {
 		if activeErr == nil && activePath != "" {
 			meta, parseErr := claude.ParseActiveSession(activePath)
 			if parseErr == nil && meta != nil && meta.ProjectPath != "" {
-				project = filepath.Base(meta.ProjectPath)
+				project = resolveProjectName(meta.SessionID, meta.ProjectPath, tags)
 			}
 		}
 

@@ -8,7 +8,11 @@ All notable changes to claudewatch are documented here.
 
 - **`get_cost_summary` live session gap** — the current in-progress session was invisible to cost aggregates, causing a ~$212 hole in today/week/all-time totals and by-project breakdowns. `handleGetCostSummary` now calls `FindActiveSessionPath` + `ParseActiveSession` after loading indexed sessions, deduplicates by SessionID to prevent double-counting if the session closes between calls, and applies the same time-bucket and by-project logic as indexed sessions. Non-fatal: any active session error falls through to indexed-only path.
 
-- **`get_project_health` wrong default** — with no `project` arg the tool sorted indexed sessions by `StartTime` and picked the most recent closed session, which was wrong when a session was actively running. The default now checks for an active session first via `FindActiveSessionPath` + `ParseActiveSession`, uses `filepath.Base(meta.ProjectPath)` as the project name, and falls back to the existing sort-by-StartTime logic only when no active session is available. Priority: explicit arg > active session > most-recent indexed session.
+- **`get_project_health` wrong default** — with no `project` arg the tool sorted indexed sessions by `StartTime` and picked the most recent closed session, which was wrong when a session was actively running. The default now checks for an active session first via `FindActiveSessionPath` + `ParseActiveSession`, resolves the project name via `resolveProjectName` (not `filepath.Base`, which returned the raw hash directory), and falls back to the existing sort-by-StartTime logic only when no active session is available. Priority: explicit arg > active session > most-recent indexed session.
+
+- **`get_project_health` active-session project name** — `filepath.Base(meta.ProjectPath)` returned the hashed directory name (e.g. `-Users-dayna-blackwell-code-commitmux`) instead of the friendly project name. Fixed by using `resolveProjectName(meta.SessionID, meta.ProjectPath, tags)`, consistent with how indexed sessions resolve names.
+
+- **`get_cost_summary` today/week undercounting for resumed sessions** — time-bucket logic used `session.StartTime` to decide whether a session counted toward `today_usd` or `week_usd`. Long-running sessions resumed across day or week boundaries had a start time in the past, causing their cost to appear in neither bucket. Fixed by anchoring on the last entry in `UserMessageTimestamps` (most recent user activity), falling back to `StartTime` only when the timestamps list is empty.
 
 ### Added
 

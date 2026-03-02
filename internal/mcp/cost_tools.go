@@ -68,7 +68,7 @@ func (s *Server) handleGetCostSummary(args json.RawMessage) (any, error) {
 		cost := analyzer.EstimateSessionCost(session, pricing, ratio)
 		allTimeUSD += cost
 
-		t := claude.ParseTimestamp(session.StartTime)
+		t := lastActiveTime(session.UserMessageTimestamps, session.StartTime)
 		if !t.IsZero() {
 			tUTC := t.UTC()
 			if tUTC.Format("2006-01-02") == todayStr {
@@ -98,7 +98,7 @@ func (s *Server) handleGetCostSummary(args json.RawMessage) (any, error) {
 			liveCost := analyzer.EstimateSessionCost(*liveMeta, pricing, ratio)
 			allTimeUSD += liveCost
 
-			t := claude.ParseTimestamp(liveMeta.StartTime)
+			t := lastActiveTime(liveMeta.UserMessageTimestamps, liveMeta.StartTime)
 			if !t.IsZero() {
 				tUTC := t.UTC()
 				if tUTC.Format("2006-01-02") == todayStr {
@@ -144,4 +144,17 @@ func (s *Server) handleGetCostSummary(args json.RawMessage) (any, error) {
 		AllTimeUSD: allTimeUSD,
 		ByProject:  projectSpends,
 	}, nil
+}
+
+// lastActiveTime returns the timestamp of the most recent user message in the session,
+// falling back to startTime if UserMessageTimestamps is empty. This avoids misclassifying
+// long-running resumed sessions as inactive on their original start date.
+func lastActiveTime(userMsgTimestamps []string, startTime string) time.Time {
+	for i := len(userMsgTimestamps) - 1; i >= 0; i-- {
+		t := claude.ParseTimestamp(userMsgTimestamps[i])
+		if !t.IsZero() {
+			return t
+		}
+	}
+	return claude.ParseTimestamp(startTime)
 }
