@@ -4,6 +4,8 @@ All notable changes to claudewatch are documented here.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-03-02
+
 ### Added
 
 - **`get_token_velocity`** — token throughput rate for the current live session with 10-minute windowed velocity for accurate real-time status on long-running or resumed sessions. Classifies as "flowing" (>=5k tok/min), "slow" (>=1k), or "idle".
