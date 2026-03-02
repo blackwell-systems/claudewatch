@@ -3,7 +3,7 @@ package store
 import "fmt"
 
 // currentSchemaVersion is the latest schema version.
-const currentSchemaVersion = 2
+const currentSchemaVersion = 3
 
 // Migrate runs forward migrations to bring the database schema up to date.
 func (db *DB) Migrate() error {
@@ -32,6 +32,12 @@ func (db *DB) Migrate() error {
 	if version < 2 {
 		if err := db.migrateV2(); err != nil {
 			return fmt.Errorf("migration v2: %w", err)
+		}
+	}
+
+	if version < 3 {
+		if err := db.migrateV3(); err != nil {
+			return fmt.Errorf("migration v3: %w", err)
 		}
 	}
 
@@ -219,6 +225,54 @@ func (db *DB) migrateV2() error {
 		return err
 	}
 	if _, err := tx.Exec("INSERT INTO schema_version (version) VALUES (?)", 2); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// migrateV3 adds the experiments and experiment_sessions tables for A/B testing.
+func (db *DB) migrateV3() error {
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS experiments (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			project    TEXT    NOT NULL,
+			started_at TEXT    NOT NULL,
+			stopped_at TEXT,
+			active     BOOLEAN NOT NULL DEFAULT true,
+			note       TEXT    NOT NULL DEFAULT ''
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS experiment_sessions (
+			experiment_id INTEGER NOT NULL REFERENCES experiments(id),
+			session_id    TEXT    NOT NULL,
+			variant       TEXT    NOT NULL,
+			PRIMARY KEY (experiment_id, session_id)
+		)`,
+
+		`CREATE INDEX IF NOT EXISTS idx_experiments_project ON experiments(project)`,
+	}
+
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for _, stmt := range statements {
+		if _, err := tx.Exec(stmt); err != nil {
+			l := len(stmt)
+			if l > 40 {
+				l = 40
+			}
+			return fmt.Errorf("executing %q: %w", stmt[:l], err)
+		}
+	}
+
+	if _, err := tx.Exec("DELETE FROM schema_version"); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("INSERT INTO schema_version (version) VALUES (?)", 3); err != nil {
 		return err
 	}
 

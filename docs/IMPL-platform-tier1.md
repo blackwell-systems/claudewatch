@@ -702,7 +702,12 @@ init():
 
 runAttribute implementation:
   1. Load config with config.Load(flagConfig).
-  2. Load pricing: analyzer.DefaultPricing["sonnet"].
+  2. Load pricing: ap := analyzer.DefaultPricing["sonnet"].
+     Convert to store type: pricing := store.ModelPricing{InputPerMillion: ap.InputPerMillion,
+       OutputPerMillion: ap.OutputPerMillion, CacheReadPerMillion: ap.CacheReadPerMillion,
+       CacheWritePerMillion: ap.CacheWritePerMillion}
+     NOTE: store.ComputeAttribution takes store.ModelPricing, not analyzer.ModelPricing,
+     due to an import cycle. The struct fields are identical; this is a trivial conversion.
   3. sessionID := attrFlagSession (may be empty — ComputeAttribution handles empty).
   4. Call store.ComputeAttribution(sessionID, cfg.ClaudeHome, pricing).
   5. If flagJSON: json.NewEncoder(os.Stdout).Encode(rows); return nil.
@@ -748,7 +753,12 @@ init():
 
 runReplay implementation:
   1. Load config.
-  2. Load pricing: analyzer.DefaultPricing["sonnet"].
+  2. Load pricing: ap := analyzer.DefaultPricing["sonnet"].
+     Convert to store type: pricing := store.ModelPricing{InputPerMillion: ap.InputPerMillion,
+       OutputPerMillion: ap.OutputPerMillion, CacheReadPerMillion: ap.CacheReadPerMillion,
+       CacheWritePerMillion: ap.CacheWritePerMillion}
+     NOTE: store.BuildReplay takes store.ModelPricing (not analyzer.ModelPricing) — same
+     import cycle resolution as ComputeAttribution.
   3. sessionID := args[0].
   4. Call store.BuildReplay(sessionID, cfg.ClaudeHome, replayFlagFrom, replayFlagTo, pricing).
   5. If flagJSON: encode and return.
@@ -918,7 +928,12 @@ func (s *Server) handleGetCostAttribution(args json.RawMessage) (any, error) {
         sessionID = *params.SessionID
     }
 
-    pricing := analyzer.DefaultPricing["sonnet"]
+    ap := analyzer.DefaultPricing["sonnet"]
+    pricing := store.ModelPricing{InputPerMillion: ap.InputPerMillion,
+        OutputPerMillion: ap.OutputPerMillion, CacheReadPerMillion: ap.CacheReadPerMillion,
+        CacheWritePerMillion: ap.CacheWritePerMillion}
+    // NOTE: store.ComputeAttribution takes store.ModelPricing (not analyzer.ModelPricing)
+    // due to an import cycle — the struct fields are identical.
     rows, err := store.ComputeAttribution(sessionID, s.claudeHome, pricing)
     if err != nil {
         return nil, err
@@ -1076,16 +1091,16 @@ go run ./cmd/claudewatch experiment --help
 
 ### Wave 1
 
-- [ ] **Agent A** — `internal/store/attribution.go` created
-- [ ] **Agent A** — `internal/store/replay.go` created
-- [ ] **Agent A** — `go build ./internal/store/...` passes
-- [ ] **Agent A** — `go vet ./internal/store/...` passes
-- [ ] **Agent B** — `internal/store/experiment.go` created
-- [ ] **Agent B** — `internal/analyzer/experiment.go` created
-- [ ] **Agent B** — `go build ./internal/store/...` passes
-- [ ] **Agent B** — `go build ./internal/analyzer/...` passes
-- [ ] **Agent B** — `go vet ./internal/store/...` passes
-- [ ] **Agent B** — `go vet ./internal/analyzer/...` passes
+- [x] **Agent A** — `internal/store/attribution.go` created
+- [x] **Agent A** — `internal/store/replay.go` created
+- [x] **Agent A** — `go build ./internal/store/...` passes
+- [x] **Agent A** — `go vet ./internal/store/...` passes
+- [x] **Agent B** — `internal/store/experiment.go` created
+- [x] **Agent B** — `internal/analyzer/experiment.go` created
+- [x] **Agent B** — `go build ./internal/store/...` passes
+- [x] **Agent B** — `go build ./internal/analyzer/...` passes
+- [x] **Agent B** — `go vet ./internal/store/...` passes
+- [x] **Agent B** — `go vet ./internal/analyzer/...` passes
 
 ### Wave 2
 
@@ -1107,8 +1122,66 @@ go run ./cmd/claudewatch experiment --help
 - [ ] `internal/store/migrations.go` — `migrateV3()` added
 - [ ] `internal/store/migrations.go` — `Migrate()` calls `migrateV3()` for `version < 3`
 - [ ] `go build ./...` passes
-- [ ] `go vet ./...` passes
-- [ ] `go test ./internal/store/...` passes
-- [ ] `go test ./internal/analyzer/...` passes
+- [x] `go build ./...` passes
+- [x] `go vet ./...` passes
+- [x] `go test ./internal/store/...` passes
+- [x] `go test ./internal/analyzer/...` passes
 - [ ] `go test ./internal/app/...` passes
 - [ ] `go test ./internal/mcp/...` passes
+
+---
+
+### Agent A — Completion Report
+
+**Status:** COMPLETE
+
+**Files created:**
+- `internal/store/attribution.go`
+- `internal/store/replay.go`
+
+**Key implementation decisions:**
+
+1. **Import cycle resolution — ModelPricing moved to store.** The contract specified `analyzer.ModelPricing` as the pricing parameter type, but `internal/analyzer` imports `internal/store`, so importing `analyzer` from `store` creates a forbidden cycle. Resolution: a local `ModelPricing` struct was defined in `internal/store/attribution.go` with identical fields (`InputPerMillion`, `OutputPerMillion`, `CacheReadPerMillion`, `CacheWritePerMillion`). Callers in `internal/app` and `internal/mcp` convert trivially since the field set is identical.
+
+2. **Shared `findTranscriptFile` helper.** Both `ComputeAttribution` and `BuildReplay` share a single unexported `findTranscriptFile(sessionID, claudeHome string) (string, error)` function defined in `attribution.go`.
+
+3. **Call counting vs token attribution.** `calls` is incremented for every tool_use block type in a turn; token counts accrue only to the first tool_use block's type bucket.
+
+4. **Empty slice for Turns.** When no turns match from/to bounds, `filtered` is `[]ReplayTurn{}` (not nil) so JSON emits `[]` not `null`.
+
+**Verification results:**
+```
+go build ./internal/store/...   PASS
+go vet ./internal/store/...     PASS
+```
+
+**Deviations from contract:**
+- `ModelPricing` defined locally in `store` (not imported from `analyzer`) due to pre-existing import cycle. Structurally identical. **Downstream action required:** Wave 2 agents C and E must use `store.ModelPricing` (not `analyzer.ModelPricing`) when calling `ComputeAttribution`/`BuildReplay`.
+
+---
+
+### Agent B — Completion Report
+
+**Status:** COMPLETE
+
+**Files created:**
+- `internal/store/experiment.go`
+- `internal/analyzer/experiment.go`
+
+**Implementation summary:**
+
+`internal/store/experiment.go` adds six methods to `*DB`: `CreateExperiment` (checks for existing active experiment, inserts with RFC3339 timestamp), `GetActiveExperiment` (returns nil,nil on not found), `StopExperiment` (sets active=false + stopped_at), `RecordSessionVariant` (INSERT OR REPLACE), `GetExperimentSessions`, `ListExperiments`. Two private scan helpers handle RFC3339 timestamp parsing and nullable `stopped_at`.
+
+`internal/analyzer/experiment.go` implements `AnalyzeExperiment`: builds facet index, partitions sessions by variant, computes AvgCostUSD/AvgFriction/AvgCommits via package-level helpers, applies 10% threshold winner logic with "high"/"low"/"inconclusive" confidence, emits human-readable Summary.
+
+**Verification results:**
+```
+go build ./internal/store/...     PASS
+go build ./internal/analyzer/...  PASS
+go vet ./internal/store/...       PASS
+go vet ./internal/analyzer/...    PASS
+```
+
+**Schema note:** No migration code added (orchestrator-owned per spec).
+
+**Deviations from contract:** None.
