@@ -4,6 +4,8 @@ All notable changes to claudewatch are documented here.
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-03-02
+
 ### Fixed
 
 - **`get_cost_summary` live session gap** — the current in-progress session was invisible to cost aggregates, causing a ~$212 hole in today/week/all-time totals and by-project breakdowns. `handleGetCostSummary` now calls `FindActiveSessionPath` + `ParseActiveSession` after loading indexed sessions, deduplicates by SessionID to prevent double-counting if the session closes between calls, and applies the same time-bucket and by-project logic as indexed sessions. Non-fatal: any active session error falls through to indexed-only path.
