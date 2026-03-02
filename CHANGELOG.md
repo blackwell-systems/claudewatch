@@ -2,6 +2,12 @@
 
 All notable changes to claudewatch are documented here.
 
+## [0.7.7] - 2026-03-02
+
+### Fixed
+
+- **`claudewatch sessions` commit count for workspace-directory sessions** — when Claude Code is launched from a parent workspace directory (e.g. `~/code/`) that is not itself a git repo, commit counting silently returned 0. Fixed to scan one level of subdirectories and sum commits across all git repos found, covering the common pattern of working across multiple repos in a single session.
+
 ## [0.7.6] - 2026-03-02
 
 ### Fixed
