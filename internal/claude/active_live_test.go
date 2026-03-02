@@ -375,3 +375,164 @@ func TestParseLiveCommitAttempts_WithCommits(t *testing.T) {
 		t.Fatalf("expected Ratio~%f, got %f", expectedRatio, stats.Ratio)
 	}
 }
+
+// --- collapseFrictionPatterns tests ---
+
+func TestCollapseFrictionPatterns_NoEvents(t *testing.T) {
+	patterns := collapseFrictionPatterns(nil)
+	if patterns == nil {
+		t.Fatal("expected non-nil empty slice, got nil")
+	}
+	if len(patterns) != 0 {
+		t.Fatalf("expected 0 patterns, got %d", len(patterns))
+	}
+
+	patterns = collapseFrictionPatterns([]LiveFrictionEvent{})
+	if len(patterns) != 0 {
+		t.Fatalf("expected 0 patterns for empty slice, got %d", len(patterns))
+	}
+}
+
+func TestCollapseFrictionPatterns_SingleType(t *testing.T) {
+	events := []LiveFrictionEvent{
+		{Type: "tool_error", Tool: "Edit", Count: 1},
+		{Type: "tool_error", Tool: "Edit", Count: 1},
+		{Type: "tool_error", Tool: "Edit", Count: 1},
+	}
+	patterns := collapseFrictionPatterns(events)
+	if len(patterns) != 1 {
+		t.Fatalf("expected 1 pattern, got %d", len(patterns))
+	}
+	p := patterns[0]
+	if p.Type != "tool_error:Edit" {
+		t.Errorf("Type = %q, want %q", p.Type, "tool_error:Edit")
+	}
+	if p.Count != 3 {
+		t.Errorf("Count = %d, want 3", p.Count)
+	}
+	if !p.Consecutive {
+		t.Error("Consecutive = false, want true")
+	}
+	if p.FirstTurn != 0 {
+		t.Errorf("FirstTurn = %d, want 0", p.FirstTurn)
+	}
+	if p.LastTurn != 2 {
+		t.Errorf("LastTurn = %d, want 2", p.LastTurn)
+	}
+}
+
+func TestCollapseFrictionPatterns_MixedTypes(t *testing.T) {
+	events := []LiveFrictionEvent{
+		{Type: "tool_error", Tool: "Edit", Count: 1},
+		{Type: "tool_error", Tool: "Edit", Count: 1},
+		{Type: "retry", Tool: "Bash", Count: 2},
+		{Type: "error_burst", Count: 3},
+	}
+	patterns := collapseFrictionPatterns(events)
+	if len(patterns) != 3 {
+		t.Fatalf("expected 3 patterns, got %d", len(patterns))
+	}
+
+	// Sorted by count descending: error_burst(3), tool_error:Edit(2), retry:Bash(2)
+	// tie between tool_error:Edit and retry:Bash -> alphabetical: retry:Bash < tool_error:Edit
+	if patterns[0].Type != "error_burst" {
+		t.Errorf("patterns[0].Type = %q, want %q", patterns[0].Type, "error_burst")
+	}
+	if patterns[0].Count != 3 {
+		t.Errorf("patterns[0].Count = %d, want 3", patterns[0].Count)
+	}
+	if patterns[1].Type != "retry:Bash" {
+		t.Errorf("patterns[1].Type = %q, want %q", patterns[1].Type, "retry:Bash")
+	}
+	if patterns[1].Count != 2 {
+		t.Errorf("patterns[1].Count = %d, want 2", patterns[1].Count)
+	}
+	if patterns[2].Type != "tool_error:Edit" {
+		t.Errorf("patterns[2].Type = %q, want %q", patterns[2].Type, "tool_error:Edit")
+	}
+	if patterns[2].Count != 2 {
+		t.Errorf("patterns[2].Count = %d, want 2", patterns[2].Count)
+	}
+}
+
+func TestCollapseFrictionPatterns_ConsecutiveDetection(t *testing.T) {
+	events := []LiveFrictionEvent{
+		{Type: "tool_error", Tool: "Edit", Count: 1},  // idx 0
+		{Type: "retry", Tool: "Bash", Count: 2},        // idx 1
+		{Type: "tool_error", Tool: "Edit", Count: 1},  // idx 2 — gap (retry:Bash at idx 1)
+	}
+	patterns := collapseFrictionPatterns(events)
+
+	// Find tool_error:Edit pattern.
+	var editPattern *FrictionPattern
+	for i := range patterns {
+		if patterns[i].Type == "tool_error:Edit" {
+			editPattern = &patterns[i]
+			break
+		}
+	}
+	if editPattern == nil {
+		t.Fatal("tool_error:Edit pattern not found")
+	}
+	if editPattern.Consecutive {
+		t.Error("Consecutive = true, want false (gap at idx 1)")
+	}
+	if editPattern.FirstTurn != 0 {
+		t.Errorf("FirstTurn = %d, want 0", editPattern.FirstTurn)
+	}
+	if editPattern.LastTurn != 2 {
+		t.Errorf("LastTurn = %d, want 2", editPattern.LastTurn)
+	}
+
+	// retry:Bash should be consecutive (only one occurrence).
+	var bashPattern *FrictionPattern
+	for i := range patterns {
+		if patterns[i].Type == "retry:Bash" {
+			bashPattern = &patterns[i]
+			break
+		}
+	}
+	if bashPattern == nil {
+		t.Fatal("retry:Bash pattern not found")
+	}
+	if !bashPattern.Consecutive {
+		t.Error("retry:Bash Consecutive = false, want true (single occurrence)")
+	}
+}
+
+func TestParseLiveFriction_PopulatesPatterns(t *testing.T) {
+	path := writeLiveJSONL(t, []map[string]any{
+		mkAssistantToolUse("2026-03-01T10:00:00Z",
+			map[string]any{"id": "tu1", "name": "Edit"},
+		),
+		mkUserToolResult("2026-03-01T10:00:01Z",
+			map[string]any{"tool_use_id": "tu1", "is_error": true},
+		),
+		mkAssistantToolUse("2026-03-01T10:00:02Z",
+			map[string]any{"id": "tu2", "name": "Edit"},
+		),
+		mkUserToolResult("2026-03-01T10:00:03Z",
+			map[string]any{"tool_use_id": "tu2", "is_error": true},
+		),
+	})
+
+	stats, err := ParseLiveFriction(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stats.Patterns == nil {
+		t.Fatal("Patterns is nil, expected non-nil")
+	}
+	if len(stats.Patterns) == 0 {
+		t.Fatal("Patterns is empty, expected at least one pattern")
+	}
+
+	// Should have tool_error:Edit and retry:Edit patterns.
+	found := make(map[string]bool)
+	for _, p := range stats.Patterns {
+		found[p.Type] = true
+	}
+	if !found["tool_error:Edit"] {
+		t.Errorf("expected tool_error:Edit pattern, got patterns: %+v", stats.Patterns)
+	}
+}

@@ -278,3 +278,49 @@ func TestGetLiveFriction_WithErrors(t *testing.T) {
 	// Tie -> alphabetically "retry" wins.
 	_ = claude.LiveFrictionEvent{} // ensure import is used
 }
+
+// TestGetLiveFriction_PatternsInResponse verifies that the MCP response includes
+// friction patterns computed from the full event list.
+func TestGetLiveFriction_PatternsInResponse(t *testing.T) {
+	dir := t.TempDir()
+	s := newTestServer(dir, 0)
+	addLiveTools(s)
+
+	// Two Edit errors + a retry (Edit used twice in last 3 tool_uses).
+	lines := []string{
+		`{"type":"assistant","sessionId":"sess-pat","timestamp":"2026-03-01T10:00:00Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"tu-1","name":"Edit","input":{}}],"usage":{"input_tokens":100,"output_tokens":50}}}`,
+		`{"type":"user","sessionId":"sess-pat","timestamp":"2026-03-01T10:00:01Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu-1","is_error":true,"content":"edit failed"}]}}`,
+		`{"type":"assistant","sessionId":"sess-pat","timestamp":"2026-03-01T10:00:02Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"tu-2","name":"Edit","input":{}}],"usage":{"input_tokens":100,"output_tokens":50}}}`,
+		`{"type":"user","sessionId":"sess-pat","timestamp":"2026-03-01T10:00:03Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu-2","is_error":true,"content":"edit failed again"}]}}`,
+	}
+	writeActiveToolJSONL(t, dir, "proj-hash", "sess-pat", lines)
+
+	result, err := callTool(s, "get_live_friction", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	r, ok := result.(LiveFrictionResult)
+	if !ok {
+		t.Fatalf("expected LiveFrictionResult, got %T", result)
+	}
+
+	if len(r.Patterns) == 0 {
+		t.Fatal("Patterns is empty, expected at least one pattern")
+	}
+
+	// Verify tool_error:Edit pattern exists.
+	found := false
+	for _, p := range r.Patterns {
+		if p.Type == "tool_error:Edit" {
+			found = true
+			if p.Count < 2 {
+				t.Errorf("tool_error:Edit Count = %d, want >= 2", p.Count)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected tool_error:Edit pattern, got patterns: %+v", r.Patterns)
+	}
+}

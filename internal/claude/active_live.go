@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"sort"
 	"strings"
 	"time"
 )
@@ -26,10 +27,20 @@ type LiveFrictionEvent struct {
 	Timestamp string `json:"timestamp"`
 }
 
+// FrictionPattern represents a grouped friction pattern collapsed from individual events.
+type FrictionPattern struct {
+	Type        string `json:"type"`         // e.g. "tool_error:Edit", "retry:Bash"
+	Count       int    `json:"count"`        // total occurrences
+	Consecutive bool   `json:"consecutive"`  // true if all occurrences were consecutive
+	FirstTurn   int    `json:"first_turn"`   // position of first occurrence in events slice
+	LastTurn    int    `json:"last_turn"`    // position of last occurrence
+}
+
 // LiveFrictionStats holds friction statistics parsed from a live JSONL session.
 type LiveFrictionStats struct {
 	Events        []LiveFrictionEvent `json:"events"`
 	TotalFriction int                 `json:"total_friction"`
+	Patterns      []FrictionPattern   `json:"patterns,omitempty"`
 }
 
 // LiveCommitAttemptStats holds commit-to-attempt ratio data parsed from a live session.
@@ -252,7 +263,92 @@ func ParseLiveFriction(path string) (*LiveFrictionStats, error) {
 		}
 	}
 
+	stats.Patterns = collapseFrictionPatterns(stats.Events)
+
 	return stats, nil
+}
+
+// collapseFrictionPatterns groups friction events by a key derived from Type and Tool,
+// counts total occurrences, and detects whether all occurrences were consecutive.
+func collapseFrictionPatterns(events []LiveFrictionEvent) []FrictionPattern {
+	if len(events) == 0 {
+		return []FrictionPattern{}
+	}
+
+	// Build key for each event.
+	keyFor := func(ev LiveFrictionEvent) string {
+		if ev.Tool == "" {
+			return ev.Type
+		}
+		return ev.Type + ":" + ev.Tool
+	}
+
+	type patternInfo struct {
+		count       int
+		consecutive bool
+		firstTurn   int
+		lastTurn    int
+	}
+
+	info := make(map[string]*patternInfo)
+	var order []string // track insertion order for stable iteration
+
+	// Track consecutiveness: for each key, check if all its occurrences
+	// are contiguous (no different key appears between them).
+	// We do this by tracking the last index where each key appeared
+	// and checking if a different key was seen in between.
+	lastSeen := make(map[string]int) // key -> last index seen
+
+	for i, ev := range events {
+		k := keyFor(ev)
+
+		pi, exists := info[k]
+		if !exists {
+			pi = &patternInfo{
+				consecutive: true,
+				firstTurn:   i,
+			}
+			info[k] = pi
+			order = append(order, k)
+		} else {
+			// Check if any different key appeared between lastSeen[k] and i.
+			if pi.consecutive && lastSeen[k] < i-1 {
+				// There's at least one event between the last occurrence and this one.
+				// Check if any of them have a different key.
+				for j := lastSeen[k] + 1; j < i; j++ {
+					if keyFor(events[j]) != k {
+						pi.consecutive = false
+						break
+					}
+				}
+			}
+		}
+		pi.count += ev.Count
+		pi.lastTurn = i
+		lastSeen[k] = i
+	}
+
+	patterns := make([]FrictionPattern, 0, len(info))
+	for _, k := range order {
+		pi := info[k]
+		patterns = append(patterns, FrictionPattern{
+			Type:        k,
+			Count:       pi.count,
+			Consecutive: pi.consecutive,
+			FirstTurn:   pi.firstTurn,
+			LastTurn:    pi.lastTurn,
+		})
+	}
+
+	// Sort by count descending, then alphabetically by type for stability.
+	sort.Slice(patterns, func(i, j int) bool {
+		if patterns[i].Count != patterns[j].Count {
+			return patterns[i].Count > patterns[j].Count
+		}
+		return patterns[i].Type < patterns[j].Type
+	})
+
+	return patterns
 }
 
 // ParseLiveCommitAttempts reads the JSONL file at path and counts Edit/Write
