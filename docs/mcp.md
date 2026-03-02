@@ -75,6 +75,54 @@ No input parameters.
 
 ---
 
+#### `get_session_dashboard`
+
+Composite live-session tool. Returns all six live-session metrics in a single call: token velocity, commit-to-attempt ratio, context pressure, cost velocity, tool errors, and friction patterns. Designed to replace six individual tool calls with one round-trip. Use this when the PostToolUse hook fires.
+
+No input parameters.
+
+| Output field | Type | Description |
+|---|---|---|
+| `token_velocity` | object | Tokens/min rate with `status` ("flowing", "slow", "idle") |
+| `commit_ratio` | object | Git commits vs Edit/Write attempts with `status` ("efficient", "normal", "low") |
+| `context_pressure` | object | Context window utilization with `status` ("comfortable", "filling", "pressure", "critical") |
+| `cost_velocity` | object | Cost burn rate (last 10 min) in USD/min with `status` ("efficient", "normal", "burning") |
+| `tool_errors` | object | Error rate, errors-by-tool breakdown, consecutive streak, severity |
+| `friction` | object | Recent friction event stream with pattern summary |
+| `active_time` | object | `active_minutes`, `idle_minutes`, `wall_clock_minutes`, `resumptions` |
+
+---
+
+#### `get_context_pressure`
+
+Context window utilization for the current live session. Sums input and output tokens across all messages, counts compaction events, and estimates the usage ratio against the 200k context window.
+
+No input parameters.
+
+| Output field | Type | Description |
+|---|---|---|
+| `used_tokens` | int | Estimated total tokens consumed in this context window |
+| `window_tokens` | int | Context window size (200,000) |
+| `utilization_pct` | float | Percentage of context window consumed |
+| `compaction_count` | int | Number of compaction events detected |
+| `status` | string | "comfortable" (<50%), "filling" (50–75%), "pressure" (75–90%), "critical" (≥90%) |
+
+---
+
+#### `get_cost_velocity`
+
+Cost burn rate for the current live session over a 10-minute sliding window. Computes per-minute USD spend from token counts and Sonnet 4 pricing.
+
+No input parameters.
+
+| Output field | Type | Description |
+|---|---|---|
+| `cost_per_minute` | float | USD/min over the last 10 minutes |
+| `window_minutes` | int | Window size used for the calculation |
+| `status` | string | "efficient" (<$0.05/min), "normal" ($0.05–$0.20/min), "burning" (≥$0.20/min) |
+
+---
+
 #### `get_cost_budget`
 
 Returns today's spend against the configured daily budget.

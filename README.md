@@ -19,6 +19,8 @@ Claude is guessing too. Every session starts fresh: no memory of which agent typ
 
 This is the layer nobody else occupies. LLM observability tools (LangSmith, Langfuse, Braintrust) give *humans* dashboards over API calls. claudewatch gives the *AI agent itself* queryable access to its own performance history and real-time session health — inside the session where decisions are being made. Post-hoc analytics for you, live self-reflection for Claude.
 
+But queryable tools only help if Claude thinks to call them. claudewatch also runs a push layer: a SessionStart hook that injects a project health briefing before the first message, a PostToolUse hook that fires on error loops, context pressure, and cost spikes, and a behavioral contract in `~/.claude/CLAUDE.md` that tells Claude exactly what to do when those signals arrive. The result is a system that orients Claude at session start, alerts it mid-session when things go wrong, and gives it the vocabulary to respond — without requiring Claude to remember any of this from a previous conversation.
+
 ## What claudewatch does
 
 Claude Code already records rich session data locally -- tool usage, friction events, satisfaction signals, agent lifecycles, commit patterns. claudewatch reads that data and turns it into actionable insights.
@@ -121,6 +123,8 @@ $ claudewatch track --compare
  Zero-commit sessions    18%        5%         -13%  (improved)
 ```
 
+**Give Claude a mirror.** `claudewatch install` writes a behavioral contract into `~/.claude/CLAUDE.md`. Two shell hooks — `claudewatch startup` (SessionStart) and `claudewatch hook` (PostToolUse) — orient Claude at session start and alert it mid-session when thresholds are crossed. The MCP server gives Claude queryable access to its own project health, agent history, and live session metrics. Together these form a self-monitoring layer that runs inside every Claude Code session: Claude knows what project it's on, what friction it generated last time, and when to stop and reassess — without requiring you to prompt it explicitly.
+
 **Prove it with effectiveness scoring.** `metrics` automatically scores your CLAUDE.md changes -- it splits sessions at the modification timestamp, compares before/after on friction, tool errors, goal achievement, and cost per commit, then produces a -100 to +100 effectiveness score. Did adding that scope constraint actually reduce unrequested edits? Now you know.
 
 ```
@@ -201,12 +205,45 @@ claudewatch track
 claudewatch track --compare
 ```
 
+**Enable Claude's self-monitoring layer** (run once):
+
+```bash
+# Write the behavioral contract into ~/.claude/CLAUDE.md
+claudewatch install
+
+# Add hooks to ~/.claude/settings.json
+# SessionStart: injects project health briefing before first message
+# PostToolUse: fires on error loops, context pressure, cost spikes
+```
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{"hooks": [{"type": "command", "command": "claudewatch startup"}]}],
+    "PostToolUse":  [{"hooks": [{"type": "command", "command": "claudewatch hook"}]}]
+  }
+}
+```
+
+Then add the MCP server to `~/.claude.json`:
+
+```json
+{
+  "mcpServers": {
+    "claudewatch": {
+      "command": "claudewatch",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
 ## Documentation
 
 | | |
 |---|---|
 | 📗 [Quickstart](docs/quickstart.md) | Install, baseline, fix, measure — the full cycle in one guide |
-| 📘 [CLI Reference](docs/cli.md) | All commands and flags: `scan`, `metrics`, `gaps`, `suggest`, `fix`, `track`, `log`, `watch` |
+| 📘 [CLI Reference](docs/cli.md) | All commands and flags: `scan`, `metrics`, `gaps`, `suggest`, `fix`, `track`, `log`, `watch`, `hook`, `startup`, `install` |
 | 📙 [MCP Reference](docs/mcp.md) | All 22 MCP tools, setup, recommended usage pattern, and data freshness notes |
 | 📕 [Effectiveness Scoring](docs/effectiveness.md) | How CLAUDE.md before/after scoring works, how to read verdicts, and what to do with regressions |
 

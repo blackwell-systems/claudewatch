@@ -198,6 +198,77 @@ claudewatch watch --stop              # stop background daemon
 - Agent kill rate increasing by more than 10%
 - Zero-commit streak exceeding 3 sessions
 
+---
+
+### hook
+
+PostToolUse shell hook subcommand. Checks the active session for three warning conditions in priority order: (1) ≥3 consecutive tool errors, (2) context window at "pressure" or "critical", (3) cost velocity "burning". Exits 0 silently if all clear; exits 2 with a self-contained stderr message naming `get_session_dashboard` and what it returns when a threshold is crossed. Rate-limited to one alert per 30 seconds via a timestamp file at `~/.cache/claudewatch-hook.ts`.
+
+```bash
+claudewatch hook   # run from a PostToolUse shell hook
+```
+
+Configuration in `~/.claude/settings.json`:
+```json
+{"PostToolUse": [{"hooks": [{"type": "command", "command": "claudewatch hook"}]}]}
+```
+
+No flags.
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| 0 | All clear — no thresholds exceeded |
+| 2 | Threshold exceeded — message on stderr describes which condition fired and what to call |
+
+---
+
+### startup
+
+SessionStart shell hook subcommand. Prints a compact 4-line briefing to stdout, which Claude Code injects into Claude's context before the first user message. Pulls live data from local session files filtered to the current working directory. Requires no network calls.
+
+```bash
+claudewatch startup   # run from a SessionStart shell hook
+```
+
+Configuration in `~/.claude/settings.json`:
+```json
+{"SessionStart": [{"hooks": [{"type": "command", "command": "claudewatch startup"}]}]}
+```
+
+No flags.
+
+**Output format:**
+```
+╔ claudewatch | <project> | <N> sessions | friction: <level> (<top-type> dominant)
+║ CLAUDE.md: ✓/✗ | agent success: <pct>% | tip: <contextual tip>
+║ tools: get_session_dashboard · get_project_health · get_live_friction · get_context_pressure · get_cost_velocity · get_suggestions
+╚ PostToolUse hook active → fires on errors/context/cost → call get_session_dashboard
+```
+
+**Hook routing note:** SessionStart hooks must write to stdout and exit 0 to inject into Claude's context. stderr output or exit 2 routes only to the user's terminal.
+
+---
+
+### install
+
+Writes the claudewatch behavioral contract into `~/.claude/CLAUDE.md`, delimited by `<!-- claudewatch:start -->` / `<!-- claudewatch:end -->` markers. Idempotent: re-running updates the section in place rather than appending. Always writes to `$HOME/.claude/CLAUDE.md` regardless of the `claude_home` config setting.
+
+The installed section instructs Claude to call `get_project_health` at session start, stop and call `get_session_dashboard` when the PostToolUse hook fires, and includes the full MCP tool manifest.
+
+```bash
+claudewatch install
+```
+
+No flags.
+
+**Output:**
+- `claudewatch installed: <path>` — first run
+- `claudewatch updated: <path>` — subsequent runs (section replaced in place)
+
+---
+
 ## The fix-measure loop
 
 These commands are designed to work together in a repeated cycle:
