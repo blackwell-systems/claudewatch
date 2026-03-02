@@ -987,7 +987,68 @@ After Wave 2 completes:
 
 ## Status
 
-- [ ] Wave 1 Agent A — factor analysis engine (`internal/analyzer/correlate.go`, `correlate_test.go`)
+- [x] Wave 1 Agent A — factor analysis engine (`internal/analyzer/correlate.go`, `correlate_test.go`)
 - [ ] Wave 2 Agent B — `claudewatch correlate` CLI subcommand (`internal/app/correlate.go`)
 - [ ] Wave 2 Agent C — `get_causal_insights` MCP tool (`internal/mcp/correlate_tools.go`, `correlate_tools_test.go`)
 - [ ] Orchestrator post-merge — add `addCorrelateTools(s)` to `internal/mcp/tools.go`
+
+---
+
+### Agent A - Completion Report
+status: complete
+worktree: main (solo agent)
+commit: c0d5af3
+files_changed: []
+files_created:
+  - internal/analyzer/correlate.go
+  - internal/analyzer/correlate_test.go
+interface_deviations:
+  - []
+out_of_scope_deps:
+  - []
+tests_added:
+  - TestCorrelateFactors_AllFactors_BasicSmoke
+  - TestCorrelateFactors_SingleFactor_Boolean
+  - TestCorrelateFactors_SingleFactor_Numeric
+  - TestCorrelateFactors_LowConfidenceFlagged
+  - TestCorrelateFactors_ProjectFilter
+  - TestCorrelateFactors_InsufficientData
+  - TestCorrelateFactors_UnknownOutcome
+  - TestPearsonCorrelation_PerfectPositive
+  - TestPearsonCorrelation_NoVariance
+  - TestCorrelateFactors_ZeroCommitOutcome
+verification: PASS (go test ./internal/analyzer -run TestCorrelate -v - 8/8 tests; go test ./internal/analyzer -run TestPearson -v - 2/2 tests)
+
+### Agent B - Completion Report
+status: complete
+worktree: .claude/worktrees/wave2-agent-b
+commit: 093100e999284a1d1eec5f4286be50b50e7a8e79
+files_changed: []
+files_created:
+  - internal/app/correlate.go
+interface_deviations:
+  - []
+out_of_scope_deps:
+  - []
+tests_added: []
+verification: PASS (go build ./...; go vet ./...)
+
+### Agent C - Completion Report
+status: complete
+worktree: .claude/worktrees/wave2-agent-c
+commit: 01174ea
+files_changed: []
+files_created:
+  - internal/mcp/correlate_tools.go
+  - internal/mcp/correlate_tools_test.go
+interface_deviations:
+  - []
+out_of_scope_deps:
+  - []
+tests_added:
+  - TestHandleGetCausalInsights_AllFactors
+  - TestHandleGetCausalInsights_SingleFactor
+  - TestHandleGetCausalInsights_InsufficientData
+  - TestHandleGetCausalInsights_MissingOutcome
+  - TestHandleGetCausalInsights_ProjectFilter
+verification: PASS (go test ./internal/mcp -run TestHandleGetCausalInsights -v -timeout 60s - 5/5 tests)
