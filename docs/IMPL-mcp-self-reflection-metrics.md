@@ -751,3 +751,31 @@ tests_added:
 out_of_scope_deps: []
 verification: PASS (go build, go vet, go test — 6/6 tests pass, 0 errors)
 ```
+
+### Agent C — Completion Report
+```yaml
+status: complete
+commit: "5d0b4a1 wave2-agent-C: add live tool error and friction MCP tools"
+files_created:
+  - internal/mcp/live_tools.go (143 lines)
+  - internal/mcp/live_tools_test.go (280 lines)
+tools_registered:
+  - get_live_tool_errors -> handleGetLiveToolErrors
+  - get_live_friction -> handleGetLiveFriction
+interface_deviations: []
+out_of_scope_deps: []
+tests_added:
+  - TestGetLiveToolErrors_NoActiveSession
+  - TestGetLiveToolErrors_Clean
+  - TestGetLiveToolErrors_Degraded
+  - TestGetLiveFriction_NoActiveSession
+  - TestGetLiveFriction_NoFriction
+  - TestGetLiveFriction_WithErrors
+verification: PASS (go build, go vet, go test — 6/6 tests pass, 0 errors)
+notes:
+  - addLiveTools(s) not yet wired into NewServer/addTools — orchestrator post-merge step
+  - Tests call addLiveTools(s) explicitly after newTestServer to self-register
+  - TopType computed by summing event counts per type, ties broken alphabetically (matches friction_tools.go pattern)
+  - ErrorsByTool nil-guarded to always return initialized map
+  - Severity thresholds: consecutive>=4 OR error_rate>0.3 -> "degraded", error_rate>0.1 -> "mild", else "clean"
+```
