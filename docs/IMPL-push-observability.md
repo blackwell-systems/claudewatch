@@ -626,7 +626,32 @@ After Wave 1 completes (all 4 agents):
 ### Status
 
 - [SKIPPED] Wave 1 Agent A -- Friction alert hook (deferred — build hook separately after validating push model)
-- [ ] Wave 1 Agent B -- `get_context_pressure` MCP tool
+- [x] Wave 1 Agent B -- `get_context_pressure` MCP tool
 - [ ] Wave 1 Agent C -- `get_cost_velocity` MCP tool
 - [ ] Wave 1 Agent D -- Friction pattern classification
 - [ ] Post-merge -- Register tools in `tools.go`, fix test counts
+
+---
+
+### Agent B -- Completion Report
+
+**Status:** COMPLETE
+
+**Files created:**
+- `internal/claude/active_live_context.go` -- `ContextPressureStats` struct and `ParseLiveContextPressure` function
+- `internal/claude/active_live_context_test.go` -- 8 test cases including threshold boundary tests
+- `internal/mcp/context_tools.go` -- `ContextPressureResult` struct, `addContextTools`, and `handleGetContextPressure`
+- `internal/mcp/context_tools_test.go` -- 5 MCP integration tests
+
+**Implementation notes:**
+- `ParseLiveContextPressure` reads JSONL via `readLiveJSONL`, sums all assistant message token usage, counts `"summary"` entries as compactions, and uses the last assistant message's `input_tokens` as the context utilization proxy (divided by 200K context window).
+- Status thresholds: comfortable (<0.5), filling (0.5-0.75), pressure (0.75-0.9), critical (>=0.9).
+- MCP handler follows the exact pattern from `velocity_tools.go`: find active session, parse meta, parse context pressure, return typed result.
+
+**Verification:**
+- `go build ./...` -- pass
+- `go vet ./...` -- pass
+- `go test ./internal/claude -run TestParseLiveContextPressure` -- 8/8 pass
+- `go test ./internal/mcp -run TestContextPressure` -- 5/5 pass
+
+**Post-merge required:** Add `addContextTools(s)` call in `internal/mcp/tools.go` `addTools` function.
