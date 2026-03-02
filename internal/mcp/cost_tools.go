@@ -58,13 +58,20 @@ func (s *Server) handleGetCostSummary(args json.RawMessage) (any, error) {
 
 	var todayUSD, weekUSD, allTimeUSD float64
 
-	// Build a set of indexed session IDs for deduplication against the live session.
-	indexedIDs := make(map[string]bool, len(sessions))
-	for _, session := range sessions {
-		indexedIDs[session.SessionID] = true
+	// Detect the live (in-progress) session so we can prefer its data over the
+	// stale indexed version. The live session has current token counts and up-to-date
+	// UserMessageTimestamps, while the indexed session-meta file may be days old.
+	var liveMeta *claude.SessionMeta
+	activePath, activeErr := claude.FindActiveSessionPath(s.claudeHome)
+	if activeErr == nil && activePath != "" {
+		parsed, parseErr := claude.ParseActiveSession(activePath)
+		if parseErr == nil && parsed != nil {
+			liveMeta = parsed
+		}
 	}
 
-	for _, session := range sessions {
+	// accumulate processes a single session's cost into the aggregate buckets.
+	accumulate := func(session claude.SessionMeta) {
 		cost := analyzer.EstimateSessionCost(session, pricing, ratio)
 		allTimeUSD += cost
 
@@ -90,35 +97,18 @@ func (s *Server) handleGetCostSummary(args json.RawMessage) (any, error) {
 		a.sessions++
 	}
 
-	// Attempt to include the live (in-progress) session. Errors are non-fatal.
-	activePath, activeErr := claude.FindActiveSessionPath(s.claudeHome)
-	if activeErr == nil && activePath != "" {
-		liveMeta, parseErr := claude.ParseActiveSession(activePath)
-		if parseErr == nil && liveMeta != nil && !indexedIDs[liveMeta.SessionID] {
-			liveCost := analyzer.EstimateSessionCost(*liveMeta, pricing, ratio)
-			allTimeUSD += liveCost
-
-			t := lastActiveTime(liveMeta.UserMessageTimestamps, liveMeta.StartTime)
-			if !t.IsZero() {
-				tUTC := t.UTC()
-				if tUTC.Format("2006-01-02") == todayStr {
-					todayUSD += liveCost
-				}
-				sessionYear, sessionWeek := tUTC.ISOWeek()
-				if sessionYear == nowYear && sessionWeek == nowWeek {
-					weekUSD += liveCost
-				}
-			}
-
-			projectName := filepath.Base(liveMeta.ProjectPath)
-			a, ok := byProject[projectName]
-			if !ok {
-				a = &projectAccum{}
-				byProject[projectName] = a
-			}
-			a.totalUSD += liveCost
-			a.sessions++
+	for _, session := range sessions {
+		// Skip the indexed version of the live session — we'll use the live
+		// data instead, which has current token counts and today's timestamps.
+		if liveMeta != nil && session.SessionID == liveMeta.SessionID {
+			continue
 		}
+		accumulate(session)
+	}
+
+	// Include the live session (replaces stale indexed version, or adds new).
+	if liveMeta != nil {
+		accumulate(*liveMeta)
 	}
 
 	if len(sessions) == 0 && len(byProject) == 0 {
