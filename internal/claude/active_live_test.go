@@ -536,3 +536,233 @@ func TestParseLiveFriction_PopulatesPatterns(t *testing.T) {
 		t.Errorf("expected tool_error:Edit pattern, got patterns: %+v", stats.Patterns)
 	}
 }
+
+// --- ParseLiveConsecutiveErrors tests ---
+
+func TestParseLiveConsecutiveErrors_NoErrors(t *testing.T) {
+	path := writeLiveJSONL(t, []map[string]any{
+		mkAssistantToolUse("2026-03-01T10:00:00Z",
+			map[string]any{"id": "tu1", "name": "Read"},
+			map[string]any{"id": "tu2", "name": "Grep"},
+			map[string]any{"id": "tu3", "name": "Bash"},
+		),
+		mkUserToolResult("2026-03-01T10:00:01Z",
+			map[string]any{"tool_use_id": "tu1"},
+			map[string]any{"tool_use_id": "tu2"},
+			map[string]any{"tool_use_id": "tu3"},
+		),
+	})
+
+	streak, err := ParseLiveConsecutiveErrors(path, 50)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if streak != 0 {
+		t.Fatalf("expected streak=0, got %d", streak)
+	}
+}
+
+func TestParseLiveConsecutiveErrors_TrailingStreak(t *testing.T) {
+	// 2 successes then 3 errors at the tail — expect trailing streak of 3.
+	path := writeLiveJSONL(t, []map[string]any{
+		mkAssistantToolUse("2026-03-01T10:00:00Z",
+			map[string]any{"id": "tu1", "name": "Read"},
+			map[string]any{"id": "tu2", "name": "Grep"},
+		),
+		mkUserToolResult("2026-03-01T10:00:01Z",
+			map[string]any{"tool_use_id": "tu1"},
+			map[string]any{"tool_use_id": "tu2"},
+		),
+		mkAssistantToolUse("2026-03-01T10:00:02Z",
+			map[string]any{"id": "tu3", "name": "Edit"},
+			map[string]any{"id": "tu4", "name": "Edit"},
+			map[string]any{"id": "tu5", "name": "Edit"},
+		),
+		mkUserToolResult("2026-03-01T10:00:03Z",
+			map[string]any{"tool_use_id": "tu3", "is_error": true},
+			map[string]any{"tool_use_id": "tu4", "is_error": true},
+			map[string]any{"tool_use_id": "tu5", "is_error": true},
+		),
+	})
+
+	streak, err := ParseLiveConsecutiveErrors(path, 50)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if streak != 3 {
+		t.Fatalf("expected streak=3, got %d", streak)
+	}
+}
+
+func TestParseLiveConsecutiveErrors_StreakBrokenBySuccess(t *testing.T) {
+	// 3 errors then 1 success then 2 errors at tail — expect trailing streak of 2.
+	path := writeLiveJSONL(t, []map[string]any{
+		mkAssistantToolUse("2026-03-01T10:00:00Z",
+			map[string]any{"id": "tu1", "name": "Edit"},
+			map[string]any{"id": "tu2", "name": "Edit"},
+			map[string]any{"id": "tu3", "name": "Edit"},
+		),
+		mkUserToolResult("2026-03-01T10:00:01Z",
+			map[string]any{"tool_use_id": "tu1", "is_error": true},
+			map[string]any{"tool_use_id": "tu2", "is_error": true},
+			map[string]any{"tool_use_id": "tu3", "is_error": true},
+		),
+		mkAssistantToolUse("2026-03-01T10:00:02Z",
+			map[string]any{"id": "tu4", "name": "Read"},
+		),
+		mkUserToolResult("2026-03-01T10:00:03Z",
+			map[string]any{"tool_use_id": "tu4"},
+		),
+		mkAssistantToolUse("2026-03-01T10:00:04Z",
+			map[string]any{"id": "tu5", "name": "Edit"},
+			map[string]any{"id": "tu6", "name": "Edit"},
+		),
+		mkUserToolResult("2026-03-01T10:00:05Z",
+			map[string]any{"tool_use_id": "tu5", "is_error": true},
+			map[string]any{"tool_use_id": "tu6", "is_error": true},
+		),
+	})
+
+	streak, err := ParseLiveConsecutiveErrors(path, 50)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if streak != 2 {
+		t.Fatalf("expected streak=2 (trailing only), got %d", streak)
+	}
+}
+
+func TestParseLiveConsecutiveErrors_TailNLimit(t *testing.T) {
+	// 10 errors at the start then 2 successes at the tail, tailN=5.
+	// With tailN=5 the window covers only the last 5 entries; the last 2 user
+	// entries contain only successes so the streak should be 0.
+	var entries []map[string]any
+
+	// 10 error tool uses/results (20 entries total: 10 assistant + 10 user).
+	for i := 0; i < 10; i++ {
+		id := "err" + string(rune('0'+i))
+		entries = append(entries,
+			mkAssistantToolUse("2026-03-01T10:00:00Z",
+				map[string]any{"id": id, "name": "Edit"},
+			),
+			mkUserToolResult("2026-03-01T10:00:01Z",
+				map[string]any{"tool_use_id": id, "is_error": true},
+			),
+		)
+	}
+
+	// 2 success tool uses/results (4 entries).
+	for i := 0; i < 2; i++ {
+		id := "ok" + string(rune('0'+i))
+		entries = append(entries,
+			mkAssistantToolUse("2026-03-01T10:01:00Z",
+				map[string]any{"id": id, "name": "Read"},
+			),
+			mkUserToolResult("2026-03-01T10:01:01Z",
+				map[string]any{"tool_use_id": id},
+			),
+		)
+	}
+
+	path := writeLiveJSONL(t, entries)
+
+	// tailN=5 — window is the last 5 entries: 1 error pair + 2 success pairs (5 total)
+	// but since we take entries[max(0, len-5):], the window contains only clean entries.
+	streak, err := ParseLiveConsecutiveErrors(path, 5)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if streak != 0 {
+		t.Fatalf("expected streak=0 (tail window only contains successes), got %d", streak)
+	}
+}
+
+func TestParseLiveConsecutiveErrors_EmptyFile(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/empty.jsonl"
+	if err := os.WriteFile(path, []byte{}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	streak, err := ParseLiveConsecutiveErrors(path, 50)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if streak != 0 {
+		t.Fatalf("expected streak=0, got %d", streak)
+	}
+}
+
+func TestParseLiveConsecutiveErrors_DefaultTailN(t *testing.T) {
+	// 60 entries: first 15 are errors, last 45 are clean.
+	// With default tailN=50, the window covers entries[10:60].
+	// Entries 10-14 are errors (5 errors in window), entries 15-59 are clean.
+	// Since the tail ends with clean results, the trailing streak should be 0.
+	var entries []map[string]any
+
+	// First 15 pairs (30 entries) — all errors.
+	for i := 0; i < 15; i++ {
+		id := "e" + string(rune('A'+i))
+		entries = append(entries,
+			mkAssistantToolUse("2026-03-01T10:00:00Z",
+				map[string]any{"id": id, "name": "Edit"},
+			),
+			mkUserToolResult("2026-03-01T10:00:01Z",
+				map[string]any{"tool_use_id": id, "is_error": true},
+			),
+		)
+	}
+
+	// Last 45 pairs (90 entries) — all clean.
+	for i := 0; i < 45; i++ {
+		id := "c" + string(rune('A'+i%26)) + string(rune('0'+i/26))
+		entries = append(entries,
+			mkAssistantToolUse("2026-03-01T10:01:00Z",
+				map[string]any{"id": id, "name": "Read"},
+			),
+			mkUserToolResult("2026-03-01T10:01:01Z",
+				map[string]any{"tool_use_id": id},
+			),
+		)
+	}
+
+	path := writeLiveJSONL(t, entries)
+
+	// tailN=0 triggers default of 50. Total entries=120 (15+45 pairs * 2).
+	// Last 50 entries are all from the clean section, so trailing streak = 0.
+	streak, err := ParseLiveConsecutiveErrors(path, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if streak != 0 {
+		t.Fatalf("expected streak=0 (tail-50 window is all clean), got %d", streak)
+	}
+}
+
+func TestParseLiveConsecutiveErrors_AllErrors(t *testing.T) {
+	// 5 error results — expect trailing streak of 5.
+	path := writeLiveJSONL(t, []map[string]any{
+		mkAssistantToolUse("2026-03-01T10:00:00Z",
+			map[string]any{"id": "tu1", "name": "Edit"},
+			map[string]any{"id": "tu2", "name": "Edit"},
+			map[string]any{"id": "tu3", "name": "Edit"},
+			map[string]any{"id": "tu4", "name": "Edit"},
+			map[string]any{"id": "tu5", "name": "Edit"},
+		),
+		mkUserToolResult("2026-03-01T10:00:01Z",
+			map[string]any{"tool_use_id": "tu1", "is_error": true},
+			map[string]any{"tool_use_id": "tu2", "is_error": true},
+			map[string]any{"tool_use_id": "tu3", "is_error": true},
+			map[string]any{"tool_use_id": "tu4", "is_error": true},
+			map[string]any{"tool_use_id": "tu5", "is_error": true},
+		),
+	})
+
+	streak, err := ParseLiveConsecutiveErrors(path, 50)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if streak != 5 {
+		t.Fatalf("expected streak=5, got %d", streak)
+	}
+}
