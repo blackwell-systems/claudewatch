@@ -45,6 +45,6 @@ func runHook(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	fmt.Fprintf(os.Stderr, "⚠ %d consecutive tool errors detected. STOP and call the get_live_friction MCP tool now before continuing.\n", n)
+	fmt.Fprintf(os.Stderr, "⚠ %d consecutive tool errors detected. Stop and diagnose: call get_session_dashboard (claudewatch MCP) to check token velocity, friction patterns, and context pressure before continuing.\n", n)
 	os.Exit(2)
 }
