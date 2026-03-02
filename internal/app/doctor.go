@@ -13,6 +13,7 @@ import (
 	"github.com/blackwell-systems/claudewatch/internal/config"
 	"github.com/blackwell-systems/claudewatch/internal/output"
 	"github.com/blackwell-systems/claudewatch/internal/scanner"
+	"github.com/blackwell-systems/claudewatch/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -78,6 +79,24 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 
 	// 8. API key — ANTHROPIC_API_KEY env var is set.
 	checks = append(checks, checkAPIKey())
+
+	// 9. Anomaly baselines — all projects with ≥5 sessions should have baselines.
+	sessions, _ := claude.ParseAllSessionMeta(cfg.ClaudeHome)
+	var db *store.DB
+	if dbOpenErr := func() error {
+		var openErr error
+		db, openErr = store.Open(config.DBPath())
+		return openErr
+	}(); dbOpenErr == nil {
+		defer func() { _ = db.Close() }()
+		checks = append(checks, checkAnomalyBaselines(db, sessions, nil))
+	} else {
+		checks = append(checks, doctorCheck{
+			Name:    "Anomaly baselines",
+			Passed:  false,
+			Message: fmt.Sprintf("could not open database: %v", dbOpenErr),
+		})
+	}
 
 	// Count passes.
 	passed := 0
@@ -371,4 +390,74 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// checkAnomalyBaselines verifies that all projects with ≥5 sessions have a stored
+// anomaly baseline. tags is an optional session-to-project mapping (may be nil).
+// The check passes vacuously if no projects have ≥5 sessions.
+func checkAnomalyBaselines(db *store.DB, sessions []claude.SessionMeta, tags map[string]string) doctorCheck {
+	const minSessions = 5
+
+	// Count sessions per project.
+	projectCounts := make(map[string]int)
+	for _, s := range sessions {
+		proj := filepath.Base(s.ProjectPath)
+		if proj == "" || proj == "." {
+			continue
+		}
+		projectCounts[proj]++
+	}
+
+	// Collect projects that meet the threshold.
+	var qualified []string
+	for proj, count := range projectCounts {
+		if count >= minSessions {
+			qualified = append(qualified, proj)
+		}
+	}
+
+	if len(qualified) == 0 {
+		return doctorCheck{
+			Name:    "Anomaly baselines",
+			Passed:  true,
+			Message: "no projects with ≥5 sessions — nothing to check",
+		}
+	}
+
+	// Fetch stored baselines.
+	baselines, err := db.ListProjectBaselines()
+	if err != nil {
+		return doctorCheck{
+			Name:    "Anomaly baselines",
+			Passed:  false,
+			Message: fmt.Sprintf("could not list baselines: %v", err),
+		}
+	}
+
+	baselineSet := make(map[string]struct{}, len(baselines))
+	for _, b := range baselines {
+		baselineSet[b.Project] = struct{}{}
+	}
+
+	var missing []string
+	for _, proj := range qualified {
+		if _, ok := baselineSet[proj]; !ok {
+			missing = append(missing, proj)
+		}
+	}
+
+	if len(missing) == 0 {
+		return doctorCheck{
+			Name:    "Anomaly baselines",
+			Passed:  true,
+			Message: fmt.Sprintf("%d/%d qualifying projects have baselines", len(qualified), len(qualified)),
+		}
+	}
+
+	return doctorCheck{
+		Name:   "Anomaly baselines",
+		Passed: false,
+		Message: fmt.Sprintf("%d project(s) with ≥5 sessions missing baselines: %s — run 'claudewatch anomalies' to compute",
+			len(missing), strings.Join(missing, ", ")),
+	}
 }

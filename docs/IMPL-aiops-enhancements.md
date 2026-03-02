@@ -867,9 +867,9 @@ of this IMPL doc.
 
 - [x] Wave 1: Agent A complete
 - [x] Wave 1: Agent C complete
-- [ ] Wave 2: Agent B complete
-- [ ] Wave 2: Agent D complete
-- [ ] Final verification: `go test ./... -race` passes
+- [x] Wave 2: Agent B complete
+- [x] Wave 2: Agent D complete
+- [x] Final verification: `go test ./... -race` passes
 - [ ] Smoke test: all four new subcommands/tools work
 
 ---
@@ -950,7 +950,31 @@ go test ./internal/store/... -v -race — 14 tests PASS (0 failures)
 
 ### Agent B — Completion Report
 
-_To be written by Agent B upon completion._
+**Status: COMPLETE**
+
+**Files created:**
+- `internal/app/search.go` — `searchCmd` + `runSearch` + `renderSearchResults`
+- `internal/app/compare.go` — `compareCmd` + `runCompare` + `renderCompare`
+- `internal/app/anomalies.go` — `anomaliesCmd` + `runAnomalies` + `renderAnomalies`
+- `internal/app/search_test.go` — 4 tests (render empty, render with results, cmd registration, flag default)
+- `internal/app/compare_test.go` — 5 tests (render empty, render with data, render no cost/commit, cmd registration, flag registration)
+- `internal/app/anomalies_test.go` — 9 tests (render empty, render with data, cmd registration, flag defaults, 4 checkAnomalyBaselines variants)
+
+**Files modified:**
+- `internal/app/doctor.go` — added `store` import, `checkAnomalyBaselines` function, and check #9 call in `runDoctor` (opens DB via `store.Open(config.DBPath())`, soft-fails if DB unavailable)
+
+**Verification gate results:**
+- `go build ./...` — PASS
+- `go vet ./...` — PASS
+- `go test ./internal/app/... -v -race` — PASS (29 tests, 0 failures)
+
+**Implementation notes:**
+- `claudewatch search`: auto-indexes on first use (when `TranscriptIndexStatus` returns count=0); indexing status line suppressed under `--json`; `--limit` flag defaults to 20.
+- `claudewatch compare`: project defaults to `filepath.Base` of most recent session's `ProjectPath`; uses `claude.ParseSessionTranscripts` + `claude.ComputeSAWWaves` for SAW identification; non-fatal on transcript parse errors; table shows SAW row first, Sequential row second, with totals footer.
+- `claudewatch anomalies`: fetches baseline from DB; if none exists, computes via `analyzer.ComputeProjectBaseline` and stores with `UpsertProjectBaseline`; `--threshold` defaults to 2.0; severity coloring applied in table.
+- `doctor.go` check #9: `checkAnomalyBaselines` counts sessions per project by `filepath.Base(ProjectPath)`, finds projects with ≥5 sessions, compares against `ListProjectBaselines()` result; passes vacuously if no projects qualify; DB open failure surfaces as a soft doctorCheck (not a fatal error to the doctor run).
+- No new external dependencies introduced.
+- The existing `min` helper in `doctor.go` was reused; no redeclaration in new files.
 
 ### Agent C — Completion Report
 
@@ -1004,4 +1028,26 @@ go test ./internal/analyzer/... -v -race → PASS (all existing + new tests)
 
 ### Agent D — Completion Report
 
-_To be written by Agent D upon completion._
+**Status:** Complete. All verification gates passed.
+
+**Files created:**
+- `internal/mcp/transcript_tools.go` — implements `addTranscriptTools` and `handleSearchTranscripts`
+- `internal/mcp/anomaly_tools.go` — implements `addAnomalyTools` and `handleGetProjectAnomalies`
+- `internal/mcp/transcript_tools_test.go` — 5 tests for `search_transcripts` handler
+- `internal/mcp/anomaly_tools_test.go` — 7 tests for `get_project_anomalies` handler
+
+**Files modified:**
+- `internal/mcp/tools.go` — added `addTranscriptTools(s)` and `addAnomalyTools(s)` after `addDashboardTools(s)`
+
+**Verification gate results:**
+- `go build ./...` — PASS
+- `go vet ./...` — PASS
+- `go test ./internal/mcp/... -v -race` — PASS (102 tests total, 12 new)
+
+**Implementation notes:**
+
+1. `search_transcripts` handler opens the DB via `store.Open(config.DBPath())` per call (consistent with read-heavy pattern), checks `TranscriptIndexStatus()` first and returns the user-friendly empty-index error if count == 0, then calls `db.SearchTranscripts(query, limit)`. The `query` field is required; returns `"query is required"` if missing or empty.
+
+2. `get_project_anomalies` handler follows the same project-resolution pattern as `handleGetProjectHealth`: active session preferred, falls back to most recent closed session. Opens the DB and calls `GetProjectBaseline`; if nil (no stored baseline), calls `analyzer.ComputeProjectBaseline` on the fly. If `ComputeProjectBaseline` returns an error (fewer than 3 sessions), returns `"insufficient session history for project <name> (need ≥3 sessions)"`. The computed baseline is persisted via `UpsertProjectBaseline`. `DetectAnomalies` is called with the (stored or newly computed) baseline. SAW session IDs are resolved via `claude.ParseSessionTranscripts` + `claude.ComputeSAWWaves`, filtered to the project's sessions.
+
+3. Tests use `t.Setenv("HOME", dir)` to redirect `config.DBPath()` to a temp directory. The `openTestDB` helper calls `store.Open(config.DBPath())` (equivalent to `OpenInMemory()` in isolation since it runs migrations on a fresh temp DB). Tests cover: missing/empty query errors, empty index error, successful search results, limit enforcement, insufficient session error, explicit project filtering, baseline persistence/reuse, stored baseline loading, default project resolution, and custom threshold behavior.

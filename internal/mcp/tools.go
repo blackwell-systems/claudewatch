@@ -152,6 +152,8 @@ func addTools(s *Server) {
 	addContextTools(s)
 	addCostVelocityTools(s)
 	addDashboardTools(s)
+	addTranscriptTools(s)
+	addAnomalyTools(s)
 	s.registerTool(toolDef{
 		Name:        "get_project_comparison",
 		Description: "All projects compared side by side in a single call. Returns a ranked list of all projects with health score, friction rate, has_claude_md, agent success rate, and session count.",
