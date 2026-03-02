@@ -108,5 +108,7 @@ Available claudewatch MCP tools:
 - ` + b + `get_context_pressure` + b + ` — context window utilization
 - ` + b + `get_cost_velocity` + b + ` — cost burn rate (last 10 min)
 - ` + b + `get_suggestions` + b + ` — improvement suggestions ranked by impact
+
+Full documentation: https://github.com/blackwell-systems/claudewatch#readme
 ` + claudeMDMarkerEnd
 }
