@@ -397,6 +397,32 @@ claudewatch experiment report --project myproject
 
 ---
 
+### doctor
+
+Run a series of health checks against your claudewatch configuration and Claude Code data directory. Prints a pass/fail line for each check and a summary.
+
+```bash
+claudewatch doctor
+claudewatch doctor --json
+```
+
+**Checks performed:**
+
+1. Claude home directory — exists and is readable
+2. Session data — at least one session-meta file found
+3. Stats cache — `stats-cache.json` parses correctly
+4. Scan paths — each configured path exists
+5. SQLite database — `claudewatch.db` exists
+6. Watch daemon — PID file exists and process is running
+7. CLAUDE.md coverage — fraction of projects with a `CLAUDE.md` file (warns below 50%)
+8. API key — `ANTHROPIC_API_KEY` is set (needed for `fix --ai`)
+9. Anomaly baselines — all projects with ≥5 sessions have a stored baseline (run `claudewatch anomalies` to fix)
+10. Regression detection — no project's friction rate or avg cost has regressed beyond 1.5× its stored baseline
+
+**Output:** Pass (`✓`) or fail (`✗`) per check, summary line showing `N/10 checks passed`. With `--json`, a structured object with a `checks` array, `passed` count, and `total` count.
+
+---
+
 ## The fix-measure loop
 
 These commands are designed to work together in a repeated cycle:

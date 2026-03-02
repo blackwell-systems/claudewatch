@@ -915,7 +915,7 @@ After Wave 1 completes:
 - [x] Post-merge: remove `//go:build integration` tag from Agent B's test file
 - [x] Post-merge: add `checkRegressionStatus` doctor check to `internal/app/doctor.go`
 - [x] Post-merge: `go build ./... && go vet ./... && go test ./...` passes
-- [ ] Post-merge: commit
+- [x] Post-merge: commit
 
 ---
 

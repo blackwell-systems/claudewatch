@@ -18,6 +18,8 @@ All notable changes to claudewatch are documented here.
 
 - **Self-optimizing anomaly baselines** — `claudewatch anomalies` now refreshes the stored baseline on every run using exponential decay weighting (decay=0.9), so recent sessions have more influence than older ones. Baseline drift after workflow changes (e.g. adopting SAW) resolves automatically within ~10–15 sessions rather than being anchored to stale data indefinitely.
 
+- **Automated regression detection** — `get_regression_status` MCP tool checks whether a project's friction rate or avg cost has regressed beyond 1.5× its stored baseline. Also surfaces as check #10 in `claudewatch doctor`.
+
 ## [0.7.8] - 2026-03-02
 
 ### Added

@@ -53,6 +53,7 @@ Call these to understand patterns over time or validate prior changes:
 12. **`search_transcripts`** — find sessions where a specific topic, error, or tool was discussed; useful before tackling a recurring problem to see how it was approached before
 13. **`get_project_anomalies`** — identify sessions that deviated significantly from the project's cost or friction baseline; useful for diagnosing what went wrong in a particularly expensive or high-friction session
 14. **`get_cost_attribution`** — break down token cost by tool type for a session to identify which tool types (Agent, Bash, Read, etc.) drove spending; call after high-cost sessions to identify which tool types drove spending
+15. **`get_regression_status`** — check whether a project's friction rate or cost-per-session has regressed beyond a configurable multiplier of its stored baseline; call periodically to catch silent regressions after workflow changes
 
 ## Tool reference
 
@@ -516,6 +517,34 @@ Each entry in `rows`:
 | `input_tokens` | int | Input tokens consumed by this tool type |
 | `output_tokens` | int | Output tokens consumed by this tool type |
 | `est_cost_usd` | float | Estimated cost for this tool type |
+
+---
+
+#### `get_regression_status`
+
+Checks whether a project's friction rate or average cost per session has regressed relative to its stored baseline. The comparison uses a configurable multiplier threshold (default 1.5×) — regression is flagged when the current value exceeds `threshold × baseline_value`.
+
+Returns `has_baseline: false` if no baseline exists for the project (run `claudewatch anomalies` to compute one). Returns `insufficient_data: true` if fewer than 3 recent sessions are available.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `project` | string | no | Project name to check. Defaults to the most recently active project. |
+| `threshold` | float | no | Regression multiplier. Default: 1.5. Values ≤ 1 are treated as 1.5. |
+
+| Output field | Type | Description |
+|---|---|---|
+| `project` | string | Project name checked |
+| `has_baseline` | bool | Whether a stored baseline exists for this project |
+| `insufficient_data` | bool | True if fewer than 3 recent sessions are available |
+| `regressed` | bool | True if either friction or cost has regressed |
+| `friction_regressed` | bool | True if friction rate exceeds `threshold × baseline_friction_rate` |
+| `cost_regressed` | bool | True if avg cost exceeds `threshold × baseline_avg_cost_usd` |
+| `current_friction_rate` | float | Current friction rate (sessions with friction / total, 0.0–1.0) |
+| `baseline_friction_rate` | float | Baseline friction rate |
+| `current_avg_cost_usd` | float | Current average session cost |
+| `baseline_avg_cost_usd` | float | Baseline average session cost |
+| `threshold` | float | Threshold used for comparison |
+| `message` | string | Human-readable summary of the regression status |
 
 ---
 
