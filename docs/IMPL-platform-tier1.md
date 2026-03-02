@@ -1104,17 +1104,17 @@ go run ./cmd/claudewatch experiment --help
 
 ### Wave 2
 
-- [ ] **Agent C** — `internal/app/attribute.go` created
-- [ ] **Agent C** — `internal/app/replay.go` created
-- [ ] **Agent C** — `go build ./internal/app/...` passes
-- [ ] **Agent C** — `go vet ./internal/app/...` passes
-- [ ] **Agent D** — `internal/app/experiment.go` created
-- [ ] **Agent D** — `go build ./internal/app/...` passes
-- [ ] **Agent D** — `go vet ./internal/app/...` passes
-- [ ] **Agent E** — `internal/mcp/attribution_tools.go` created
-- [ ] **Agent E** — `internal/mcp/tools.go` modified (addAttributionTools call added)
-- [ ] **Agent E** — `go build ./internal/mcp/...` passes
-- [ ] **Agent E** — `go vet ./internal/mcp/...` passes
+- [x] **Agent C** — `internal/app/attribute.go` created
+- [x] **Agent C** — `internal/app/replay.go` created
+- [x] **Agent C** — `go build ./internal/app/...` passes
+- [x] **Agent C** — `go vet ./internal/app/...` passes
+- [x] **Agent D** — `internal/app/experiment.go` created
+- [x] **Agent D** — `go build ./internal/app/...` passes
+- [x] **Agent D** — `go vet ./internal/app/...` passes
+- [x] **Agent E** — `internal/mcp/attribution_tools.go` created
+- [x] **Agent E** — `internal/mcp/tools.go` modified (addAttributionTools call added)
+- [x] **Agent E** — `go build ./internal/mcp/...` passes
+- [x] **Agent E** — `go vet ./internal/mcp/...` passes
 
 ### Orchestrator
 
@@ -1126,8 +1126,74 @@ go run ./cmd/claudewatch experiment --help
 - [x] `go vet ./...` passes
 - [x] `go test ./internal/store/...` passes
 - [x] `go test ./internal/analyzer/...` passes
-- [ ] `go test ./internal/app/...` passes
-- [ ] `go test ./internal/mcp/...` passes
+- [x] `go test ./internal/app/...` passes
+- [x] `go test ./internal/mcp/...` passes
+
+---
+
+### Agent C — Completion Report
+
+**Status:** COMPLETE
+
+**Files created:**
+- `internal/app/attribute.go`
+- `internal/app/replay.go`
+
+**attribute.go:** Registers `claudewatch attribute` on `rootCmd`. Converts `analyzer.DefaultPricing["sonnet"]` → `store.ModelPricing`, calls `store.ComputeAttribution`, renders table with "Tool Type / Calls / Input Tokens / Output Tokens / Est. Cost" columns and a total summary line.
+
+**replay.go:** Registers `claudewatch replay <session-id>` with `cobra.ExactArgs(1)`. Converts pricing identically. Calls `store.BuildReplay`, renders section header (session ID truncated to 12 chars via built-in `min`), summary line with turns/cost/friction, and table with "Turn / Role / Tool / In Tok / Out Tok / Cost / F" columns.
+
+**Verification:**
+```
+go build ./internal/app/...   PASS
+go vet ./internal/app/...     PASS
+```
+
+**Deviations from contract:**
+- Unused imports (`claude`, `sort`, `strings`) omitted from attribute.go — listed in spec but not needed by the implementation
+- `attrFlagProject` declared but not wired to a flag (consistent with "reserved for future, not functional in v1" spec note)
+
+---
+
+### Agent D — Completion Report
+
+**Status:** COMPLETE
+
+**Files created:**
+- `internal/app/experiment.go`
+
+Implements four `cobra` subcommands under `claudewatch experiment`:
+- `start` — `--project` (required), `--note`; calls `db.CreateExperiment`, prints new ID
+- `stop` — `--project` (required); finds active experiment, calls `db.StopExperiment`
+- `tag` — `--project`, `--session` (defaults to most-recent via `ParseAllSessionMeta` sorted descending), `--variant` (validated "a"/"b"); calls `db.RecordSessionVariant`
+- `report` — `--project`, `--json`; builds assignments map, filters sessions/facets, calls `analyzer.AnalyzeExperiment`, renders Metric/Variant-A/Variant-B table with winner line
+
+**Verification:**
+```
+go build ./internal/app/...   PASS
+go vet ./internal/app/...     PASS
+```
+
+**Deviations from contract:** None.
+
+---
+
+### Agent E — Completion Report
+
+**Status:** COMPLETE
+
+**Files created:** `internal/mcp/attribution_tools.go`
+**Files modified:** `internal/mcp/tools.go` (added `addAttributionTools(s)` after `addAnomalyTools(s)`)
+
+Registers `get_cost_attribution` MCP tool. Handler parses optional `session_id`, maps `analyzer.DefaultPricing["sonnet"]` → `store.ModelPricing` (import cycle workaround), calls `store.ComputeAttribution`, sums total cost, returns `CostAttributionResult{session_id, rows, total_cost_usd}`.
+
+**Verification:**
+```
+go build ./internal/mcp/...   PASS
+go vet ./internal/mcp/...     PASS
+```
+
+**Deviations from contract:** None. `s.claudeHome` field confirmed by inspecting existing tool handlers.
 
 ---
 
