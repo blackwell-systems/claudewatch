@@ -207,7 +207,7 @@ claudewatch track --compare
 |---|---|
 | 📗 [Quickstart](docs/quickstart.md) | Install, baseline, fix, measure — the full cycle in one guide |
 | 📘 [CLI Reference](docs/cli.md) | All commands and flags: `scan`, `metrics`, `gaps`, `suggest`, `fix`, `track`, `log`, `watch` |
-| 📙 [MCP Reference](docs/mcp.md) | All 19 MCP tools, setup, recommended usage pattern, and data freshness notes |
+| 📙 [MCP Reference](docs/mcp.md) | All 22 MCP tools, setup, recommended usage pattern, and data freshness notes |
 | 📕 [Effectiveness Scoring](docs/effectiveness.md) | How CLAUDE.md before/after scoring works, how to read verdicts, and what to do with regressions |
 
 ---
@@ -225,6 +225,9 @@ claudewatch track --compare
 | `log` | Inject custom metrics (scale, boolean, counter, duration) |
 | `watch` | Background daemon with desktop alerts on friction spikes |
 | `mcp` | Run an MCP stdio server — gives Claude real-time access to its own session metrics |
+| `hook` | PostToolUse shell hook — checks for error loops, context pressure, and cost spikes; exits 2 with a self-contained alert if action is needed |
+| `startup` | SessionStart shell hook — prints a compact briefing into Claude's context: project health, session count, friction level, MCP tool manifest |
+| `install` | Write the claudewatch behavioral contract into `~/.claude/CLAUDE.md`, delimited by markers; idempotent |
 
 ### `claudewatch fix`
 
@@ -259,7 +262,7 @@ Claude doesn't understand itself. It has no native access to its own session his
 
 claudewatch is the mirror that lets Claude see itself. The MCP server transforms raw transcript data into structured, queryable tools so that Claude can ask "how long did that parallel agent run take?" or "what has this session cost so far?" and get an answer it can immediately reason about — without leaving the session, without parsing JSONL, and without spending context on plumbing.
 
-The 19 MCP tools operate at two time scales:
+The 22 MCP tools operate at two time scales:
 
 - **Historical** — project health, agent performance, friction patterns, effectiveness scores. Claude queries its own track record to make better decisions: "plan agents get killed 40% of the time on this project, skip plan mode."
 - **Live** — token velocity, commit-to-attempt ratio, tool error rate, friction events. Claude monitors its own session in real time: "I'm generating errors at 30% rate, slow down and read more before editing."
@@ -286,7 +289,7 @@ claudewatch mcp --budget 20        # enable daily budget tracking ($20 limit)
 }
 ```
 
-**Tools exposed (19 tools across 5 categories):**
+**Tools exposed (22 tools across 5 categories):**
 
 *Session & cost:*
 
@@ -301,10 +304,13 @@ claudewatch mcp --budget 20        # enable daily budget tracking ($20 limit)
 
 | Tool | Description |
 |------|-------------|
+| `get_session_dashboard` | All live metrics in one call: token velocity, commit ratio, context pressure, cost velocity, tool errors, friction patterns. Replaces 6 individual tool calls with one round-trip. |
 | `get_token_velocity` | Tokens/minute with 10-min windowed rate — flowing, slow, or idle |
 | `get_commit_attempt_ratio` | Git commits vs Edit/Write attempts — efficient, normal, or guessing |
 | `get_live_tool_errors` | Error rate, errors by tool, consecutive errors, severity |
 | `get_live_friction` | Friction events detected so far — retries, error bursts, tool failures |
+| `get_context_pressure` | Context window utilization — comfortable, filling, pressure, or critical |
+| `get_cost_velocity` | Cost burn rate over the last 10 minutes — efficient, normal, or burning |
 
 *Project & pattern analysis:*
 
@@ -330,6 +336,50 @@ claudewatch mcp --budget 20        # enable daily budget tracking ($20 limit)
 | Tool | Description |
 |------|-------------|
 | `set_session_project` | Override project attribution for a session |
+
+### Self-reflection architecture
+
+claudewatch closes the feedback loop for Claude through three components that work at different layers of persistence. Understanding how they fit together matters for setup.
+
+**The push/pull problem**
+
+MCP tools are *pull* — Claude must think to call them. If Claude doesn't realize it's in trouble, it won't query `get_live_friction`. Hooks are *push* — they fire automatically after every tool use and inject signals whether Claude thinks to look or not. CLAUDE.md is *persistent* — behavioral rules that Claude Code loads at the start of every session and that remain in context regardless of how deep the conversation grows.
+
+Each component covers a gap the others leave open:
+
+**1. Startup briefing** (`claudewatch startup` as a SessionStart hook)
+
+Fires at session start and prints a compact 4-line briefing directly into Claude's context: project name, session count, friction level, CLAUDE.md status, agent success rate, a context-specific tip, the full MCP tool manifest, and a PostToolUse hook reminder. This orients Claude to the project and the tools available before the first user message. Because it's injected context, it erodes as the conversation grows — useful for orientation at the start, not for behavioral rules that need to survive a 100-turn session.
+
+**2. Behavioral contract** (`claudewatch install` → `~/.claude/CLAUDE.md`)
+
+`claudewatch install` writes a block of instructions into `~/.claude/CLAUDE.md`, delimited by `<!-- claudewatch:start -->` / `<!-- claudewatch:end -->` markers. The block tells Claude what to do when it sees the startup briefing (call `get_project_health` to calibrate) and what to do when the PostToolUse hook fires (stop, call `get_session_dashboard`). Without this, Claude sees the briefing but has no standing instruction to act on it. CLAUDE.md is loaded by Claude Code at session start and remains in context for the full session — it's where behavioral rules belong. Re-running `claudewatch install` updates the section in place; it's idempotent.
+
+**3. Reactive alerts** (`claudewatch hook` as a PostToolUse hook)
+
+Fires after every tool use, rate-limited to once per 30 seconds via `~/.cache/claudewatch-hook.ts`. Checks three conditions in priority order: (1) three or more consecutive tool errors, (2) context pressure at "pressure" or "critical", (3) cost velocity "burning". Exits 0 silently if all clear. If a condition is met, exits 2 with a self-contained stderr message that names the MCP server, the tool to call (`get_session_dashboard`), and what that tool returns — so Claude with zero prior context about claudewatch knows exactly what to do.
+
+**Why CLAUDE.md persistence matters**
+
+Injected context from the startup hook erodes as the conversation grows. By turn 50 it's buried under newer content. CLAUDE.md is loaded by Claude Code at the start of every session and remains in context regardless of depth. The behavioral rules — "when the hook fires, stop and call get_session_dashboard" — need to persist for the full session. The dynamic project data only needs to be fresh at session start.
+
+**Setup**
+
+```bash
+# Install behavioral contract into ~/.claude/CLAUDE.md
+claudewatch install
+```
+
+Add hooks to `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{"hooks": [{"type": "command", "command": "claudewatch startup"}]}],
+    "PostToolUse": [{"hooks": [{"type": "command", "command": "claudewatch hook"}]}]
+  }
+}
+```
 
 ### `claudewatch metrics --json`
 
