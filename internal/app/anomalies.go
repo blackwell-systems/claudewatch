@@ -102,47 +102,41 @@ func runAnomalies(cmd *cobra.Command, args []string) error {
 		cacheRatio = analyzer.ComputeCacheRatio(*sc)
 	}
 
-	// Open DB for baseline retrieval / storage.
+	// Open DB for baseline storage.
 	db, dbErr := store.Open(config.DBPath())
 	if dbErr != nil {
 		return fmt.Errorf("opening database: %w", dbErr)
 	}
 	defer func() { _ = db.Close() }()
 
-	// Fetch or compute the baseline.
-	baseline, err := db.GetProjectBaseline(project)
-	if err != nil {
-		return fmt.Errorf("fetching project baseline: %w", err)
+	// Always recompute the baseline with EMA weighting so it self-updates as
+	// sessions accumulate — recent sessions have more influence than older ones.
+	spans, _ := claude.ParseSessionTranscripts(cfg.ClaudeHome)
+	sawSessions := claude.ComputeSAWWaves(spans)
+	sawIDs := make(map[string]bool, len(sawSessions))
+	for _, ss := range sawSessions {
+		sawIDs[ss.SessionID] = true
 	}
 
-	if baseline == nil {
-		// Compute baseline on the fly.
-		spans, _ := claude.ParseSessionTranscripts(cfg.ClaudeHome)
-		sawSessions := claude.ComputeSAWWaves(spans)
-		sawIDs := make(map[string]bool, len(sawSessions))
-		for _, ss := range sawSessions {
-			sawIDs[ss.SessionID] = true
-		}
-
-		computed, computeErr := analyzer.ComputeProjectBaseline(analyzer.BaselineInput{
-			Project:    project,
-			Sessions:   projectSessions,
-			Facets:     facets,
-			SAWIDs:     sawIDs,
-			Pricing:    pricing,
-			CacheRatio: cacheRatio,
-		})
-		if computeErr != nil {
-			return fmt.Errorf("computing baseline for %q: %w", project, computeErr)
-		}
-
-		if upsertErr := db.UpsertProjectBaseline(computed); upsertErr != nil {
-			// Non-fatal: warn but continue with the computed baseline.
-			fmt.Fprintf(os.Stderr, "warning: could not store baseline: %v\n", upsertErr)
-		}
-
-		baseline = &computed
+	computed, computeErr := analyzer.ComputeProjectBaseline(analyzer.BaselineInput{
+		Project:     project,
+		Sessions:    projectSessions,
+		Facets:      facets,
+		SAWIDs:      sawIDs,
+		Pricing:     pricing,
+		CacheRatio:  cacheRatio,
+		DecayFactor: 0.9,
+	})
+	if computeErr != nil {
+		return fmt.Errorf("computing baseline for %q: %w", project, computeErr)
 	}
+
+	if upsertErr := db.UpsertProjectBaseline(computed); upsertErr != nil {
+		// Non-fatal: warn but continue with the computed baseline.
+		fmt.Fprintf(os.Stderr, "warning: could not store baseline: %v\n", upsertErr)
+	}
+
+	baseline := &computed
 
 	anomalies := analyzer.DetectAnomalies(projectSessions, facets, *baseline, pricing, cacheRatio, anomaliesFlagThreshold)
 

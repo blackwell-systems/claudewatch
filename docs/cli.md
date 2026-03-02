@@ -311,7 +311,7 @@ claudewatch compare --json
 
 ### anomalies
 
-Per-project anomaly detection using z-score statistics over historical baselines. On first run for a project, computes and stores the baseline automatically from all available sessions (requires ≥3). Subsequent calls load the stored baseline for faster execution.
+Per-project anomaly detection using z-score statistics over historical baselines. Requires ≥3 sessions. The baseline is recomputed and stored on every run using exponential decay weighting (decay=0.9), so recent sessions have more influence than older ones — baseline drift after workflow changes resolves automatically within ~10–15 sessions.
 
 ```bash
 claudewatch anomalies

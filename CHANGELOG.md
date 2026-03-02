@@ -16,6 +16,8 @@ All notable changes to claudewatch are documented here.
 
 - **Schema migration v3** — `experiments` and `experiment_sessions` tables for A/B experiment tracking.
 
+- **Self-optimizing anomaly baselines** — `claudewatch anomalies` now refreshes the stored baseline on every run using exponential decay weighting (decay=0.9), so recent sessions have more influence than older ones. Baseline drift after workflow changes (e.g. adopting SAW) resolves automatically within ~10–15 sessions rather than being anchored to stale data indefinitely.
+
 ## [0.7.8] - 2026-03-02
 
 ### Added

@@ -3,6 +3,7 @@ package analyzer
 import (
 	"fmt"
 	"math"
+	"sort"
 	"time"
 
 	"github.com/blackwell-systems/claudewatch/internal/claude"
@@ -11,17 +12,19 @@ import (
 
 // BaselineInput is the data required to compute a project baseline.
 type BaselineInput struct {
-	Project    string
-	Sessions   []claude.SessionMeta
-	Facets     []claude.SessionFacet
-	SAWIDs     map[string]bool // set of SAW session IDs
-	Pricing    ModelPricing
-	CacheRatio CacheRatio
+	Project     string
+	Sessions    []claude.SessionMeta
+	Facets      []claude.SessionFacet
+	SAWIDs      map[string]bool // set of SAW session IDs
+	Pricing     ModelPricing
+	CacheRatio  CacheRatio
+	DecayFactor float64 // EMA decay per session step (0 < decay <= 1); 0 or >1 means equal weights. Use 0.9 for EMA.
 }
 
 // ComputeProjectBaseline computes the statistical baseline for a project
-// using all historical sessions. Requires at least 3 sessions; returns an
-// error if fewer sessions are available.
+// using all historical sessions with exponential decay weighting so that
+// recent sessions have more influence than older ones. Requires at least 3
+// sessions; returns an error if fewer sessions are available.
 func ComputeProjectBaseline(input BaselineInput) (store.ProjectBaseline, error) {
 	if len(input.Sessions) < 3 {
 		return store.ProjectBaseline{}, fmt.Errorf(
@@ -30,43 +33,50 @@ func ComputeProjectBaseline(input BaselineInput) (store.ProjectBaseline, error) 
 		)
 	}
 
+	decay := input.DecayFactor
+	if decay <= 0 || decay > 1 {
+		// Unset or invalid: fall back to equal weights (decay=1 → all weights are 1).
+		decay = 1.0
+	}
+
+	// Sort sessions oldest-first so EMA weights increase toward the present.
+	sorted := make([]claude.SessionMeta, len(input.Sessions))
+	copy(sorted, input.Sessions)
+	sortSessionsByTime(sorted)
+
 	facetsByID := buildFacetIndex(input.Facets)
+	n := len(sorted)
 
-	n := float64(len(input.Sessions))
+	costs := make([]float64, n)
+	frictions := make([]float64, n)
+	commits := make([]float64, n)
+	sawFlags := make([]float64, n)
 
-	// Compute per-session costs and frictions.
-	costs := make([]float64, len(input.Sessions))
-	frictions := make([]float64, len(input.Sessions))
-	var totalCommits float64
-	sawCount := 0
-
-	for i, sess := range input.Sessions {
+	for i, sess := range sorted {
 		costs[i] = EstimateSessionCost(sess, input.Pricing, input.CacheRatio)
 		frictions[i] = float64(sessionFriction(sess, facetsByID))
-		totalCommits += float64(sess.GitCommits)
+		commits[i] = float64(sess.GitCommits)
 		if input.SAWIDs[sess.SessionID] {
-			sawCount++
+			sawFlags[i] = 1.0
 		}
 	}
 
-	// Compute means.
-	avgCost := mean(costs)
-	avgFriction := mean(frictions)
+	// EMA weights: oldest session gets decay^(n-1), newest gets decay^0 = 1.
+	weights := emaWeights(n, decay)
 
-	// Compute population stddevs.
-	stddevCost := populationStddev(costs, avgCost)
-	stddevFriction := populationStddev(frictions, avgFriction)
+	avgCost := weightedMean(costs, weights)
+	avgFriction := weightedMean(frictions, weights)
 
 	return store.ProjectBaseline{
 		Project:        input.Project,
 		ComputedAt:     time.Now().UTC().Format(time.RFC3339),
-		SessionCount:   len(input.Sessions),
+		SessionCount:   n,
 		AvgCostUSD:     avgCost,
-		StddevCostUSD:  stddevCost,
+		StddevCostUSD:  weightedStddev(costs, weights, avgCost),
 		AvgFriction:    avgFriction,
-		StddevFriction: stddevFriction,
-		AvgCommits:     totalCommits / n,
-		SAWSessionFrac: float64(sawCount) / n,
+		StddevFriction: weightedStddev(frictions, weights, avgFriction),
+		AvgCommits:     weightedMean(commits, weights),
+		SAWSessionFrac: weightedMean(sawFlags, weights),
 	}, nil
 }
 
@@ -148,6 +158,54 @@ func populationStddev(values []float64, avg float64) float64 {
 		sumSq += diff * diff
 	}
 	return math.Sqrt(sumSq / float64(len(values)))
+}
+
+// emaWeights returns exponential decay weights for n sessions ordered
+// oldest-first. The newest session (index n-1) gets weight 1; each older
+// session is scaled by decay, so index i gets decay^(n-1-i).
+func emaWeights(n int, decay float64) []float64 {
+	weights := make([]float64, n)
+	for i := 0; i < n; i++ {
+		weights[i] = math.Pow(decay, float64(n-1-i))
+	}
+	return weights
+}
+
+// weightedMean returns the weighted arithmetic mean of values.
+// Returns 0 if the total weight is 0.
+func weightedMean(values, weights []float64) float64 {
+	var sumW, sumWX float64
+	for i, v := range values {
+		sumW += weights[i]
+		sumWX += weights[i] * v
+	}
+	if sumW == 0 {
+		return 0
+	}
+	return sumWX / sumW
+}
+
+// weightedStddev returns the weighted population standard deviation.
+// Returns 0 if the total weight is 0.
+func weightedStddev(values, weights []float64, avg float64) float64 {
+	var sumW, sumWSq float64
+	for i, v := range values {
+		sumW += weights[i]
+		diff := v - avg
+		sumWSq += weights[i] * diff * diff
+	}
+	if sumW == 0 {
+		return 0
+	}
+	return math.Sqrt(sumWSq / sumW)
+}
+
+// sortSessionsByTime sorts sessions oldest-first by StartTime (RFC3339 string
+// comparison is correct for lexicographic ordering).
+func sortSessionsByTime(sessions []claude.SessionMeta) {
+	sort.Slice(sessions, func(i, j int) bool {
+		return sessions[i].StartTime < sessions[j].StartTime
+	})
 }
 
 // zScore computes the standard score: (value - mean) / stddev.

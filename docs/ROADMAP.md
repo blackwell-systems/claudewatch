@@ -20,6 +20,7 @@ A progression from monitoring tool to AI Ops platform. Items are ordered within 
 - Per-turn cost attribution (`claudewatch attribute`, `get_cost_attribution` MCP)
 - Session replay timeline (`claudewatch replay`)
 - CLAUDE.md A/B testing (`claudewatch experiment start|stop|tag|report`)
+- Self-optimizing anomaly baselines (EMA decay weighting, auto-refresh on every `anomalies` run)
 
 ---
 
@@ -87,13 +88,9 @@ These derive new insight from existing data without new collection infrastructur
 
 ---
 
-### Self-optimizing baselines
+~~### Self-optimizing baselines~~
 
-**What:** Anomaly baselines are currently computed once and stored statically. They should recompute automatically as sessions accumulate, with exponential weighting that gives more influence to recent sessions.
-
-**Why:** Static baselines drift as workflow patterns change (e.g., after adopting SAW, the cost baseline should shift downward). A baseline that doesn't update becomes a false-positive generator.
-
-**Approach:** On each new session completion, re-weight the stored baseline with a configurable decay factor. Expose last-updated and session-count metadata in the baseline output.
+~~**Shipped in v0.7.9.** `claudewatch anomalies` now recomputes the baseline with EMA decay weighting (0.9) on every run.~~
 
 ---
 
@@ -171,7 +168,7 @@ These require inference or generative capabilities beyond pattern aggregation.
 | Factor analysis | 2 | No | `correlate` | `get_causal_insights` |
 | Cost forecasting | 2 | No | — | `get_cost_forecast` |
 | Regression detection | 2 | No | doctor check | `get_regression_status` |
-| Self-optimizing baselines | 2 | No | — | — |
+| ~~Self-optimizing baselines~~ | ~~2~~ | ~~No~~ | ~~—~~ | ~~—~~ |
 | Metrics export | 3 | No | `export` | — |
 | Policy/rule engine | 3 | No | — | — |
 | Multi-developer aggregation | 3 | Yes (sync) | — | — |
