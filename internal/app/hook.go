@@ -16,7 +16,7 @@ var hookCmd = &cobra.Command{
 	Short: "Check for consecutive tool errors (for use as a postToolCall shell hook)",
 	Long: `Tail-scans the active Claude Code session for consecutive tool errors.
 Exit 0 if below threshold (silent). Exit 2 if threshold exceeded, with one
-actionable line printed to stdout.
+actionable line printed to stderr.
 
 Intended for use as a Claude Code postToolCall shell hook:
   {"postToolCall": {"command": "claudewatch hook"}}`,
@@ -45,6 +45,6 @@ func runHook(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	fmt.Printf("⚠ %d consecutive tool errors — run get_live_friction for details\n", n)
+	fmt.Fprintf(os.Stderr, "⚠ %d consecutive tool errors detected. STOP and call the get_live_friction MCP tool now before continuing.\n", n)
 	os.Exit(2)
 }
