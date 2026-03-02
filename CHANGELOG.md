@@ -14,6 +14,18 @@ All notable changes to claudewatch are documented here.
 
 - **`get_cost_summary` today/week undercounting for resumed sessions** — time-bucket logic used `session.StartTime` to decide whether a session counted toward `today_usd` or `week_usd`. Long-running sessions resumed across day or week boundaries had a start time in the past, causing their cost to appear in neither bucket. Fixed by anchoring on the last entry in `UserMessageTimestamps` (most recent user activity), falling back to `StartTime` only when the timestamps list is empty.
 
+- **`get_cost_summary` stale indexed data masking live session** — when a session was both indexed (session-meta written days ago) and live (currently running), the deduplication logic skipped the live session entirely. The indexed version had stale token counts ($1 vs $217 live) and old timestamps, leaving `today_usd` at 0. Fixed by replacing the indexed version with live data when both exist.
+
+- **`FindActiveSessionPath` symlink resolution** — `~/.claude` symlinked to `~/workspace/.claude` caused a path mismatch: `os.ReadDir` built paths through the symlink while `lsof` reported resolved paths, so the pathSet lookup always failed. Now resolves symlinks on `claudeHome` before scanning.
+
+- **`FindActiveSessionPath` Spotlight false positives** — `lsof -F n` (all processes) matched macOS Spotlight/mds holding stale JSONL files open for indexing, returning the wrong session. Scoped to `-c claude` to match only Claude processes.
+
+- **`FindActiveSessionPath` stale FD selection** — when multiple JSONL files were open (stale FDs from previous sessions), the first lsof match won regardless of recency. Now collects all matches and selects by newest mtime.
+
+- **`ParseActiveSession` missing `UserMessageTimestamps`** — active sessions had `UserMessageCount` but not `UserMessageTimestamps`, so `lastActiveTime` always fell back to `StartTime`. Now collects timestamps from user-type entries.
+
+- **`get_session_stats` active-session project name** — same `filepath.Base(meta.ProjectPath)` bug as `get_project_health`; returned hash directory name instead of friendly project name. Fixed by using `resolveProjectName`.
+
 ### Added
 
 - **`get_project_comparison` `min_sessions` filter** — optional integer parameter to exclude low-confidence projects from the ranked comparison. Projects with fewer sessions than `min_sessions` are filtered before sorting. Default 0 (no filter). Fixes the rezmakr skew where a single high-volume zero-commit project (81% of 43 sessions, ZeroCommitRate: 1.0) dominated aggregate health signals.
