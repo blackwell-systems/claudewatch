@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"strings"
+	"time"
 )
 
 // LiveToolErrorStats holds tool error statistics parsed from a live JSONL session.
@@ -292,6 +293,54 @@ func ParseLiveCommitAttempts(path string) (*LiveCommitAttemptStats, error) {
 
 	if stats.EditWriteAttempts > 0 {
 		stats.Ratio = float64(stats.GitCommits) / float64(stats.EditWriteAttempts)
+	}
+
+	return stats, nil
+}
+
+// WindowedTokenStats holds token usage within a time window.
+type WindowedTokenStats struct {
+	WindowMinutes   float64 `json:"window_minutes"`
+	InputTokens     int     `json:"input_tokens"`
+	OutputTokens    int     `json:"output_tokens"`
+	TotalTokens     int     `json:"total_tokens"`
+	TokensPerMinute float64 `json:"tokens_per_minute"`
+	OutputPerMinute float64 `json:"output_tokens_per_minute"`
+	Turns           int     `json:"turns"`
+}
+
+// ParseLiveTokenWindow reads the JSONL file and computes token usage within the
+// last windowMinutes. Uses assistant entry timestamps and per-turn usage fields.
+func ParseLiveTokenWindow(path string, windowMinutes float64) (*WindowedTokenStats, error) {
+	entries, err := readLiveJSONL(path)
+	if err != nil {
+		return nil, err
+	}
+
+	cutoff := time.Now().Add(-time.Duration(windowMinutes * float64(time.Minute)))
+	stats := &WindowedTokenStats{WindowMinutes: windowMinutes}
+
+	for _, entry := range entries {
+		if entry.Type != "assistant" || entry.Message == nil {
+			continue
+		}
+		ts := ParseTimestamp(entry.Timestamp)
+		if ts.IsZero() || ts.Before(cutoff) {
+			continue
+		}
+		var msg assistantMsgUsage
+		if err := json.Unmarshal(entry.Message, &msg); err != nil {
+			continue
+		}
+		stats.InputTokens += msg.Usage.InputTokens
+		stats.OutputTokens += msg.Usage.OutputTokens
+		stats.Turns++
+	}
+
+	stats.TotalTokens = stats.InputTokens + stats.OutputTokens
+	if windowMinutes > 0 {
+		stats.TokensPerMinute = float64(stats.TotalTokens) / windowMinutes
+		stats.OutputPerMinute = float64(stats.OutputTokens) / windowMinutes
 	}
 
 	return stats, nil

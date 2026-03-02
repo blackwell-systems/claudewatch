@@ -700,10 +700,10 @@ go test ./... -count=1
 | Step | Status |
 |------|--------|
 | Wave 1: Agent A (live parsing helpers) | DONE |
-| Wave 2: Agent B (velocity tools) | TODO |
-| Wave 2: Agent C (live tools) | TODO |
-| Orchestrator: tools.go registration | TODO |
-| Full build + test verification | TODO |
+| Wave 2: Agent B (velocity tools) | DONE |
+| Wave 2: Agent C (live tools) | DONE |
+| Orchestrator: tools.go registration | DONE |
+| Full build + test verification | DONE |
 
 ---
 

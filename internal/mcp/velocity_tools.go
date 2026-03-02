@@ -10,13 +10,14 @@ import (
 
 // TokenVelocityResult holds token throughput rate for the current live session.
 type TokenVelocityResult struct {
-	SessionID       string  `json:"session_id"`
-	Live            bool    `json:"live"`
-	ElapsedMinutes  float64 `json:"elapsed_minutes"`
-	TotalTokens     int     `json:"total_tokens"`
-	TokensPerMinute float64 `json:"tokens_per_minute"`
-	OutputPerMinute float64 `json:"output_tokens_per_minute"`
-	Status          string  `json:"status"` // "flowing", "slow", "idle"
+	SessionID       string                    `json:"session_id"`
+	Live            bool                      `json:"live"`
+	ElapsedMinutes  float64                   `json:"elapsed_minutes"`
+	TotalTokens     int                       `json:"total_tokens"`
+	TokensPerMinute float64                   `json:"tokens_per_minute"`
+	OutputPerMinute float64                   `json:"output_tokens_per_minute"`
+	Status          string                    `json:"status"` // "flowing", "slow", "idle"
+	Window          *claude.WindowedTokenStats `json:"window,omitempty"`
 }
 
 // CommitAttemptResult holds the ratio of git commits to Edit/Write attempts.
@@ -71,10 +72,20 @@ func (s *Server) handleGetTokenVelocity(args json.RawMessage) (any, error) {
 		outputPerMinute = float64(meta.OutputTokens) / elapsed
 	}
 
+	// Compute 10-minute windowed velocity for real-time status.
+	window, _ := claude.ParseLiveTokenWindow(activePath, 10)
+
+	// Status is based on windowed velocity (last 10 min) when available,
+	// falling back to lifetime average.
+	velocityForStatus := tokensPerMinute
+	if window != nil && window.TokensPerMinute > 0 {
+		velocityForStatus = window.TokensPerMinute
+	}
+
 	status := "idle"
-	if tokensPerMinute >= 5000 {
+	if velocityForStatus >= 5000 {
 		status = "flowing"
-	} else if tokensPerMinute >= 1000 {
+	} else if velocityForStatus >= 1000 {
 		status = "slow"
 	}
 
@@ -86,6 +97,7 @@ func (s *Server) handleGetTokenVelocity(args json.RawMessage) (any, error) {
 		TokensPerMinute: tokensPerMinute,
 		OutputPerMinute: outputPerMinute,
 		Status:          status,
+		Window:          window,
 	}, nil
 }
 

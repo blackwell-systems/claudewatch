@@ -26,8 +26,11 @@ type LiveFrictionResult struct {
 	Live          bool                       `json:"live"`
 	Events        []claude.LiveFrictionEvent `json:"events"`
 	TotalFriction int                        `json:"total_friction"`
+	Truncated     bool                       `json:"truncated"`
 	TopType       string                     `json:"top_type,omitempty"`
 }
+
+const maxFrictionEvents = 50
 
 // addLiveTools registers the live tool error and friction MCP tools on s.
 func addLiveTools(s *Server) {
@@ -110,7 +113,7 @@ func (s *Server) handleGetLiveFriction(args json.RawMessage) (any, error) {
 		events = []claude.LiveFrictionEvent{}
 	}
 
-	// Compute TopType: type with highest total count, ties broken alphabetically.
+	// Compute TopType from ALL events (before truncation).
 	topType := ""
 	if len(events) > 0 {
 		typeCounts := make(map[string]int)
@@ -133,11 +136,19 @@ func (s *Server) handleGetLiveFriction(args json.RawMessage) (any, error) {
 		topType = topKey
 	}
 
+	// Tail to most recent events to bound response size.
+	truncated := false
+	if len(events) > maxFrictionEvents {
+		events = events[len(events)-maxFrictionEvents:]
+		truncated = true
+	}
+
 	return LiveFrictionResult{
 		SessionID:     meta.SessionID,
 		Live:          true,
 		Events:        events,
 		TotalFriction: stats.TotalFriction,
+		Truncated:     truncated,
 		TopType:       topType,
 	}, nil
 }
