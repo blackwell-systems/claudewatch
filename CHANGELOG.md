@@ -4,6 +4,12 @@ All notable changes to claudewatch are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **`get_session_dashboard`** — composite MCP tool that returns all live session metrics in a single call: token velocity, commit ratio, context pressure, cost velocity, tool errors, and friction patterns. Replaces 6 individual tool calls with one round-trip.
+
+- **Active time tracking** — `get_session_dashboard` now includes an `active_time` section that distinguishes wall-clock elapsed time from actual active time. Gaps > 5 minutes between consecutive messages are classified as idle. Reports `active_minutes`, `idle_minutes`, `wall_clock_minutes`, and `resumptions` (number of idle gaps). Token velocity in the dashboard uses active minutes for lifetime averages on resumed sessions.
+
 ## [0.7.1] - 2026-03-02
 
 ### Added

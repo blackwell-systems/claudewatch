@@ -441,3 +441,64 @@ func ParseLiveTokenWindow(path string, windowMinutes float64) (*WindowedTokenSta
 
 	return stats, nil
 }
+
+// ActiveTimeStats holds wall-clock vs active time for a session.
+type ActiveTimeStats struct {
+	WallClockMinutes float64 `json:"wall_clock_minutes"`
+	ActiveMinutes    float64 `json:"active_minutes"`
+	IdleMinutes      float64 `json:"idle_minutes"`
+	Resumptions      int     `json:"resumptions"` // number of idle gaps (proxy for resume count)
+}
+
+// idleThreshold defines the minimum gap between consecutive messages to be
+// considered idle (e.g. user walked away, session was resumed later).
+const idleThreshold = 5 * time.Minute
+
+// ParseLiveActiveTime reads the JSONL file and computes active vs idle time
+// by scanning message timestamps. Any gap > idleThreshold between consecutive
+// messages counts as idle time.
+func ParseLiveActiveTime(path string) (*ActiveTimeStats, error) {
+	entries, err := readLiveJSONL(path)
+	if err != nil {
+		return nil, err
+	}
+
+	// Collect all non-zero timestamps in order.
+	var timestamps []time.Time
+	for _, entry := range entries {
+		ts := ParseTimestamp(entry.Timestamp)
+		if !ts.IsZero() {
+			timestamps = append(timestamps, ts)
+		}
+	}
+
+	if len(timestamps) < 2 {
+		return &ActiveTimeStats{}, nil
+	}
+
+	first := timestamps[0]
+	last := timestamps[len(timestamps)-1]
+	wallClock := last.Sub(first)
+
+	var idle time.Duration
+	resumptions := 0
+	for i := 1; i < len(timestamps); i++ {
+		gap := timestamps[i].Sub(timestamps[i-1])
+		if gap > idleThreshold {
+			idle += gap
+			resumptions++
+		}
+	}
+
+	active := wallClock - idle
+	if active < 0 {
+		active = 0
+	}
+
+	return &ActiveTimeStats{
+		WallClockMinutes: wallClock.Minutes(),
+		ActiveMinutes:    active.Minutes(),
+		IdleMinutes:      idle.Minutes(),
+		Resumptions:      resumptions,
+	}, nil
+}
