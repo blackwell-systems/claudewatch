@@ -42,7 +42,7 @@ func init() {
 	fixCmd.Flags().BoolVar(&fixFlagAll, "all", false, "Fix all projects with score < 50")
 	fixCmd.Flags().BoolVar(&fixFlagJSON, "json", false, "Output proposed changes as JSON")
 	fixCmd.Flags().BoolVar(&fixFlagAI, "ai", false, "Use Claude API for project-specific CLAUDE.md generation")
-	fixCmd.Flags().StringVar(&fixFlagModel, "model", "claude-sonnet-4-20250514", "Claude model to use for AI generation")
+	fixCmd.Flags().StringVar(&fixFlagModel, "model", "claude-sonnet-4-6", "Claude model to use for AI generation")
 	rootCmd.AddCommand(fixCmd)
 }
 

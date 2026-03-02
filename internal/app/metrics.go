@@ -88,6 +88,9 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 		sessions = filterSessionsByProject(sessions, metricsProject)
 	}
 
+	// Filter by days — applied early so all downstream analyzers see the same window.
+	sessions = analyzer.FilterSessionsByDays(sessions, metricsDays)
+
 	// Load facets.
 	facets, err := claude.ParseAllFacets(cfg.ClaudeHome)
 	if err != nil {
@@ -98,6 +101,9 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 		facets = scanner.FilterFacetsByProject(facets, sessions, metricsProject)
 	}
 
+	// Filter facets to the same session window as the day-filtered sessions.
+	facets = filterFacetsBySessionIDs(facets, sessions)
+
 	// Load agent tasks from session transcripts.
 	agentTasks, err := claude.ParseAgentTasks(cfg.ClaudeHome)
 	if err != nil {
@@ -105,8 +111,12 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 		agentTasks = nil
 	}
 
+	// Filter agent tasks to the active session window.
+	agentTasks = filterAgentTasksBySessionIDs(agentTasks, sessions)
+
 	// Run analyzers.
-	velocity := analyzer.AnalyzeVelocity(sessions, metricsDays)
+	// Sessions are pre-filtered by days above; pass 0 to skip the internal re-filter.
+	velocity := analyzer.AnalyzeVelocity(sessions, 0)
 	efficiency := analyzer.AnalyzeEfficiency(sessions)
 	satisfaction := analyzer.AnalyzeSatisfaction(facets)
 	agents := analyzer.AnalyzeAgents(agentTasks)
@@ -254,8 +264,12 @@ func renderEfficiency(e analyzer.EfficiencyMetrics) {
 			limit = len(sorted)
 		}
 		for _, kv := range sorted[:limit] {
+			name := kv.key
+			if len(name) > 22 {
+				name = name[:22] + ".."
+			}
 			fmt.Printf("   %s %s\n",
-				output.StyleLabel.Render(kv.key),
+				output.StyleLabel.Render(name),
 				output.StyleValue.Render(fmt.Sprintf("%d", kv.value)))
 		}
 	}
@@ -794,6 +808,42 @@ func computeTokenUsage(sessions []claude.SessionMeta) tokenUsage {
 		AvgInputPerSession:  totalInput / n,
 		AvgOutputPerSession: totalOutput / n,
 	}
+}
+
+// filterFacetsBySessionIDs keeps only facets whose SessionID is in the given sessions.
+func filterFacetsBySessionIDs(facets []claude.SessionFacet, sessions []claude.SessionMeta) []claude.SessionFacet {
+	if len(sessions) == 0 {
+		return nil
+	}
+	ids := make(map[string]struct{}, len(sessions))
+	for _, s := range sessions {
+		ids[s.SessionID] = struct{}{}
+	}
+	var filtered []claude.SessionFacet
+	for _, f := range facets {
+		if _, ok := ids[f.SessionID]; ok {
+			filtered = append(filtered, f)
+		}
+	}
+	return filtered
+}
+
+// filterAgentTasksBySessionIDs keeps only agent tasks whose SessionID is in the given sessions.
+func filterAgentTasksBySessionIDs(tasks []claude.AgentTask, sessions []claude.SessionMeta) []claude.AgentTask {
+	if len(sessions) == 0 {
+		return nil
+	}
+	ids := make(map[string]struct{}, len(sessions))
+	for _, s := range sessions {
+		ids[s.SessionID] = struct{}{}
+	}
+	var filtered []claude.AgentTask
+	for _, t := range tasks {
+		if _, ok := ids[t.SessionID]; ok {
+			filtered = append(filtered, t)
+		}
+	}
+	return filtered
 }
 
 // detectClaudeMDChanges finds projects with CLAUDE.md files and returns their

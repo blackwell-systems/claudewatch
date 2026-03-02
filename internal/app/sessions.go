@@ -308,7 +308,11 @@ func renderInspect(r sessionRow) {
 			limit = len(tools)
 		}
 		for _, t := range tools[:limit] {
-			muted(t.name, fmt.Sprintf("%d", t.count))
+			name := t.name
+			if len(name) > 22 {
+				name = name[:22] + ".."
+			}
+			muted(name, fmt.Sprintf("%d", t.count))
 		}
 	}
 

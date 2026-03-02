@@ -314,7 +314,18 @@ func filterByProject(suggestions []suggest.Suggestion, project string) []suggest
 func outputSuggestJSON(suggestions []suggest.Suggestion) error {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
-	return enc.Encode(suggestions)
+	type suggestionOut struct {
+		suggest.Suggestion
+		PriorityLabel string `json:"priority_label"`
+	}
+	out := make([]suggestionOut, len(suggestions))
+	for i, s := range suggestions {
+		label := priorityToLabel(s.Priority)
+		// Strip brackets from the label for clean JSON (e.g. "HIGH" not "[HIGH]").
+		label = label[1 : len(label)-1]
+		out[i] = suggestionOut{s, label}
+	}
+	return enc.Encode(out)
 }
 
 func renderSuggestions(suggestions []suggest.Suggestion) {

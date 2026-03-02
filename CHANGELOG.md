@@ -2,6 +2,18 @@
 
 All notable changes to claudewatch are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- **`claudewatch metrics --days` filter scope** — the `--days` window was applied only inside `AnalyzeVelocity` (Session Volume and Productivity sections) but not to the session slice passed to any other analyzer. Efficiency, Satisfaction, Token Usage, Commits, Confidence, Friction Trends, Cost per Outcome, and CLAUDE.md Effectiveness all silently reported all-time data regardless of `--days`. Fix: sessions are now pre-filtered by days immediately after the project filter, before any analyzer is called. `facets` and `agentTasks` are filtered to the same window via session-ID sets. Also fixes `--project` not filtering Agent Performance — `agentTasks` was loaded globally without session correlation.
+
+- **Long MCP tool names wrap mid-name in session inspect and metrics efficiency** — `StyleLabel` has a fixed `Width(24)`, so tool names longer than 24 characters (e.g. `mcp__commitmux__commitmux_search`) would wrap partway through the name onto the next line. Fix: names longer than 22 characters are now truncated to 22 + `..` before rendering, keeping output within the label column.
+
+- **`suggest --json` missing human-readable priority label** — the JSON output serialized `Priority` as a raw integer (`2`, `3`, `4`) with no string equivalent, while the text output showed `[HIGH]`, `[MEDIUM]`, `[LOW]`. Fix: JSON output now includes a `priority_label` field (`"HIGH"`, `"MEDIUM"`, `"LOW"`, `"CRITICAL"`) alongside the integer.
+
+- **`fix --ai` default model was stale** — default model was `claude-sonnet-4-20250514`; updated to `claude-sonnet-4-6`.
+
 ## [0.7.3] - 2026-03-02
 
 ### Fixed

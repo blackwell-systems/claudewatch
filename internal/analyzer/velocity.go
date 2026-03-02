@@ -9,7 +9,7 @@ import (
 // AnalyzeVelocity computes productivity metrics from session data, filtered
 // to the last N days. If days is 0 or negative, all sessions are included.
 func AnalyzeVelocity(sessions []claude.SessionMeta, days int) VelocityMetrics {
-	filtered := filterSessionsByDays(sessions, days)
+	filtered := FilterSessionsByDays(sessions, days)
 
 	metrics := VelocityMetrics{
 		TotalSessions: len(filtered),
@@ -39,9 +39,9 @@ func AnalyzeVelocity(sessions []claude.SessionMeta, days int) VelocityMetrics {
 	return metrics
 }
 
-// filterSessionsByDays returns sessions whose StartTime falls within the last
+// FilterSessionsByDays returns sessions whose StartTime falls within the last
 // N days. If days <= 0, all sessions are returned.
-func filterSessionsByDays(sessions []claude.SessionMeta, days int) []claude.SessionMeta {
+func FilterSessionsByDays(sessions []claude.SessionMeta, days int) []claude.SessionMeta {
 	if days <= 0 {
 		return sessions
 	}
