@@ -17,6 +17,8 @@ Every developer using AI tools is guessing at how to get better. You tweak your 
 
 Claude is guessing too. Every session starts fresh: no memory of which agent types failed on this project, what friction it generated last time, whether the approach it's about to take has a poor track record here. Claude makes decisions about parallelization, tool selection, and scope without any feedback from its own history. claudewatch closes that loop for both parties at once.
 
+This is the layer nobody else occupies. LLM observability tools (LangSmith, Langfuse, Braintrust) give *humans* dashboards over API calls. claudewatch gives the *AI agent itself* queryable access to its own performance history and real-time session health — inside the session where decisions are being made. Post-hoc analytics for you, live self-reflection for Claude.
+
 ## What claudewatch does
 
 Claude Code already records rich session data locally -- tool usage, friction events, satisfaction signals, agent lifecycles, commit patterns. claudewatch reads that data and turns it into actionable insights.
@@ -205,7 +207,7 @@ claudewatch track --compare
 |---|---|
 | 📗 [Quickstart](docs/quickstart.md) | Install, baseline, fix, measure — the full cycle in one guide |
 | 📘 [CLI Reference](docs/cli.md) | All commands and flags: `scan`, `metrics`, `gaps`, `suggest`, `fix`, `track`, `log`, `watch` |
-| 📙 [MCP Reference](docs/mcp.md) | All 12 MCP tools, setup, recommended usage pattern, and data freshness notes |
+| 📙 [MCP Reference](docs/mcp.md) | All 19 MCP tools, setup, recommended usage pattern, and data freshness notes |
 | 📕 [Effectiveness Scoring](docs/effectiveness.md) | How CLAUDE.md before/after scoring works, how to read verdicts, and what to do with regressions |
 
 ---
@@ -255,9 +257,14 @@ Notifies on: friction spikes, new stale patterns, agent kill rate increases, zer
 
 Claude doesn't understand itself. It has no native access to its own session history, cost, friction patterns, or agent timing — that data lives in JSONL transcript files that require significant domain knowledge to parse correctly. Claude could read those files directly, but doing so burns context budget on infrastructure, and some data is structurally misleading without correction (background agent completion timestamps, for example, require joining across two different JSONL entry types to get accurate durations).
 
-claudewatch is the mirror that lets Claude see itself in real time. The MCP server transforms raw transcript data into structured, queryable tools so that Claude can ask "how long did that parallel agent run take?" or "what has this session cost so far?" and get an answer it can immediately reason about — without leaving the session, without parsing JSONL, and without spending context on plumbing.
+claudewatch is the mirror that lets Claude see itself. The MCP server transforms raw transcript data into structured, queryable tools so that Claude can ask "how long did that parallel agent run take?" or "what has this session cost so far?" and get an answer it can immediately reason about — without leaving the session, without parsing JSONL, and without spending context on plumbing.
 
-This is what makes the MCP server qualitatively different from the CLI commands: it closes the feedback loop *inside* the session where decisions are being made.
+The 19 MCP tools operate at two time scales:
+
+- **Historical** — project health, agent performance, friction patterns, effectiveness scores. Claude queries its own track record to make better decisions: "plan agents get killed 40% of the time on this project, skip plan mode."
+- **Live** — token velocity, commit-to-attempt ratio, tool error rate, friction events. Claude monitors its own session in real time: "I'm generating errors at 30% rate, slow down and read more before editing."
+
+No other tool gives an AI agent queryable access to its own performance data. This is what makes the MCP server qualitatively different from the CLI commands: it closes the feedback loop *inside* the session where decisions are being made.
 
 Run claudewatch as an MCP ([Model Context Protocol](https://modelcontextprotocol.io)) stdio server.
 
@@ -279,13 +286,50 @@ claudewatch mcp --budget 20        # enable daily budget tracking ($20 limit)
 }
 ```
 
-**Tools exposed:**
+**Tools exposed (19 tools across 5 categories):**
+
+*Session & cost:*
 
 | Tool | Description |
 |------|-------------|
-| `get_session_stats` | Most recent completed session: cost, tokens, duration, project |
+| `get_session_stats` | Current session: cost, tokens, duration, project |
 | `get_cost_budget` | Today's estimated spend vs your daily budget |
-| `get_recent_sessions` | Last N sessions (default 5, max 50) with friction scores and cost |
+| `get_cost_summary` | Aggregated cost data: today, this week, all time, by project |
+| `get_recent_sessions` | Last N sessions with friction scores and cost |
+
+*Live self-reflection (real-time, current session):*
+
+| Tool | Description |
+|------|-------------|
+| `get_token_velocity` | Tokens/minute with 10-min windowed rate — flowing, slow, or idle |
+| `get_commit_attempt_ratio` | Git commits vs Edit/Write attempts — efficient, normal, or guessing |
+| `get_live_tool_errors` | Error rate, errors by tool, consecutive errors, severity |
+| `get_live_friction` | Friction events detected so far — retries, error bursts, tool failures |
+
+*Project & pattern analysis:*
+
+| Tool | Description |
+|------|-------------|
+| `get_project_health` | Friction rate, agent success rate, zero-commit rate, top errors |
+| `get_project_comparison` | All projects ranked side by side — health, friction, CLAUDE.md status |
+| `get_suggestions` | Ranked improvement suggestions by impact score |
+| `get_stale_patterns` | Chronic friction that recurs across sessions with no CLAUDE.md fix |
+
+*Agent & workflow analytics:*
+
+| Tool | Description |
+|------|-------------|
+| `get_agent_performance` | Agent metrics: success rate, duration, tokens by type |
+| `get_effectiveness` | CLAUDE.md before/after effectiveness scores per project |
+| `get_session_friction` | Friction events for a specific session |
+| `get_saw_sessions` | SAW parallel agent sessions with wave and agent counts |
+| `get_saw_wave_breakdown` | Per-wave timing and agent status for a SAW session |
+
+*Session management:*
+
+| Tool | Description |
+|------|-------------|
+| `set_session_project` | Override project attribution for a session |
 
 ### `claudewatch metrics --json`
 
