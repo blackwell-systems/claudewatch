@@ -7,9 +7,7 @@
 
 A dual observability layer for Claude Code — for developers, and for Claude itself.
 
-claudewatch gives developers structured visibility into their Claude Code sessions: friction patterns, cost-per-outcome, agent success rates, and before/after CLAUDE.md effectiveness scoring. It reads local files under `~/.claude/`, finds what's costing you time and money, fixes it, and measures the result. No network calls, no telemetry, everything stays on your machine.
-
-It also gives Claude visibility into itself. Via an MCP server, Claude can query its own session history, friction patterns, agent performance, and project health — in real time, inside the session where decisions are being made.
+claudewatch runs two layers at once. For developers: friction patterns, cost-per-outcome, agent success rates, and before/after CLAUDE.md effectiveness scoring — reads local files under `~/.claude/`, finds what's costing you time and money, fixes it, and measures the result. For Claude: a self-monitoring system that orients it at session start, alerts it mid-session when error loops or cost spikes are detected, and gives it queryable access to its own project history and live session health. Both layers run from the same local data, with no network calls and no telemetry.
 
 ## Why
 
@@ -23,7 +21,9 @@ But queryable tools only help if Claude thinks to call them. claudewatch also ru
 
 ## What claudewatch does
 
-Claude Code already records rich session data locally -- tool usage, friction events, satisfaction signals, agent lifecycles, commit patterns. claudewatch reads that data and turns it into actionable insights.
+Claude Code already records rich session data locally -- tool usage, friction events, satisfaction signals, agent lifecycles, commit patterns. claudewatch reads that data and turns it into actionable insights for both parties.
+
+**Give Claude a mirror.** `claudewatch install` writes a behavioral contract into `~/.claude/CLAUDE.md`. Two shell hooks — `claudewatch startup` (SessionStart) and `claudewatch hook` (PostToolUse) — orient Claude at session start and alert it mid-session when thresholds are crossed. The MCP server gives Claude queryable access to its own project health, agent history, and live session metrics. Together these form a self-monitoring layer that runs inside every Claude Code session: Claude knows what project it's on, what friction it generated last time, and when to stop and reassess — without requiring you to prompt it explicitly.
 
 **Measure where you are.** `scan` scores every project's AI readiness. `metrics` shows session trends over time -- friction rate, correction rate, cost per outcome, model usage, cache efficiency, agent success rates. Cost-per-outcome connects your token spend to what you actually shipped: cost per commit, cost per file modified, and whether successful sessions cost more or less than failed ones. Model usage analysis shows which models are consuming your budget and flags overspend. Project confidence scoring tells you where Claude knows enough to act vs where it's stuck reading -- a proxy for whether your CLAUDE.md gives the AI enough context to be productive.
 
@@ -122,8 +122,6 @@ $ claudewatch track --compare
  Commits/session         3.1        4.6        +1.5  (improved)
  Zero-commit sessions    18%        5%         -13%  (improved)
 ```
-
-**Give Claude a mirror.** `claudewatch install` writes a behavioral contract into `~/.claude/CLAUDE.md`. Two shell hooks — `claudewatch startup` (SessionStart) and `claudewatch hook` (PostToolUse) — orient Claude at session start and alert it mid-session when thresholds are crossed. The MCP server gives Claude queryable access to its own project health, agent history, and live session metrics. Together these form a self-monitoring layer that runs inside every Claude Code session: Claude knows what project it's on, what friction it generated last time, and when to stop and reassess — without requiring you to prompt it explicitly.
 
 **Prove it with effectiveness scoring.** `metrics` automatically scores your CLAUDE.md changes -- it splits sessions at the modification timestamp, compares before/after on friction, tool errors, goal achievement, and cost per commit, then produces a -100 to +100 effectiveness score. Did adding that scope constraint actually reduce unrequested edits? Now you know.
 
