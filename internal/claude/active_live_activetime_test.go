@@ -128,7 +128,6 @@ func TestParseLiveActiveTime_MultipleResumptions(t *testing.T) {
 		t.Fatalf("expected ActiveMinutes~3, got %f", stats.ActiveMinutes)
 	}
 
-
 }
 
 func TestParseLiveActiveTime_ExactThreshold(t *testing.T) {
@@ -153,4 +152,3 @@ func TestParseLiveActiveTime_ExactThreshold(t *testing.T) {
 // writeLiveJSONL helper uses the one from active_live_test.go (same package).
 // mkAssistantWithUsage helper uses the one from active_live_context_test.go.
 // Both are accessible since this is in the same test package.
-
