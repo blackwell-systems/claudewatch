@@ -1,8 +1,10 @@
 package claude
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -62,6 +64,11 @@ func ParseAllSessionMeta(claudeHome string) ([]SessionMeta, error) {
 							meta.DurationMinutes = int(time.Since(t).Minutes())
 						}
 					}
+					// Count commits made in the project repo since session start.
+					// Non-fatal: returns 0 if path is empty, not a git repo, or git fails.
+					if meta.ProjectPath != "" && meta.StartTime != "" {
+						meta.GitCommits = countGitCommitsSince(meta.ProjectPath, meta.StartTime)
+					}
 				}
 			}
 		}
@@ -112,6 +119,61 @@ func ParseSessionMeta(path string) (*SessionMeta, error) {
 		return nil, err
 	}
 	return &meta, nil
+}
+
+// countGitCommitsSince counts commits made after startTime in git repos
+// at or under projectPath. If projectPath is itself a git repo, only that
+// repo is counted. If it is not a git repo (e.g. a workspace directory like
+// ~/code/), all immediate subdirectories that are git repos are scanned and
+// their commit counts summed — covering the common pattern of launching from
+// a parent directory and working across multiple repos in one session.
+// Returns 0 on any error; missing git, non-repo paths, and empty inputs all
+// silently return 0.
+func countGitCommitsSince(projectPath, startTime string) int {
+	if projectPath == "" || startTime == "" {
+		return 0
+	}
+	if isGitRepo(projectPath) {
+		return gitCommitCount(projectPath, startTime)
+	}
+	// Not a git repo — scan one level of subdirectories.
+	entries, err := os.ReadDir(projectPath)
+	if err != nil {
+		return 0
+	}
+	total := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		sub := filepath.Join(projectPath, e.Name())
+		if isGitRepo(sub) {
+			total += gitCommitCount(sub, startTime)
+		}
+	}
+	return total
+}
+
+// isGitRepo reports whether dir is the root of a git repository.
+func isGitRepo(dir string) bool {
+	cmd := exec.Command("git", "-C", dir, "rev-parse", "--git-dir")
+	cmd.Stderr = nil
+	return cmd.Run() == nil
+}
+
+// gitCommitCount returns the number of commits in the repo at dir made after
+// startTime. Returns 0 on any error.
+func gitCommitCount(dir, startTime string) int {
+	cmd := exec.Command("git", "-C", dir, "log", "--oneline", "--after="+startTime)
+	out, err := cmd.Output()
+	if err != nil {
+		return 0
+	}
+	out = bytes.TrimSpace(out)
+	if len(out) == 0 {
+		return 0
+	}
+	return bytes.Count(out, []byte("\n")) + 1
 }
 
 // parseJSONDir reads all .json files from a directory and unmarshals them
