@@ -1,30 +1,11 @@
 package claude
 
 import (
-	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 )
-
-// mkAssistantWithUsage builds a JSONL entry for an assistant message with token usage.
-func mkAssistantWithUsage(ts string, inputTokens, outputTokens int) map[string]any {
-	msg, _ := json.Marshal(map[string]any{
-		"role":    "assistant",
-		"content": []map[string]any{},
-		"usage": map[string]any{
-			"input_tokens":  inputTokens,
-			"output_tokens": outputTokens,
-		},
-	})
-	return map[string]any{
-		"type":      "assistant",
-		"timestamp": ts,
-		"message":   json.RawMessage(msg),
-	}
-}
 
 func TestParseLiveCostVelocity_EmptyFile(t *testing.T) {
 	dir := t.TempDir()
@@ -172,8 +153,8 @@ func TestParseLiveCostVelocity_MixedWindowEntries(t *testing.T) {
 	recentTS := time.Now().Add(-2 * time.Minute).UTC().Format(time.RFC3339)
 
 	path := writeLiveJSONL(t, []map[string]any{
-		mkAssistantWithUsage(oldTS, 5_000_000, 1_000_000),   // outside window
-		mkAssistantWithUsage(recentTS, 100_000, 10_000),     // inside window
+		mkAssistantWithUsage(oldTS, 5_000_000, 1_000_000), // outside window
+		mkAssistantWithUsage(recentTS, 100_000, 10_000),   // inside window
 	})
 
 	pricing := CostPricing{InputPerMillion: 3.0, OutputPerMillion: 15.0}
@@ -188,5 +169,4 @@ func TestParseLiveCostVelocity_MixedWindowEntries(t *testing.T) {
 		t.Fatalf("expected WindowCostUSD~%f, got %f", expectedCost, stats.WindowCostUSD)
 	}
 
-	_ = fmt.Sprintf("") // suppress unused import
 }

@@ -29,11 +29,11 @@ type LiveFrictionEvent struct {
 
 // FrictionPattern represents a grouped friction pattern collapsed from individual events.
 type FrictionPattern struct {
-	Type        string `json:"type"`         // e.g. "tool_error:Edit", "retry:Bash"
-	Count       int    `json:"count"`        // total occurrences
-	Consecutive bool   `json:"consecutive"`  // true if all occurrences were consecutive
-	FirstTurn   int    `json:"first_turn"`   // position of first occurrence in events slice
-	LastTurn    int    `json:"last_turn"`    // position of last occurrence
+	Type        string `json:"type"`        // e.g. "tool_error:Edit", "retry:Bash"
+	Count       int    `json:"count"`       // total occurrences
+	Consecutive bool   `json:"consecutive"` // true if all occurrences were consecutive
+	FirstTurn   int    `json:"first_turn"`  // position of first occurrence in events slice
+	LastTurn    int    `json:"last_turn"`   // position of last occurrence
 }
 
 // LiveFrictionStats holds friction statistics parsed from a live JSONL session.

@@ -4,6 +4,14 @@ All notable changes to claudewatch are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **`get_context_pressure`** — context window usage tracker for the current live session. Sums input/output tokens, counts compaction events, estimates usage ratio against 200k window. Status levels: "comfortable" (<50%), "filling" (50-75%), "pressure" (75-90%), "critical" (>=90%).
+
+- **`get_cost_velocity`** — cost burn rate for the current live session over a 10-minute sliding window. Computes per-minute USD spend from token counts and Sonnet pricing. Status levels: "efficient" (<$0.05/min), "normal" ($0.05-0.20/min), "burning" (>=$0.20/min).
+
+- **Friction pattern classification** — `get_live_friction` now includes a `patterns` field that collapses raw friction events into typed groups with counts, consecutive run detection, and first/last turn references. Sorted by frequency for quick triage.
+
 ## [0.7.0] - 2026-03-02
 
 ### Added

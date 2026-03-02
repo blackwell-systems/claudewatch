@@ -629,7 +629,7 @@ After Wave 1 completes (all 4 agents):
 - [x] Wave 1 Agent B -- `get_context_pressure` MCP tool
 - [x] Wave 1 Agent C -- `get_cost_velocity` MCP tool
 - [x] Wave 1 Agent D -- Friction pattern classification
-- [ ] Post-merge -- Register tools in `tools.go`, fix test counts
+- [x] Post-merge -- Register tools in `tools.go`, deduplicate `mkAssistantWithUsage` test helper (B/C collision), all tests pass
 
 ---
 

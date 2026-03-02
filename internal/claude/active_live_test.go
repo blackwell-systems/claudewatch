@@ -457,9 +457,9 @@ func TestCollapseFrictionPatterns_MixedTypes(t *testing.T) {
 
 func TestCollapseFrictionPatterns_ConsecutiveDetection(t *testing.T) {
 	events := []LiveFrictionEvent{
-		{Type: "tool_error", Tool: "Edit", Count: 1},  // idx 0
-		{Type: "retry", Tool: "Bash", Count: 2},        // idx 1
-		{Type: "tool_error", Tool: "Edit", Count: 1},  // idx 2 — gap (retry:Bash at idx 1)
+		{Type: "tool_error", Tool: "Edit", Count: 1}, // idx 0
+		{Type: "retry", Tool: "Bash", Count: 2},      // idx 1
+		{Type: "tool_error", Tool: "Edit", Count: 1}, // idx 2 — gap (retry:Bash at idx 1)
 	}
 	patterns := collapseFrictionPatterns(events)
 
