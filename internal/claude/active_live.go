@@ -454,6 +454,54 @@ type ActiveTimeStats struct {
 // considered idle (e.g. user walked away, session was resumed later).
 const idleThreshold = 5 * time.Minute
 
+// ParseLiveConsecutiveErrors tail-scans the last tailN entries of the JSONL
+// file at path and returns the number of consecutive tool errors at the tail
+// of the scan window (the current trailing streak, not the historical maximum).
+// Returns 0 if there are no errors or the file is empty.
+// Uses readLiveJSONL internally. Pass tailN <= 0 to use the default of 50.
+func ParseLiveConsecutiveErrors(path string, tailN int) (int, error) {
+	entries, err := readLiveJSONL(path)
+	if err != nil {
+		return 0, err
+	}
+	if len(entries) == 0 {
+		return 0, nil
+	}
+
+	if tailN <= 0 {
+		tailN = 50
+	}
+
+	start := len(entries) - tailN
+	if start < 0 {
+		start = 0
+	}
+	tail := entries[start:]
+
+	streak := 0
+	for _, entry := range tail {
+		if entry.Type != "user" || entry.Message == nil {
+			continue
+		}
+		var msg UserMessage
+		if err := json.Unmarshal(entry.Message, &msg); err != nil {
+			continue
+		}
+		for _, block := range msg.Content {
+			if block.Type != "tool_result" {
+				continue
+			}
+			if block.IsError {
+				streak++
+			} else {
+				streak = 0
+			}
+		}
+	}
+
+	return streak, nil
+}
+
 // ParseLiveActiveTime reads the JSONL file and computes active vs idle time
 // by scanning message timestamps. Any gap > idleThreshold between consecutive
 // messages counts as idle time.
