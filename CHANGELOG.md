@@ -6,7 +6,7 @@ All notable changes to claudewatch are documented here.
 
 ### Added
 
-- **`claudewatch startup`** — `SessionStart` shell hook subcommand. Prints a compact 4-line briefing to stderr at session start: project identity, session count, friction level and dominant type, CLAUDE.md status, agent success rate, a context-specific tip, the full MCP tool manifest, and a reminder that the PostToolUse hook is active. Orients Claude at the start of every session without relying on user prompting.
+- **`claudewatch startup`** — `SessionStart` shell hook subcommand. Prints a compact 4-line briefing to stdout at session start, injected directly into Claude's context: project identity, session count, friction level and dominant type, CLAUDE.md status, agent success rate, a context-specific tip, the full MCP tool manifest, and a reminder that the PostToolUse hook is active. Orients Claude at the start of every session without relying on user prompting. (`SessionStart` hooks must use stdout + exit 0 to reach Claude's context; stderr + exit 2 goes to the user terminal only.)
 
 - **`claudewatch hook`** — `PostToolUse` shell hook subcommand for Claude Code. Checks the active session for three warning conditions in priority order: (1) ≥3 consecutive tool errors, (2) context window at "pressure" or "critical", (3) cost velocity "burning". Exits 0 silently if all clear; exits 2 with a self-contained stderr message naming `get_session_dashboard` and what it returns. Rate-limited to one check per 30 seconds via a timestamp file at `~/.cache/claudewatch-hook.ts`.
 
