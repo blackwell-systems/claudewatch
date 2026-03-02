@@ -46,16 +46,16 @@ All three Tier 1 items shipped in v0.7.9.
 
 These derive new insight from existing data without new collection infrastructure.
 
-### Causal correlation engine
+### Factor analysis
 
 **What:** Correlate session attributes against outcomes to answer "what factors predict good sessions?" Example questions:
 - Do sessions starting with `doctor` warnings have higher friction?
 - Does SAW reduce zero-commit rate for tasks over N tool calls?
 - Which CLAUDE.md sections correlate with lower friction?
 
-**Why:** The biggest structural gap between claudewatch and a real AI Ops platform. Monitoring tells you what happened; causality tells you why and what to change.
+**Why:** The biggest structural gap between claudewatch and a real AI Ops platform. Monitoring tells you what happened; correlation tells you what to investigate and what to experiment on.
 
-**Approach:** Logistic/linear regression over the existing `session_meta` + `facets` data. No new collection needed — needs a correlation engine and a query interface.
+**Approach:** SQL aggregations + Pearson correlation coefficients over the existing `session_meta` + `facets` data. No model training — grouped comparisons with sample sizes shown. Results include `n` per group; findings with n < 10 are flagged as low-confidence. True causal inference requires the `experiment` feature (designed A/B comparison); this is the exploratory precursor that identifies what to experiment on.
 
 **New CLI:** `claudewatch correlate <outcome> [--factor <field>] [--project <name>]`
 **New MCP:** `get_causal_insights`
@@ -168,7 +168,7 @@ These require inference or generative capabilities beyond pattern aggregation.
 | ~~Per-turn attribution~~ | ~~1~~ | ~~No~~ | ~~`attribute`~~ | ~~`get_cost_attribution`~~ |
 | ~~Session replay~~ | ~~1~~ | ~~No~~ | ~~`replay`~~ | ~~—~~ |
 | ~~A/B testing~~ | ~~1~~ | ~~No~~ | ~~`experiment`~~ | ~~—~~ |
-| Causal correlation | 2 | No | `correlate` | `get_causal_insights` |
+| Factor analysis | 2 | No | `correlate` | `get_causal_insights` |
 | Cost forecasting | 2 | No | — | `get_cost_forecast` |
 | Regression detection | 2 | No | doctor check | `get_regression_status` |
 | Self-optimizing baselines | 2 | No | — | — |
