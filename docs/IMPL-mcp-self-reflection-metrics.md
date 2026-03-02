@@ -728,3 +728,26 @@ tests_added:
   - TestParseLiveCommitAttempts_WithCommits
 verification: PASS (go build, go vet, go test — 9/9 tests pass, 0 errors)
 ```
+
+### Agent B — Completion Report
+```yaml
+status: complete
+commit: "93f92d2 wave2-agent-B: add velocity MCP tools"
+files_created:
+  - internal/mcp/velocity_tools.go (127 lines)
+  - internal/mcp/velocity_tools_test.go (270 lines)
+tools_registered:
+  - get_token_velocity (handler: handleGetTokenVelocity)
+  - get_commit_attempt_ratio (handler: handleGetCommitAttemptRatio)
+interface_deviations:
+  - Added startTime.IsZero() guard in handleGetTokenVelocity to handle edge case where ParseTimestamp returns zero time
+tests_added:
+  - TestGetTokenVelocity_NoActiveSession
+  - TestGetTokenVelocity_ActiveSession
+  - TestGetCommitAttemptRatio_NoActiveSession
+  - TestGetCommitAttemptRatio_WithData
+  - TestGetCommitAttemptRatio_NoChanges
+  - TestGetCommitAttemptRatio_Efficient
+out_of_scope_deps: []
+verification: PASS (go build, go vet, go test — 6/6 tests pass, 0 errors)
+```
