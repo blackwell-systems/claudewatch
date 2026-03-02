@@ -16,46 +16,29 @@ A progression from monitoring tool to AI Ops platform. Items are ordered within 
 - Per-project anomaly baselines (z-score detection)
 - Doctor command with baseline coverage check
 - PostToolUse and SessionStart hooks
-- MCP server (13+ tools)
+- MCP server (14 tools)
+- Per-turn cost attribution (`claudewatch attribute`, `get_cost_attribution` MCP)
+- Session replay timeline (`claudewatch replay`)
+- CLAUDE.md A/B testing (`claudewatch experiment start|stop|tag|report`)
 
 ---
 
-## Tier 1 — Close gaps in existing dimensions
+## Tier 1 — Close gaps in existing dimensions ✓ Complete
 
-These require no new data sources. The raw data is already in transcripts or the existing DB.
+All three Tier 1 items shipped in v0.7.9.
 
-### Per-turn attribution
+~~### Per-turn attribution~~
 
-**What:** Break cost and token counts down to the tool-call level rather than session level. Answer "which tool calls consumed most of my budget this session?" and "which phase (Scout / Wave agents / merge) was most expensive?"
+~~**New CLI:** `claudewatch attribute [--session <id>] [--project <name>]`~~
+~~**New MCP:** `get_cost_attribution`~~
 
-**Why:** Session-level cost is too coarse for optimization decisions. Knowing that 60% of a session's cost came from Agent tool calls, and 30% from MCP round-trips, gives actionable targets.
+~~### Session replay~~
 
-**Data source:** Each transcript entry already carries token counts and model. Needs aggregation at tool-call type and phase level.
+~~**New CLI:** `claudewatch replay <session-id> [--from <n>] [--to <n>] [--json]`~~
 
-**New CLI:** `claudewatch attribute [--session <id>] [--project <name>]`
-**New MCP:** `get_cost_attribution`
+~~### CLAUDE.md A/B testing~~
 
----
-
-### Session replay
-
-**What:** Walk through a session's decision points as a structured timeline: turns, tool calls, cost per turn, friction events, agent launches and completions. Comparable to a flame graph for a session.
-
-**Why:** `claudewatch search` finds sessions but can't explain why a session went sideways. Replay makes post-mortems actionable.
-
-**New CLI:** `claudewatch replay <session-id> [--turn <n>] [--json]`
-
----
-
-### CLAUDE.md A/B testing
-
-**What:** Deliberately compare two CLAUDE.md variants over a controlled time window. Tag sessions to a variant, compute outcome metrics per variant, report the winner.
-
-**Why:** `get_effectiveness` detects accidental before/after improvement. A/B testing enables designed experiments — change one thing, measure it, decide.
-
-**Depends on:** Session project tagging (already shipped).
-
-**New CLI:** `claudewatch experiment start|stop|report [--project <name>]`
+~~**New CLI:** `claudewatch experiment start|stop|tag|report [--project <name>]`~~
 
 ---
 
@@ -182,9 +165,9 @@ These require inference or generative capabilities beyond pattern aggregation.
 
 | Feature | Tier | New data needed | New CLI | New MCP |
 |---|---|---|---|---|
-| Per-turn attribution | 1 | No | `attribute` | `get_cost_attribution` |
-| Session replay | 1 | No | `replay` | — |
-| A/B testing | 1 | No | `experiment` | — |
+| ~~Per-turn attribution~~ | ~~1~~ | ~~No~~ | ~~`attribute`~~ | ~~`get_cost_attribution`~~ |
+| ~~Session replay~~ | ~~1~~ | ~~No~~ | ~~`replay`~~ | ~~—~~ |
+| ~~A/B testing~~ | ~~1~~ | ~~No~~ | ~~`experiment`~~ | ~~—~~ |
 | Causal correlation | 2 | No | `correlate` | `get_causal_insights` |
 | Cost forecasting | 2 | No | — | `get_cost_forecast` |
 | Regression detection | 2 | No | doctor check | `get_regression_status` |
