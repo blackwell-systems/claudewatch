@@ -66,6 +66,25 @@ func runTrack(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("parsing session meta: %w", err)
 	}
 
+	// Merge the active (in-progress) session so metrics reflect the current session
+	// rather than only indexed history. Deduplicate by SessionID in case the indexer
+	// has already picked it up.
+	if activePath, activeErr := claude.FindActiveSessionPath(cfg.ClaudeHome); activeErr == nil && activePath != "" {
+		if liveMeta, parseErr := claude.ParseActiveSession(activePath); parseErr == nil && liveMeta != nil {
+			indexed := false
+			for i, s := range sessions {
+				if s.SessionID == liveMeta.SessionID {
+					sessions[i] = *liveMeta // replace stale indexed copy with live data
+					indexed = true
+					break
+				}
+			}
+			if !indexed {
+				sessions = append(sessions, *liveMeta)
+			}
+		}
+	}
+
 	facets, err := claude.ParseAllFacets(cfg.ClaudeHome)
 	if err != nil {
 		return fmt.Errorf("parsing facets: %w", err)
