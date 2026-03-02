@@ -10,13 +10,13 @@ import (
 
 // TokenVelocityResult holds token throughput rate for the current live session.
 type TokenVelocityResult struct {
-	SessionID       string                    `json:"session_id"`
-	Live            bool                      `json:"live"`
-	ElapsedMinutes  float64                   `json:"elapsed_minutes"`
-	TotalTokens     int                       `json:"total_tokens"`
-	TokensPerMinute float64                   `json:"tokens_per_minute"`
-	OutputPerMinute float64                   `json:"output_tokens_per_minute"`
-	Status          string                    `json:"status"` // "flowing", "slow", "idle"
+	SessionID       string                     `json:"session_id"`
+	Live            bool                       `json:"live"`
+	ElapsedMinutes  float64                    `json:"elapsed_minutes"`
+	TotalTokens     int                        `json:"total_tokens"`
+	TokensPerMinute float64                    `json:"tokens_per_minute"`
+	OutputPerMinute float64                    `json:"output_tokens_per_minute"`
+	Status          string                     `json:"status"` // "flowing", "slow", "idle"
 	Window          *claude.WindowedTokenStats `json:"window,omitempty"`
 }
 

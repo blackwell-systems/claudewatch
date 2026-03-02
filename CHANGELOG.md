@@ -4,6 +4,18 @@ All notable changes to claudewatch are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **`get_token_velocity`** — token throughput rate for the current live session with 10-minute windowed velocity for accurate real-time status on long-running or resumed sessions. Classifies as "flowing" (>=5k tok/min), "slow" (>=1k), or "idle".
+
+- **`get_commit_attempt_ratio`** — ratio of git commits to Edit/Write tool uses in the current live session. Classifies as "efficient" (>=0.3), "normal" (>=0.1), or "low". Signals guessing-vs-understanding.
+
+- **`get_live_tool_errors`** — real-time tool error statistics: error rate, errors-by-tool breakdown, consecutive error streak, and severity classification ("clean", "mild", "degraded").
+
+- **`get_live_friction`** — live friction event stream parsed from the active JSONL transcript. Detects tool errors, retries, and error bursts. Capped at 50 most recent events to prevent response overflow; summary aggregates (TotalFriction, TopType) computed from the full stream.
+
+- **`ParseLiveToolErrors`**, **`ParseLiveFriction`**, **`ParseLiveCommitAttempts`**, **`ParseLiveTokenWindow`** — live JSONL parsing helpers in `internal/claude/active_live.go` for the self-reflection MCP tools.
+
 ## [0.6.1] - 2026-03-02
 
 ### Fixed
