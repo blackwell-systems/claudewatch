@@ -12,10 +12,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	attrFlagSession string
-	attrFlagProject string // reserved for future multi-session filtering; not functional in v1
-)
+var attrFlagSession string
 
 var attributeCmd = &cobra.Command{
 	Use:   "attribute",

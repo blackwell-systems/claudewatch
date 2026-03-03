@@ -13,7 +13,7 @@ func TestOpenInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenInMemory() failed: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 }
 
 // --- Baseline tests ---
@@ -23,7 +23,7 @@ func TestUpsertAndGetProjectBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenInMemory() failed: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	b := store.ProjectBaseline{
 		Project:        "myproject",
@@ -76,7 +76,7 @@ func TestGetProjectBaseline_NotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenInMemory() failed: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	got, err := db.GetProjectBaseline("nonexistent")
 	if err != nil {
@@ -92,7 +92,7 @@ func TestUpsertProjectBaseline_Overwrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenInMemory() failed: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	b1 := store.ProjectBaseline{
 		Project:      "overwrite-project",
@@ -134,7 +134,7 @@ func TestListProjectBaselines(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenInMemory() failed: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Empty list.
 	baselines, err := db.ListProjectBaselines()
@@ -181,7 +181,7 @@ func TestTranscriptIndexStatus_Empty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenInMemory() failed: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	count, lastIndexed, err := db.TranscriptIndexStatus()
 	if err != nil {
@@ -201,7 +201,7 @@ func TestSearchTranscripts_Empty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenInMemory() failed: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	results, err := db.SearchTranscripts("anything", 10)
 	if err != nil {
@@ -219,7 +219,7 @@ func TestSearchTranscripts_IndexAndSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenInMemory() failed: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	now := time.Now().UTC().Format(time.RFC3339)
 
@@ -332,7 +332,7 @@ func TestSearchTranscripts_DefaultLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenInMemory() failed: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Passing limit=0 must not error (it should use the default of 20).
 	results, err := db.SearchTranscripts("anything", 0)

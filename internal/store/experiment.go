@@ -105,7 +105,7 @@ func (db *DB) GetExperimentSessions(experimentID int64) ([]ExperimentSession, er
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var sessions []ExperimentSession
 	for rows.Next() {
@@ -131,7 +131,7 @@ func (db *DB) ListExperiments(project string) ([]Experiment, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var experiments []Experiment
 	for rows.Next() {

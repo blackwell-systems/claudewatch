@@ -283,7 +283,7 @@ func TestDetectAnomalies_ZeroStddev(t *testing.T) {
 func TestDetectAnomalies_EmptySessions(t *testing.T) {
 	baseline := buildTestBaseline()
 	results := DetectAnomalies(nil, nil, baseline, testPricingAnomaly, NoCacheRatio(), 2.0)
-	if results != nil && len(results) != 0 {
+	if len(results) != 0 {
 		t.Errorf("expected nil/empty results for empty sessions, got %d", len(results))
 	}
 }

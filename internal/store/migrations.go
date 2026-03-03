@@ -2,9 +2,6 @@ package store
 
 import "fmt"
 
-// currentSchemaVersion is the latest schema version.
-const currentSchemaVersion = 3
-
 // Migrate runs forward migrations to bring the database schema up to date.
 func (db *DB) Migrate() error {
 	// Create the schema_version table if it does not exist.

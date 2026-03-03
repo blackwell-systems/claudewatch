@@ -140,9 +140,7 @@ func (s *Server) handleGetProjectAnomalies(args json.RawMessage) (any, error) {
 		}
 
 		// Persist the newly computed baseline.
-		if upsertErr := db.UpsertProjectBaseline(computed); upsertErr != nil {
-			// Non-fatal: proceed without persisting.
-		}
+		_ = db.UpsertProjectBaseline(computed) // non-fatal: proceed without persisting
 
 		baseline = &computed
 	}
