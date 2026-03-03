@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"os"
@@ -10,15 +11,16 @@ import (
 	"time"
 )
 
-// ParseAllSessionMeta reads all JSON files from ~/.claude/usage-data/session-meta/
-// and returns parsed SessionMeta entries. For any session whose JSONL transcript
-// is newer than the cached meta JSON (i.e. a still-active session), the message
-// counts and token totals are refreshed from the JSONL so callers always see
-// up-to-date progress. Fields written exclusively by Claude Code (git commits,
-// languages, lines changed, etc.) are preserved from the JSON.
+// ParseAllSessionMeta walks ~/.claude/projects/<hash>/*.jsonl and returns a
+// SessionMeta for every transcript file found. Results are loaded from a JSON
+// cache when fresh; stale or missing caches are rebuilt from the JSONL and
+// written back atomically. This makes all sessions visible — not just the 53%
+// that have cached meta files written by Claude Code on clean exit.
 func ParseAllSessionMeta(claudeHome string) ([]SessionMeta, error) {
-	dir := filepath.Join(claudeHome, "usage-data", "session-meta")
-	entries, err := os.ReadDir(dir)
+	projectsDir := filepath.Join(claudeHome, "projects")
+	cacheDir := filepath.Join(claudeHome, "usage-data", "session-meta")
+
+	entries, err := os.ReadDir(projectsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -26,67 +28,7 @@ func ParseAllSessionMeta(claudeHome string) ([]SessionMeta, error) {
 		return nil, err
 	}
 
-	// Index all JSONL session files by session ID so we can detect staleness.
-	jsonlIndex := buildSessionJSONLIndex(claudeHome)
-
 	var results []SessionMeta
-	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
-			continue
-		}
-		metaPath := filepath.Join(dir, entry.Name())
-		data, err := os.ReadFile(metaPath)
-		if err != nil {
-			continue
-		}
-		var meta SessionMeta
-		if err := json.Unmarshal(data, &meta); err != nil {
-			continue
-		}
-
-		// If the JSONL is newer than the meta JSON, the session is still active
-		// and the cached counts are stale. Re-parse the JSONL and overlay only
-		// the fields we can derive from the transcript.
-		sessionID := strings.TrimSuffix(entry.Name(), ".json")
-		if jsonlPath, ok := jsonlIndex[sessionID]; ok {
-			metaInfo, metaErr := entry.Info()
-			jsonlInfo, jsonlErr := os.Stat(jsonlPath)
-			if metaErr == nil && jsonlErr == nil && jsonlInfo.ModTime().After(metaInfo.ModTime()) {
-				if live, err := ParseActiveSession(jsonlPath); err == nil && live != nil {
-					meta.UserMessageCount = live.UserMessageCount
-					meta.AssistantMessageCount = live.AssistantMessageCount
-					meta.InputTokens = live.InputTokens
-					meta.OutputTokens = live.OutputTokens
-					meta.UserMessageTimestamps = live.UserMessageTimestamps
-					// Recompute duration from first message to now.
-					if meta.StartTime != "" {
-						if t := ParseTimestamp(meta.StartTime); !t.IsZero() {
-							meta.DurationMinutes = int(time.Since(t).Minutes())
-						}
-					}
-					// Count commits made in the project repo since session start.
-					// Non-fatal: returns 0 if path is empty, not a git repo, or git fails.
-					if meta.ProjectPath != "" && meta.StartTime != "" {
-						meta.GitCommits = countGitCommitsSince(meta.ProjectPath, meta.StartTime)
-					}
-				}
-			}
-		}
-
-		results = append(results, meta)
-	}
-	return results, nil
-}
-
-// buildSessionJSONLIndex walks ~/.claude/projects/ and returns a map of
-// sessionID → absolute JSONL path. Subagent directories (nested dirs) are skipped.
-func buildSessionJSONLIndex(claudeHome string) map[string]string {
-	index := make(map[string]string)
-	projectsDir := filepath.Join(claudeHome, "projects")
-	entries, err := os.ReadDir(projectsDir)
-	if err != nil {
-		return index
-	}
 	for _, proj := range entries {
 		if !proj.IsDir() {
 			continue
@@ -97,15 +39,234 @@ func buildSessionJSONLIndex(claudeHome string) map[string]string {
 			continue
 		}
 		for _, f := range files {
-			// Skip subdirectories (subagent session dirs live under <sessionID>/subagents/).
 			if f.IsDir() || !strings.HasSuffix(f.Name(), ".jsonl") {
 				continue
 			}
 			sessionID := strings.TrimSuffix(f.Name(), ".jsonl")
-			index[sessionID] = filepath.Join(projDir, f.Name())
+			jsonlPath := filepath.Join(projDir, f.Name())
+			cachePath := filepath.Join(cacheDir, sessionID+".json")
+			meta, err := loadOrParseSession(jsonlPath, cachePath, cacheDir, sessionID)
+			if err != nil || meta == nil {
+				continue
+			}
+			results = append(results, *meta)
 		}
 	}
-	return index
+	return results, nil
+}
+
+// loadOrParseSession returns a SessionMeta from the cache if it is still fresh,
+// otherwise parses the JSONL transcript and writes a new cache entry.
+func loadOrParseSession(jsonlPath, cachePath, cacheDir, sessionID string) (*SessionMeta, error) {
+	// Cache-hit condition: cache file exists AND jsonl mtime is NOT after cache mtime.
+	jsonlInfo, jsonlErr := os.Stat(jsonlPath)
+	cacheInfo, cacheErr := os.Stat(cachePath)
+	if jsonlErr == nil && cacheErr == nil && !jsonlInfo.ModTime().After(cacheInfo.ModTime()) {
+		// Try to load from cache.
+		data, err := os.ReadFile(cachePath)
+		if err == nil {
+			var meta SessionMeta
+			if err := json.Unmarshal(data, &meta); err == nil {
+				return &meta, nil
+			}
+		}
+		// Fall through to JSONL parse if cache read/unmarshal fails.
+	}
+
+	meta, err := parseJSONLToSessionMeta(jsonlPath)
+	if err == nil && meta != nil {
+		_ = writeSessionMetaCache(cacheDir, sessionID, meta)
+	}
+	return meta, err
+}
+
+// parseJSONLToSessionMeta performs a single-pass scan over a JSONL transcript
+// file and derives a SessionMeta. It is the authoritative source for all
+// fields derivable from the transcript; fields that only Claude Code can
+// populate (Languages, LinesAdded, LinesRemoved, FilesModified, GitPushes,
+// UserInterruptions) are left at their zero values.
+func parseJSONLToSessionMeta(jsonlPath string) (*SessionMeta, error) {
+	data, err := os.ReadFile(jsonlPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Line-atomic truncation: exclude any unterminated trailing line.
+	if lastNL := bytes.LastIndexByte(data, '\n'); lastNL >= 0 {
+		data = data[:lastNL+1]
+	} else {
+		// No complete lines — return a minimal but non-nil struct.
+		meta := &SessionMeta{
+			ToolCounts:          make(map[string]int),
+			ToolErrorCategories: make(map[string]int),
+		}
+		meta.SessionID = strings.TrimSuffix(filepath.Base(jsonlPath), ".jsonl")
+		meta.ProjectPath = filepath.Base(filepath.Dir(jsonlPath))
+		return meta, nil
+	}
+
+	var meta SessionMeta
+	meta.ToolCounts = make(map[string]int)
+	meta.ToolErrorCategories = make(map[string]int)
+
+	var startTimeSet bool
+	var firstEntryTime, lastEntryTime time.Time
+	var lastAssistantTime time.Time
+	var firstPromptSet bool
+
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	// 10MB buffer, same as existing JSONL parsers in this package.
+	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+
+		var entry TranscriptEntry
+		if err := json.Unmarshal(line, &entry); err != nil {
+			continue
+		}
+
+		// Always: populate session ID from first non-empty value.
+		if meta.SessionID == "" && entry.SessionID != "" {
+			meta.SessionID = entry.SessionID
+		}
+		// Always: populate project path from first non-empty cwd.
+		if meta.ProjectPath == "" && entry.Cwd != "" {
+			meta.ProjectPath = entry.Cwd
+		}
+		// Always: populate start time from first timestamped entry.
+		if !startTimeSet && entry.Timestamp != "" {
+			t := ParseTimestamp(entry.Timestamp)
+			if !t.IsZero() {
+				meta.StartTime = t.Format(time.RFC3339)
+				firstEntryTime = t
+				startTimeSet = true
+				_ = firstEntryTime // used below for DurationMinutes
+			}
+		}
+		// Always: track last entry time and hour-of-day.
+		if entry.Timestamp != "" {
+			lastEntryTime = ParseTimestamp(entry.Timestamp)
+			if !lastEntryTime.IsZero() {
+				meta.MessageHours = append(meta.MessageHours, lastEntryTime.Hour())
+			}
+		}
+
+		switch entry.Type {
+		case "assistant":
+			meta.AssistantMessageCount++
+			if entry.Timestamp != "" {
+				lastAssistantTime = ParseTimestamp(entry.Timestamp)
+			}
+			if entry.Message != nil {
+				var msg assistantMsgWithContent
+				if err := json.Unmarshal(entry.Message, &msg); err == nil {
+					meta.InputTokens += msg.Usage.InputTokens
+					meta.OutputTokens += msg.Usage.OutputTokens
+					for _, block := range msg.Content {
+						if block.Type != "tool_use" {
+							continue
+						}
+						meta.ToolCounts[block.Name]++
+						switch {
+						case block.Name == "Task":
+							meta.UsesTaskAgent = true
+						case strings.HasPrefix(block.Name, "mcp__"):
+							meta.UsesMCP = true
+						case block.Name == "WebSearch":
+							meta.UsesWebSearch = true
+						case block.Name == "WebFetch":
+							meta.UsesWebFetch = true
+						}
+					}
+				}
+			}
+
+		case "user":
+			meta.UserMessageCount++
+			if entry.Timestamp != "" {
+				meta.UserMessageTimestamps = append(meta.UserMessageTimestamps, entry.Timestamp)
+			}
+			if !lastAssistantTime.IsZero() && entry.Timestamp != "" {
+				t := ParseTimestamp(entry.Timestamp)
+				if !t.IsZero() {
+					meta.UserResponseTimes = append(meta.UserResponseTimes, t.Sub(lastAssistantTime).Seconds())
+				}
+				lastAssistantTime = time.Time{}
+			}
+			if entry.Message != nil {
+				var msg UserMessage
+				if err := json.Unmarshal(entry.Message, &msg); err == nil {
+					if !firstPromptSet {
+						for _, block := range msg.Content {
+							if block.Type == "text" {
+								text := block.Text
+								if len(text) > 500 {
+									text = text[:500]
+								}
+								meta.FirstPrompt = text
+								firstPromptSet = true
+								break
+							}
+						}
+					}
+					for _, block := range msg.Content {
+						if block.Type == "tool_result" && block.IsError {
+							meta.ToolErrors++
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Post-scan: fill fallback identifiers.
+	if meta.SessionID == "" {
+		meta.SessionID = strings.TrimSuffix(filepath.Base(jsonlPath), ".jsonl")
+	}
+	if meta.ProjectPath == "" {
+		meta.ProjectPath = filepath.Base(filepath.Dir(jsonlPath))
+	}
+
+	// Compute duration from first to last timestamped entry.
+	if startTimeSet && !lastEntryTime.IsZero() {
+		startT := ParseTimestamp(meta.StartTime)
+		meta.DurationMinutes = int(lastEntryTime.Sub(startT).Minutes())
+	}
+
+	// Count git commits since session start (non-fatal).
+	if meta.ProjectPath != "" && meta.StartTime != "" {
+		meta.GitCommits = countGitCommitsSince(meta.ProjectPath, meta.StartTime)
+	}
+
+	return &meta, nil
+}
+
+// assistantMsgWithContent is an internal type that extends assistantMsgUsage
+// with the content blocks needed to extract tool-use information.
+type assistantMsgWithContent struct {
+	Content []ContentBlock `json:"content"`
+	Usage   struct {
+		InputTokens  int `json:"input_tokens"`
+		OutputTokens int `json:"output_tokens"`
+	} `json:"usage"`
+}
+
+// writeSessionMetaCache atomically writes meta as a JSON file into cacheDir
+// using a temp-file + rename pattern to avoid partial writes.
+func writeSessionMetaCache(cacheDir, sessionID string, meta *SessionMeta) error {
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmpPath := filepath.Join(cacheDir, sessionID+".json.tmp")
+	if err := os.WriteFile(tmpPath, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, filepath.Join(cacheDir, sessionID+".json"))
 }
 
 // ParseSessionMeta reads a single session meta file.
