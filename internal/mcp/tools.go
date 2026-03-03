@@ -152,6 +152,7 @@ func addTools(s *Server) {
 	addContextTools(s)
 	addCostVelocityTools(s)
 	addDashboardTools(s)
+	addDriftTools(s)
 	addTranscriptTools(s)
 	addAnomalyTools(s)
 	addRegressionTools(s)
