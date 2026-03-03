@@ -10,9 +10,27 @@ import (
 	"time"
 )
 
-// writeSessionMetaFull writes a session-meta JSON file with all relevant fields.
+// writeSessionMetaFull writes a session stub with all relevant fields.
+// Creates a minimal JSONL in projects/<id>/<id>.jsonl (for discovery) and a
+// cache JSON in usage-data/session-meta/<id>.json (for specific field values).
+// The JSONL mtime is backdated so the cache is always treated as fresh.
 func writeSessionMetaFull(t *testing.T, dir, id, startTime, projectPath string, toolErrors, gitCommits int) {
 	t.Helper()
+
+	// Write minimal JSONL stub so ParseAllSessionMeta discovers the session.
+	projDir := filepath.Join(dir, "projects", id)
+	if err := os.MkdirAll(projDir, 0755); err != nil {
+		t.Fatalf("mkdir projects/%s: %v", id, err)
+	}
+	jsonlPath := filepath.Join(projDir, id+".jsonl")
+	stub := fmt.Sprintf("{\"type\":\"user\",\"sessionId\":%q,\"cwd\":%q,\"timestamp\":%q,\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"test\"}]}}\n", id, projectPath, startTime)
+	if err := os.WriteFile(jsonlPath, []byte(stub), 0644); err != nil {
+		t.Fatalf("write jsonl stub: %v", err)
+	}
+	past := time.Now().Add(-10 * time.Minute)
+	_ = os.Chtimes(jsonlPath, past, past)
+
+	// Write cache JSON with desired field values.
 	metaDir := filepath.Join(dir, "usage-data", "session-meta")
 	if err := os.MkdirAll(metaDir, 0755); err != nil {
 		t.Fatalf("mkdir session-meta: %v", err)
@@ -32,10 +50,16 @@ func writeSessionMetaFull(t *testing.T, dir, id, startTime, projectPath string, 
 	}
 }
 
-// writeAgentTaskTranscript writes a SAW-like transcript file so ParseAgentTasks can
-// pick up agent data. Each taskSpec is {sessionID, toolUseID, agentType, status}.
-// status "completed" => is_error:false, success; "failed" => is_error:true.
-func writeAgentTaskTranscript(t *testing.T, dir, projectHash string, tasks []struct {
+// writeAgentTaskTranscript appends SAW-like agent task entries to the existing
+// JSONL stub file for each sessionID (created by writeSessionMetaFull). This
+// avoids cache key collisions: because both helpers use the sessionID as the
+// project directory name, the file path is identical and there is only one
+// JSONL per session. The file is re-backdated after appending so the cache
+// (written by writeSessionMetaFull) remains fresh.
+//
+// projectHash is ignored — it was the old project directory name, retained for
+// call-site compatibility but no longer used.
+func writeAgentTaskTranscript(t *testing.T, dir, _ string, tasks []struct {
 	SessionID string
 	ToolUseID string
 	AgentType string
@@ -46,7 +70,7 @@ func writeAgentTaskTranscript(t *testing.T, dir, projectHash string, tasks []str
 		return
 	}
 
-	// Group tasks by sessionID to write per-session transcript files.
+	// Group tasks by sessionID.
 	bySession := make(map[string][]struct {
 		SessionID string
 		ToolUseID string
@@ -58,29 +82,40 @@ func writeAgentTaskTranscript(t *testing.T, dir, projectHash string, tasks []str
 	}
 
 	for sessionID, sessionTasks := range bySession {
-		projDir := filepath.Join(dir, "projects", projectHash)
+		// Append to the existing stub in projects/<sessionID>/<sessionID>.jsonl.
+		projDir := filepath.Join(dir, "projects", sessionID)
 		if err := os.MkdirAll(projDir, 0755); err != nil {
-			t.Fatalf("mkdir projects/%s: %v", projectHash, err)
+			t.Fatalf("mkdir projects/%s: %v", sessionID, err)
 		}
+		path := filepath.Join(projDir, sessionID+".jsonl")
 
-		var lines string
+		f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			t.Fatalf("open transcript for append: %v", err)
+		}
 		for _, task := range sessionTasks {
 			isError := "false"
 			if task.Status == "failed" {
 				isError = "true"
 			}
-			// Write an assistant line (tool_use) followed by user line (tool_result).
 			assistantLine := fmt.Sprintf(`{"type":"assistant","timestamp":"2026-01-15T10:00:00Z","sessionId":%q,"message":{"role":"assistant","content":[{"type":"tool_use","id":%q,"name":"Task","input":{"subagent_type":%q,"description":"task description","prompt":"do work"}}]}}`,
 				task.SessionID, task.ToolUseID, task.AgentType)
 			userLine := fmt.Sprintf(`{"type":"user","timestamp":"2026-01-15T10:05:00Z","sessionId":%q,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":%q,"content":"done","is_error":%s}]}}`,
 				task.SessionID, task.ToolUseID, isError)
-			lines += assistantLine + "\n" + userLine + "\n"
+			if _, err := fmt.Fprintln(f, assistantLine); err != nil {
+				_ = f.Close()
+				t.Fatalf("write agent task line: %v", err)
+			}
+			if _, err := fmt.Fprintln(f, userLine); err != nil {
+				_ = f.Close()
+				t.Fatalf("write agent task line: %v", err)
+			}
 		}
+		_ = f.Close()
 
-		path := filepath.Join(projDir, sessionID+".jsonl")
-		if err := os.WriteFile(path, []byte(lines), 0644); err != nil {
-			t.Fatalf("write transcript: %v", err)
-		}
+		// Re-backdate the JSONL so the session-meta cache remains fresh.
+		past := time.Now().Add(-10 * time.Minute)
+		_ = os.Chtimes(path, past, past)
 	}
 }
 

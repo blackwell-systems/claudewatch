@@ -9,9 +9,29 @@ import (
 	"time"
 )
 
-// helper: write a session-meta JSON file under <tmpDir>/usage-data/session-meta/<id>.json
+// helper: write a session stub under <tmpDir>.
+// Creates a minimal JSONL transcript in projects/<id>/<id>.jsonl so that
+// ParseAllSessionMeta (JSONL-primary) discovers the session, then writes a
+// cache JSON in usage-data/session-meta/<id>.json with the desired field
+// values. The JSONL mtime is backdated so the cache is always fresh.
 func writeSessionMeta(t *testing.T, dir, id, startTime, projectPath string, inputTokens, outputTokens int) {
 	t.Helper()
+
+	// Write minimal JSONL stub so ParseAllSessionMeta discovers the session.
+	projDir := filepath.Join(dir, "projects", id)
+	if err := os.MkdirAll(projDir, 0755); err != nil {
+		t.Fatalf("mkdir projects/%s: %v", id, err)
+	}
+	jsonlPath := filepath.Join(projDir, id+".jsonl")
+	stub := fmt.Sprintf("{\"type\":\"user\",\"sessionId\":%q,\"cwd\":%q,\"timestamp\":%q,\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"test\"}]}}\n", id, projectPath, startTime)
+	if err := os.WriteFile(jsonlPath, []byte(stub), 0644); err != nil {
+		t.Fatalf("write jsonl stub: %v", err)
+	}
+	// Backdate JSONL mtime so cache is always treated as fresh.
+	past := time.Now().Add(-10 * time.Minute)
+	_ = os.Chtimes(jsonlPath, past, past)
+
+	// Write cache JSON with desired field values.
 	metaDir := filepath.Join(dir, "usage-data", "session-meta")
 	if err := os.MkdirAll(metaDir, 0755); err != nil {
 		t.Fatalf("mkdir session-meta: %v", err)
