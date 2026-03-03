@@ -2,7 +2,7 @@
 
 All notable changes to claudewatch are documented here.
 
-## [0.7.9] - Unreleased
+## [0.7.9] - 2026-03-02
 
 ### Added
 
