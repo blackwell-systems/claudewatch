@@ -10,9 +10,9 @@ import (
 
 // TranscriptSearchMCPResult wraps FTS search results for the MCP response.
 type TranscriptSearchMCPResult struct {
-	Count   int                           `json:"count"`
+	Count   int                            `json:"count"`
 	Results []store.TranscriptSearchResult `json:"results"`
-	Indexed int                           `json:"indexed_count"`
+	Indexed int                            `json:"indexed_count"`
 }
 
 // addTranscriptTools registers the search_transcripts tool on s.

@@ -13,7 +13,7 @@ import (
 
 // ProjectAnomaliesResult holds anomaly detection results for a project.
 type ProjectAnomaliesResult struct {
-	Project   string                `json:"project"`
+	Project   string                 `json:"project"`
 	Baseline  *store.ProjectBaseline `json:"baseline,omitempty"`
 	Anomalies []store.AnomalyResult  `json:"anomalies"`
 }

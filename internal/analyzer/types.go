@@ -218,8 +218,8 @@ type ComparisonGroup struct {
 
 // ComparisonReport holds the full SAW vs sequential comparison for a project.
 type ComparisonReport struct {
-	Project    string             `json:"project"`
-	SAW        ComparisonGroup    `json:"saw"`
-	Sequential ComparisonGroup    `json:"sequential"`
+	Project    string              `json:"project"`
+	SAW        ComparisonGroup     `json:"saw"`
+	Sequential ComparisonGroup     `json:"sequential"`
 	Sessions   []SessionComparison `json:"sessions,omitempty"` // all sessions, sorted by start time desc
 }
