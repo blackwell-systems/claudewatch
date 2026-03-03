@@ -2,6 +2,12 @@
 
 All notable changes to claudewatch are documented here.
 
+## [0.8.0] - Unreleased
+
+### Added
+
+- **`drift_signal` in `get_session_dashboard`** — new field classifying the last 20 tool calls into `exploring` (no edits yet in session), `implementing` (writes present in window), or `drifting` (edits exist session-wide but window is ≥60% reads with zero writes). Gate is commit-based: detection is suppressed until the first Edit/Write in the session, so pure research sessions never trigger it. `read_calls`, `write_calls`, `has_any_edit`, and `window_n` are included for context.
+
 ## [0.7.9] - 2026-03-02
 
 ### Added
