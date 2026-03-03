@@ -2,6 +2,7 @@ package claude
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -764,5 +765,117 @@ func TestParseLiveConsecutiveErrors_AllErrors(t *testing.T) {
 	}
 	if streak != 5 {
 		t.Fatalf("expected streak=5, got %d", streak)
+	}
+}
+
+// ---------- ParseLiveDriftSignal tests ----------
+
+func TestParseLiveDriftSignal_Exploring(t *testing.T) {
+	// All reads, no writes anywhere in session → "exploring".
+	path := writeLiveJSONL(t, []map[string]any{
+		mkAssistantToolUse("2026-03-01T10:00:00Z",
+			map[string]any{"id": "tu1", "name": "Read"},
+			map[string]any{"id": "tu2", "name": "Grep"},
+			map[string]any{"id": "tu3", "name": "Glob"},
+		),
+	})
+
+	got, err := ParseLiveDriftSignal(path, 20)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Status != "exploring" {
+		t.Fatalf("expected status=exploring, got %q", got.Status)
+	}
+	if got.HasAnyEdit {
+		t.Fatalf("expected HasAnyEdit=false")
+	}
+	if got.ReadCalls != 3 {
+		t.Fatalf("expected ReadCalls=3, got %d", got.ReadCalls)
+	}
+}
+
+func TestParseLiveDriftSignal_Implementing(t *testing.T) {
+	// Mix of reads and writes in window → "implementing".
+	path := writeLiveJSONL(t, []map[string]any{
+		mkAssistantToolUse("2026-03-01T10:00:00Z",
+			map[string]any{"id": "tu1", "name": "Read"},
+			map[string]any{"id": "tu2", "name": "Edit"},
+			map[string]any{"id": "tu3", "name": "Grep"},
+		),
+	})
+
+	got, err := ParseLiveDriftSignal(path, 20)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Status != "implementing" {
+		t.Fatalf("expected status=implementing, got %q", got.Status)
+	}
+	if !got.HasAnyEdit {
+		t.Fatalf("expected HasAnyEdit=true")
+	}
+	if got.WriteCalls != 1 {
+		t.Fatalf("expected WriteCalls=1, got %d", got.WriteCalls)
+	}
+}
+
+func TestParseLiveDriftSignal_Drifting(t *testing.T) {
+	// Early edit, then window is all reads (≥60%) with zero writes → "drifting".
+	// Build 21 tool calls: 1 early Edit followed by 20 Reads.
+	tools := []map[string]any{{"id": "tu0", "name": "Edit"}}
+	for i := 1; i <= 20; i++ {
+		tools = append(tools, map[string]any{"id": fmt.Sprintf("tu%d", i), "name": "Read"})
+	}
+	path := writeLiveJSONL(t, []map[string]any{
+		mkAssistantToolUse("2026-03-01T10:00:00Z", tools...),
+	})
+
+	got, err := ParseLiveDriftSignal(path, 20)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Status != "drifting" {
+		t.Fatalf("expected status=drifting, got %q (reads=%d writes=%d hasAnyEdit=%v)",
+			got.Status, got.ReadCalls, got.WriteCalls, got.HasAnyEdit)
+	}
+	if !got.HasAnyEdit {
+		t.Fatalf("expected HasAnyEdit=true")
+	}
+	if got.WriteCalls != 0 {
+		t.Fatalf("expected WriteCalls=0 in window, got %d", got.WriteCalls)
+	}
+}
+
+func TestParseLiveDriftSignal_DefaultWindow(t *testing.T) {
+	// windowN <= 0 should default to 20.
+	path := writeLiveJSONL(t, []map[string]any{
+		mkAssistantToolUse("2026-03-01T10:00:00Z",
+			map[string]any{"id": "tu1", "name": "Read"},
+		),
+	})
+
+	got, err := ParseLiveDriftSignal(path, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.WindowN != 1 {
+		// Only 1 tool call in file; window capped to actual call count.
+		t.Fatalf("expected WindowN=1, got %d", got.WindowN)
+	}
+}
+
+func TestParseLiveDriftSignal_EmptySession(t *testing.T) {
+	path := writeLiveJSONL(t, []map[string]any{})
+
+	got, err := ParseLiveDriftSignal(path, 20)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Status != "exploring" {
+		t.Fatalf("expected status=exploring for empty session, got %q", got.Status)
+	}
+	if got.WindowN != 0 {
+		t.Fatalf("expected WindowN=0, got %d", got.WindowN)
 	}
 }

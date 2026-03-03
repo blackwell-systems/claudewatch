@@ -23,6 +23,7 @@ type DashboardResult struct {
 	CostVelocity    *DashboardCost          `json:"cost_velocity"`
 	ToolErrors      *DashboardErrors        `json:"tool_errors"`
 	Friction        *DashboardFriction      `json:"friction"`
+	DriftSignal     *claude.LiveDriftStats  `json:"drift_signal,omitempty"`
 }
 
 // DashboardVelocity is a trimmed TokenVelocityResult (no session_id/live duplication).
@@ -242,6 +243,11 @@ func (s *Server) handleGetSessionDashboard(args json.RawMessage) (any, error) {
 			TopType:       topType,
 			Patterns:      frictionStats.Patterns,
 		}
+	}
+
+	// Drift signal.
+	if drift, err := claude.ParseLiveDriftSignal(activePath, 20); err == nil {
+		result.DriftSignal = drift
 	}
 
 	return result, nil

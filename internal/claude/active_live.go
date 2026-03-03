@@ -550,3 +550,115 @@ func ParseLiveActiveTime(path string) (*ActiveTimeStats, error) {
 		Resumptions:      resumptions,
 	}, nil
 }
+
+// LiveDriftStats holds tool-call mix data used to detect exploration drift.
+type LiveDriftStats struct {
+	// WindowN is the number of recent tool calls examined.
+	WindowN int `json:"window_n"`
+	// ReadCalls is the count of read-type tool calls in the window.
+	ReadCalls int `json:"read_calls"`
+	// WriteCalls is the count of write-type tool calls in the window.
+	WriteCalls int `json:"write_calls"`
+	// HasAnyEdit is true when at least one write-type call exists in the full session.
+	HasAnyEdit bool `json:"has_any_edit"`
+	// Status is one of "exploring", "implementing", or "drifting".
+	//   exploring   — no edits anywhere in the session (legitimate early phase, gate off)
+	//   implementing — write-type calls present in the window
+	//   drifting    — edits exist session-wide but window is read-heavy with zero writes
+	Status string `json:"status"`
+}
+
+// readToolNames is the set of tool names classified as read-type for drift detection.
+var readToolNames = map[string]bool{
+	"Read": true, "Grep": true, "Glob": true,
+	"WebFetch": true, "WebSearch": true,
+}
+
+// writeToolNames is the set of tool names classified as write-type for drift detection.
+var writeToolNames = map[string]bool{
+	"Edit": true, "Write": true, "NotebookEdit": true,
+}
+
+// ParseLiveDriftSignal reads the JSONL file at path and computes a drift
+// signal over the last windowN tool calls. windowN <= 0 defaults to 20.
+//
+// Classification (Option B — commit-gated):
+//   - "exploring"    no write-type call anywhere in the full session
+//   - "implementing" at least one write-type call in the window
+//   - "drifting"     write-type call exists session-wide, but the window
+//     contains ≥ 60% read-type calls and zero write-type calls
+func ParseLiveDriftSignal(path string, windowN int) (*LiveDriftStats, error) {
+	if windowN <= 0 {
+		windowN = 20
+	}
+
+	entries, err := readLiveJSONL(path)
+	if err != nil {
+		return nil, err
+	}
+
+	// Collect all tool names from assistant tool_use blocks, in order.
+	type toolCall struct{ name string }
+	var allCalls []toolCall
+
+	for _, entry := range entries {
+		if entry.Type != "assistant" || entry.Message == nil {
+			continue
+		}
+		var msg AssistantMessage
+		if err := json.Unmarshal(entry.Message, &msg); err != nil {
+			continue
+		}
+		for _, block := range msg.Content {
+			if block.Type == "tool_use" {
+				allCalls = append(allCalls, toolCall{block.Name})
+			}
+		}
+	}
+
+	// Session-wide edit gate (Option B).
+	hasAnyEdit := false
+	for _, c := range allCalls {
+		if writeToolNames[c.name] {
+			hasAnyEdit = true
+			break
+		}
+	}
+
+	// Take the tail window.
+	window := allCalls
+	if len(window) > windowN {
+		window = window[len(window)-windowN:]
+	}
+
+	reads, writes := 0, 0
+	for _, c := range window {
+		if readToolNames[c.name] {
+			reads++
+		} else if writeToolNames[c.name] {
+			writes++
+		}
+	}
+
+	status := "exploring"
+	if hasAnyEdit {
+		if writes > 0 {
+			status = "implementing"
+		} else {
+			total := reads + writes
+			if total > 0 && reads*100/total >= 60 {
+				status = "drifting"
+			} else {
+				status = "implementing"
+			}
+		}
+	}
+
+	return &LiveDriftStats{
+		WindowN:    len(window),
+		ReadCalls:  reads,
+		WriteCalls: writes,
+		HasAnyEdit: hasAnyEdit,
+		Status:     status,
+	}, nil
+}
