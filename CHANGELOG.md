@@ -24,6 +24,8 @@ All notable changes to claudewatch are documented here.
 
 ### Fixed
 
+- **Lint failures** — resolved six golangci-lint violations that had been blocking CI across multiple commits: unchecked `rows.Close()` returns in `experiment.go`, unchecked `db.Close()` returns in `store_test.go`, unused `currentSchemaVersion` const in `migrations.go`, unused `attrFlagProject` var in `attribute.go`, empty error-check branch in `anomaly_tools.go`, and redundant nil-before-len check in `anomaly_test.go`. Applied `gofmt` to three files that had fallen out of format. CI is green across all jobs (lint, test, 6-platform build).
+
 - **Session coverage gap** — `ParseAllSessionMeta` now walks `~/.claude/projects/<hash>/*.jsonl` as the primary source of session data instead of relying on Claude Code's session-meta JSON files (which are only written on clean exit). The session-meta JSON is now used as a write-through cache: if the cache file is newer than the JSONL it was derived from, it is read directly; otherwise the JSONL is parsed and the cache is regenerated. This restores visibility to sessions that were missing because Claude Code never wrote a session-meta file (e.g., sessions that crashed, were killed, or were actively in-progress). In local testing this increased the visible session count from 53 to 124.
 
 ### Improved
