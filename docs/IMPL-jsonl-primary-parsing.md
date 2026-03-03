@@ -458,14 +458,14 @@ Orchestrator:
 
 ## 9. Orchestrator Post-Merge Checklist
 
-- [ ] `go build ./...` passes with no errors
-- [ ] `go test ./internal/claude/ -v` passes — all `TestParseAllSessionMeta_*` and `TestParseJSONLToSessionMeta_*` pass
-- [ ] `go test ./...` passes (no regressions in other packages)
-- [ ] `ParseAllSessionMeta` docstring updated to describe JSONL-primary behavior and cache semantics
-- [ ] `buildSessionJSONLIndex` is removed or kept but no longer called from `ParseAllSessionMeta` (it was only used internally; if unused after the rewrite, remove it to avoid dead code)
-- [ ] The `parseJSONDir` generic function remains (it may be used elsewhere) — verify with `grep -r parseJSONDir`
-- [ ] Manual smoke-test: run `claudewatch sessions` and confirm session count increases from ~53 toward ~125
-- [ ] Manual smoke-test: run `claudewatch scan` and confirm no panics
+- [x] `go build ./...` passes with no errors
+- [x] `go test ./internal/claude/ -v` passes — all `TestParseAllSessionMeta_*` and `TestParseJSONLToSessionMeta_*` pass
+- [x] `go test ./...` passes (no regressions in other packages)
+- [x] `ParseAllSessionMeta` docstring updated to describe JSONL-primary behavior and cache semantics
+- [x] `buildSessionJSONLIndex` is removed or kept but no longer called from `ParseAllSessionMeta` (it was only used internally; if unused after the rewrite, remove it to avoid dead code)
+- [x] The `parseJSONDir` generic function remains (it may be used elsewhere) — verify with `grep -r parseJSONDir`
+- [x] Manual smoke-test: run `claudewatch sessions` and confirm session count increases from ~53 toward ~125
+- [x] Manual smoke-test: run `claudewatch scan` and confirm no panics
 
 ---
 

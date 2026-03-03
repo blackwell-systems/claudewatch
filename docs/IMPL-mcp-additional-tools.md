@@ -1032,9 +1032,9 @@ If verification fails (especially the full test run after merging), fix before d
 
 ## Status
 
-- [ ] Wave 1 Agent A — `get_cost_summary`: implement `cost_tools.go` + `cost_tools_test.go`
+- [x] Wave 1 Agent A — `get_cost_summary`: implement `cost_tools.go` + `cost_tools_test.go`
 - [x] Wave 1 Agent B — `get_project_comparison`: implement `project_tools.go` + `project_tools_test.go`
-- [ ] Wave 1 Agent C — `get_stale_patterns`: implement `stale_tools.go` + `stale_tools_test.go`
+- [x] Wave 1 Agent C — `get_stale_patterns`: implement `stale_tools.go` + `stale_tools_test.go`
 
 ---
 
@@ -1121,7 +1121,7 @@ ok  	github.com/blackwell-systems/claudewatch/internal/mcp	0.510s
 - `lastClaudeMDAge` is always set to 0 per the spec instruction: "0 if CLAUDE.md doesn't exist or was never changed during window." The staleness determination relies entirely on `IsStale`.
 - The "unaddressed" check aggregates across ALL unique project paths in the window (not per-pattern per-project), which is the most conservative and correct interpretation given the interface contract.
 - `tools.go` was not modified — registration is orchestrator-owned post-merge per spec.
-- [ ] Orchestrator: merge worktrees, update `tools.go` registrations, run full verification
+- [x] Orchestrator: merge worktrees, update `tools.go` registrations, run full verification
 
 ---
 

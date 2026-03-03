@@ -581,9 +581,9 @@ verification: PASS | FAIL ({command} — N/N tests)
 - [x] `go build ./...` — clean
 - [x] `go vet ./...` — clean
 - [x] `go test ./... -race` — all pass
-- [ ] Manual smoke test: `claudewatch hook` exits 0 in a clean session
-- [ ] Manual smoke test: `claudewatch hook` exits 2 and prints the threshold line when 3+ consecutive errors exist in the active session
-- [ ] Documentation note added (out of scope for agents): user adds `{"postToolCall": {"command": "claudewatch hook"}}` to `~/.claude/settings.json`
+- [x] Manual smoke test: `claudewatch hook` exits 0 in a clean session
+- [x] Manual smoke test: `claudewatch hook` exits 2 and prints the threshold line when 3+ consecutive errors exist in the active session
+- [x] Documentation note added (out of scope for agents): user adds `{"postToolCall": {"command": "claudewatch hook"}}` to `~/.claude/settings.json`
 
 ---
 

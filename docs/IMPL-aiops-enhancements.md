@@ -870,7 +870,7 @@ of this IMPL doc.
 - [x] Wave 2: Agent B complete
 - [x] Wave 2: Agent D complete
 - [x] Final verification: `go test ./... -race` passes
-- [ ] Smoke test: all four new subcommands/tools work
+- [x] Smoke test: all four new subcommands/tools work
 
 ---
 

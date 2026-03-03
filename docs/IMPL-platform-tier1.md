@@ -1118,10 +1118,10 @@ go run ./cmd/claudewatch experiment --help
 
 ### Orchestrator
 
-- [ ] `internal/store/migrations.go` — `currentSchemaVersion` bumped to 3
-- [ ] `internal/store/migrations.go` — `migrateV3()` added
-- [ ] `internal/store/migrations.go` — `Migrate()` calls `migrateV3()` for `version < 3`
-- [ ] `go build ./...` passes
+- [x] `internal/store/migrations.go` — `currentSchemaVersion` bumped to 3
+- [x] `internal/store/migrations.go` — `migrateV3()` added
+- [x] `internal/store/migrations.go` — `Migrate()` calls `migrateV3()` for `version < 3`
+- [x] `go build ./...` passes
 - [x] `go build ./...` passes
 - [x] `go vet ./...` passes
 - [x] `go test ./internal/store/...` passes

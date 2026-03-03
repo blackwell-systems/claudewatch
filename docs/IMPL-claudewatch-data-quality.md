@@ -604,7 +604,7 @@ After Wave 1 completes:
 
 - [x] Wave 1 Agent A — include live session in get_cost_summary
 - [x] Wave 1 Agent B — fix get_project_health active-session default
-- [ ] Wave 1 Agent C — add min_sessions filter to get_project_comparison
+- [x] Wave 1 Agent C — add min_sessions filter to get_project_comparison
 
 ---
 

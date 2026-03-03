@@ -988,9 +988,9 @@ After Wave 2 completes:
 ## Status
 
 - [x] Wave 1 Agent A — factor analysis engine (`internal/analyzer/correlate.go`, `correlate_test.go`)
-- [ ] Wave 2 Agent B — `claudewatch correlate` CLI subcommand (`internal/app/correlate.go`)
-- [ ] Wave 2 Agent C — `get_causal_insights` MCP tool (`internal/mcp/correlate_tools.go`, `correlate_tools_test.go`)
-- [ ] Orchestrator post-merge — add `addCorrelateTools(s)` to `internal/mcp/tools.go`
+- [x] Wave 2 Agent B — `claudewatch correlate` CLI subcommand (`internal/app/correlate.go`)
+- [x] Wave 2 Agent C — `get_causal_insights` MCP tool (`internal/mcp/correlate_tools.go`, `correlate_tools_test.go`)
+- [x] Orchestrator post-merge — add `addCorrelateTools(s)` to `internal/mcp/tools.go`
 
 ---
 

@@ -1176,12 +1176,12 @@ git branch -d wave1-agent-a wave2-agent-b wave2-agent-c
 
 ### Status
 
-- [ ] Agent A — Wave 1: active session detection and parsing
+- [x] Agent A — Wave 1: active session detection and parsing
 - [x] Agent B — Wave 2: MCP get_session_stats live enhancement
 - [x] Agent C — Wave 2: scan --include-active flag
-- [ ] Post-merge verification: go test ./... passes
-- [ ] Post-merge verification: no store imports in live path
-- [ ] Post-merge verification: --include-active flag registered in scan --help
+- [x] Post-merge verification: go test ./... passes
+- [x] Post-merge verification: no store imports in live path
+- [x] Post-merge verification: --include-active flag registered in scan --help
 
 ---
 
