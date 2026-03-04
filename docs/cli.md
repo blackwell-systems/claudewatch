@@ -489,13 +489,22 @@ claudewatch attribute --session abc123def456
 claudewatch attribute --json
 ```
 
+**Session Selection:**
+
+When `--session` is not specified:
+- **Multiple active sessions** (modified within 15 min):
+  - **TTY environment:** Shows interactive numbered menu with session ID, project name, and time since last activity. User selects by number or Ctrl+C to cancel.
+  - **Non-TTY/piped:** Returns error with session list and suggests using `--session` flag.
+- **Single or zero active sessions:** Uses most recent session automatically.
+
 **Flags:**
 
 | Flag | Default | Description |
 |---|---|---|
-| `--session <id>` | most recent session | Session ID to analyze |
+| `--session <id>` | auto-detected or most recent | Session ID to analyze. When omitted, detects active sessions and prompts if multiple exist. |
+| `--json` | false | Output as JSON for programmatic consumption |
 
-**Output:** Table with columns: `Tool Type | Calls | Input Tokens | Output Tokens | Est. Cost`. A summary total line appears below the table.
+**Output:** Table with columns: `Tool Type | Calls | Input Tokens | Output Tokens | Est. Cost`. A summary total line appears below the table. Header line shows which session was analyzed.
 
 ---
 
