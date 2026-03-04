@@ -244,8 +244,10 @@ claudewatch track --compare
 **Enable Claude's self-monitoring layer** (run once):
 
 ```bash
-# Write the behavioral contract into ~/.claude/CLAUDE.md
+# Configure behavioral protocols (CLAUDE.md) + MCP server (real-time tools)
 claudewatch install
+
+# Restart Claude Code to load the MCP server
 
 # Add hooks to ~/.claude/settings.json
 # SessionStart: injects project health briefing before first message

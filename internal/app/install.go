@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,27 +17,75 @@ const (
 
 var installCmd = &cobra.Command{
 	Use:   "install",
-	Short: "Install claudewatch behavioral instructions into ~/.claude/CLAUDE.md",
-	Long: `Writes the claudewatch behavioral contract into the global CLAUDE.md file
-(~/.claude/CLAUDE.md). The section is delimited with HTML comment markers so
-subsequent runs update the section in place rather than appending duplicates.
+	Short: "Install claudewatch: behavioral instructions (CLAUDE.md) + MCP server config",
+	Long: `Sets up claudewatch for use with Claude Code:
 
-Run this once after setting up claudewatch. Re-run after upgrading to pick up
-any changes to the behavioral instructions.`,
+1. Writes behavioral protocols to ~/.claude/CLAUDE.md (enables Claude to self-reflect)
+2. Configures MCP server in ~/.claude.json (enables real-time observability tools)
+
+Both operations are idempotent. Re-run after upgrading to pick up changes.
+
+Flags:
+  --skip-mcp     Skip MCP server configuration (only update CLAUDE.md)
+  --mcp-only     Only configure MCP server (skip CLAUDE.md)
+
+Run this once after installing claudewatch.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	Run:           runInstall,
 }
 
 func init() {
+	installCmd.Flags().Bool("skip-mcp", false, "Skip MCP server configuration")
+	installCmd.Flags().Bool("mcp-only", false, "Only configure MCP server")
 	rootCmd.AddCommand(installCmd)
 }
 
 func runInstall(cmd *cobra.Command, args []string) {
+	skipMCP, _ := cmd.Flags().GetBool("skip-mcp")
+	mcpOnly, _ := cmd.Flags().GetBool("mcp-only")
+
+	var success []string
+	var failed []string
+
+	// Install CLAUDE.md behavioral protocols
+	if !mcpOnly {
+		if err := installCLAUDEMD(); err != nil {
+			failed = append(failed, fmt.Sprintf("CLAUDE.md: %v", err))
+		} else {
+			success = append(success, "CLAUDE.md: behavioral protocols installed")
+		}
+	}
+
+	// Install MCP server configuration
+	if !skipMCP {
+		if err := installMCPServer(); err != nil {
+			failed = append(failed, fmt.Sprintf("MCP server: %v", err))
+		} else {
+			success = append(success, "MCP server: configured in ~/.claude.json")
+		}
+	}
+
+	// Report results
+	if len(success) > 0 {
+		fmt.Println("✓ claudewatch installed:")
+		for _, msg := range success {
+			fmt.Printf("  • %s\n", msg)
+		}
+	}
+	if len(failed) > 0 {
+		fmt.Fprintf(os.Stderr, "\n✗ Errors:\n")
+		for _, msg := range failed {
+			fmt.Fprintf(os.Stderr, "  • %s\n", msg)
+		}
+	}
+}
+
+// installCLAUDEMD installs behavioral protocols to ~/.claude/CLAUDE.md
+func installCLAUDEMD() error {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error finding home directory: %v\n", err)
-		return
+		return fmt.Errorf("finding home directory: %w", err)
 	}
 
 	claudeMDPath := filepath.Join(home, ".claude", "CLAUDE.md")
@@ -49,7 +98,6 @@ func runInstall(cmd *cobra.Command, args []string) {
 
 	section := buildClaudeMDSection()
 	var updated string
-	var action string
 
 	startIdx := strings.Index(existing, claudeMDMarkerStart)
 	endIdx := strings.Index(existing, claudeMDMarkerEnd)
@@ -57,7 +105,6 @@ func runInstall(cmd *cobra.Command, args []string) {
 	if startIdx >= 0 && endIdx > startIdx {
 		// Markers present — replace the existing section.
 		updated = existing[:startIdx] + section + existing[endIdx+len(claudeMDMarkerEnd):]
-		action = "updated"
 	} else {
 		// No markers — append. Ensure a blank line separator if file has content.
 		if existing != "" {
@@ -67,15 +114,84 @@ func runInstall(cmd *cobra.Command, args []string) {
 			existing += "\n"
 		}
 		updated = existing + section + "\n"
-		action = "installed"
+	}
+
+	// Ensure .claude directory exists
+	if err := os.MkdirAll(filepath.Dir(claudeMDPath), 0o755); err != nil {
+		return fmt.Errorf("creating .claude directory: %w", err)
 	}
 
 	if err := os.WriteFile(claudeMDPath, []byte(updated), 0o644); err != nil {
-		fmt.Fprintf(os.Stderr, "error writing %s: %v\n", claudeMDPath, err)
-		return
+		return fmt.Errorf("writing file: %w", err)
 	}
 
-	fmt.Printf("claudewatch %s: %s\n", action, claudeMDPath)
+	return nil
+}
+
+// installMCPServer configures the claudewatch MCP server in ~/.claude.json
+func installMCPServer() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("finding home directory: %w", err)
+	}
+
+	claudeJSONPath := filepath.Join(home, ".claude.json")
+
+	// Read existing config or create empty structure
+	var config map[string]interface{}
+	data, err := os.ReadFile(claudeJSONPath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("reading config: %w", err)
+		}
+		// File doesn't exist - create new config
+		config = make(map[string]interface{})
+	} else {
+		// Parse existing config
+		if err := json.Unmarshal(data, &config); err != nil {
+			return fmt.Errorf("parsing JSON: %w", err)
+		}
+	}
+
+	// Ensure mcpServers map exists
+	if config["mcpServers"] == nil {
+		config["mcpServers"] = make(map[string]interface{})
+	}
+	mcpServers, ok := config["mcpServers"].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("mcpServers is not an object in config")
+	}
+
+	// Get claudewatch binary path
+	binPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("finding claudewatch binary: %w", err)
+	}
+
+	// Configure claudewatch MCP server
+	// JSON-RPC 2.0 protocol over stdio transport
+	mcpServers["claudewatch"] = map[string]interface{}{
+		"command": binPath,
+		"args":    []string{"mcp", "--budget", "20"},
+	}
+
+	// Marshal back to JSON with indentation for readability
+	output, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encoding JSON: %w", err)
+	}
+
+	// Ensure .claude directory exists
+	if err := os.MkdirAll(filepath.Dir(claudeJSONPath), 0o755); err != nil {
+		return fmt.Errorf("creating .claude directory: %w", err)
+	}
+
+	// Write config file
+	if err := os.WriteFile(claudeJSONPath, output, 0o644); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+
+	return nil
 }
 
 // buildClaudeMDSection returns the full delimited claudewatch CLAUDE.md section.
