@@ -242,7 +242,7 @@ Then add the MCP server to `~/.claude.json`:
 |---|---|
 | 📗 [Quickstart](docs/quickstart.md) | Install, baseline, fix, measure — the full cycle in one guide |
 | 📘 [CLI Reference](docs/cli.md) | All commands and flags: `scan`, `metrics`, `gaps`, `suggest`, `fix`, `track`, `log`, `watch`, `hook`, `startup`, `install` |
-| 📙 [MCP Reference](docs/mcp.md) | All 22 MCP tools, setup, recommended usage pattern, and data freshness notes |
+| 📙 [MCP Reference](docs/mcp.md) | All 26 MCP tools, setup, recommended usage pattern, and data freshness notes |
 | 📕 [Effectiveness Scoring](docs/effectiveness.md) | How CLAUDE.md before/after scoring works, how to read verdicts, and what to do with regressions |
 
 ---
@@ -254,6 +254,7 @@ Then add the MCP server to `~/.claude.json`:
 | `scan` | Score every project's AI readiness (0-100) |
 | `metrics` | Session trends: friction, cost per outcome, model usage, token breakdown, effectiveness scoring, agents, task planning |
 | `gaps` | What's missing: context, hooks, stale friction patterns |
+| `correlate` | Correlate session attributes against outcomes (friction, commits, cost, etc.) to find what predicts success |
 | `suggest` | Ranked improvements with impact scores |
 | `fix` | Generate and apply CLAUDE.md patches from session data |
 | `track` | Snapshot metrics to SQLite, diff against previous |
@@ -297,7 +298,7 @@ Claude doesn't understand itself. It has no native access to its own session his
 
 claudewatch is the mirror that lets Claude see itself. The MCP server transforms raw transcript data into structured, queryable tools so that Claude can ask "how long did that parallel agent run take?" or "what has this session cost so far?" and get an answer it can immediately reason about — without leaving the session, without parsing JSONL, and without spending context on plumbing.
 
-The 22 MCP tools operate at two time scales:
+The 26 MCP tools operate at two time scales:
 
 - **Historical** — project health, agent performance, friction patterns, effectiveness scores. Claude queries its own track record to make better decisions: "plan agents get killed 40% of the time on this project, skip plan mode."
 - **Live** — token velocity, commit-to-attempt ratio, tool error rate, friction events. Claude monitors its own session in real time: "I'm generating errors at 30% rate, slow down and read more before editing."

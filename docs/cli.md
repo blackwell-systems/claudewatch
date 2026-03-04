@@ -344,6 +344,56 @@ claudewatch anomalies --json
 
 ---
 
+### correlate
+
+Correlates session attributes against outcomes to identify what predicts success or failure. CLI version of factor analysis. Answers questions like "Does having CLAUDE.md reduce friction?" or "Do SAW sessions commit more?"
+
+```bash
+claudewatch correlate friction
+claudewatch correlate friction --factor has_claude_md
+claudewatch correlate commits --project myproject
+claudewatch correlate cost --json
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|---|---|---|
+| `<outcome>` | yes | Outcome metric to analyze |
+
+**Outcome values:** `friction`, `commits`, `zero_commit`, `cost`, `duration`, `tool_errors`
+
+**Flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--factor <field>` | (all factors) | Analyze specific factor instead of all factors |
+| `--project <name>` | (all projects) | Filter to specific project |
+| `--json` | false | Output as JSON |
+
+**Factor values:** `has_claude_md`, `uses_task_agent`, `uses_mcp`, `uses_web_search`, `is_saw`, `tool_call_count`, `duration`, `input_tokens`
+
+**Output:** Table with columns: `Factor | Type | Correlation/Delta | P-value | N | Confidence`
+
+- For **numeric factors** (tool_call_count, duration, input_tokens): shows Pearson correlation coefficient and p-value
+- For **boolean factors** (has_claude_md, uses_task_agent, etc.): shows delta between true and false groups
+- **Confidence** is `low` when n < 10 sessions for boolean factor groups
+
+**Example output:**
+
+```
+Factor Analysis: friction
+Project: claudewatch (42 sessions)
+
+Factor              Type     Correlation   P-value   N    Confidence
+has_claude_md       boolean  -0.35        0.001     42   high
+is_saw              boolean  -0.22        0.04      42   high
+uses_task_agent     boolean  +0.18        0.08      42   medium
+tool_call_count     numeric  +0.45        <0.001    42   high
+```
+
+---
+
 ### attribute
 
 Break down token cost by tool type for a session. Answers "which tool calls consumed most of my budget?"

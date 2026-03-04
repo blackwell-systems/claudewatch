@@ -94,6 +94,7 @@ No input parameters.
 | `tool_errors` | object | Error rate, errors-by-tool breakdown, consecutive streak, severity |
 | `friction` | object | Recent friction event stream with pattern summary |
 | `active_time` | object | `active_minutes`, `idle_minutes`, `wall_clock_minutes`, `resumptions` |
+| `drift_signal` | object | Drift detection: `status` ("exploring", "implementing", "drifting"), `window_n`, `read_calls`, `write_calls`, `has_any_edit`. Omitted for pure research sessions. |
 
 ---
 
@@ -124,6 +125,26 @@ No input parameters.
 | `cost_per_minute` | float | USD/min over the last 10 minutes |
 | `window_minutes` | int | Window size used for the calculation |
 | `status` | string | "efficient" (<$0.05/min), "normal" ($0.05–$0.20/min), "burning" (≥$0.20/min) |
+
+---
+
+#### `get_drift_signal`
+
+Drift signal detection for the current live session. Classifies the last 20 tool calls to determine whether you're actively implementing (writes present), exploring (no edits yet in session), or drifting (edits exist session-wide but recent window is ≥60% reads with zero writes). Use this to detect when a session has shifted from writing to reading-only, which may indicate being stuck or lost.
+
+No input parameters.
+
+| Output field | Type | Description |
+|---|---|---|
+| `session_id` | string | Session identifier |
+| `live` | bool | Always `true` (this tool only works on active sessions) |
+| `window_n` | int | Number of tool calls analyzed (last 20) |
+| `read_calls` | int | Count of Read/Grep/Glob calls in the window |
+| `write_calls` | int | Count of Edit/Write calls in the window |
+| `has_any_edit` | bool | Whether any Edit/Write exists anywhere in the session |
+| `status` | string | "exploring" (no edits yet), "implementing" (writes in window), "drifting" (edits exist but window is read-heavy) |
+
+**Use case:** Detect stuck sessions where you're reading repeatedly without writing. When `status` is `"drifting"`, consider whether you're gathering information that will lead to a write, or whether you're spinning without clear next steps.
 
 ---
 
@@ -416,6 +437,76 @@ Each agent within a wave:
 | `duration_ms` | int | Agent task duration in milliseconds |
 | `tokens` | int | Total tokens consumed by this agent |
 
+---
+
+### Multi-project analysis
+
+#### `get_session_projects`
+
+Returns weighted per-repo breakdown for sessions that touch multiple repositories. Shows how cost and activity are distributed across projects based on which files were actually edited or read. All project-scoped tools (like `get_project_health`, `get_cost_summary`) now use this weighted attribution automatically to route multi-repo sessions to their dominant project.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `session_id` | string | no | Session ID to analyze (defaults to active/most recent session) |
+
+| Output field | Type | Description |
+|---|---|---|
+| `session_id` | string | Session identifier |
+| `primary_project` | string | Dominant project by weighted activity |
+| `projects` | array | Weighted breakdown of all repos touched |
+| `live` | bool | Whether this is an active session |
+
+Each project in the `projects` array:
+
+| Field | Type | Description |
+|---|---|---|
+| `project` | string | Project name (repo basename) |
+| `repo_root` | string | Absolute path to repo root |
+| `weight` | float | Proportional share of activity (0.0–1.0) |
+| `tool_calls` | int | Number of tool calls that touched files in this repo |
+
+**How weights are computed:** The tool extracts file paths from `Read`, `Edit`, `Write`, and `Bash` tool_use entries in the transcript, maps each path to its repo root using `git rev-parse --show-toplevel`, and computes proportional weights based on tool call counts per repo.
+
+**Use case:** "Which repos dominated this session's cost? Was this primarily claudewatch work or commitmux work?"
+
+---
+
+### Factor analysis
+
+#### `get_causal_insights`
+
+Correlates session attributes against outcomes to identify what predicts success or failure. Answers questions like: "Does having CLAUDE.md reduce friction?" or "Do SAW sessions commit more than non-SAW sessions?" Returns Pearson correlation coefficients for numeric factors and grouped comparison stats for boolean factors.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `outcome` | string | yes | Outcome metric to analyze |
+| `factor` | string | no | Specific factor to analyze (omit to analyze all factors) |
+| `project` | string | no | Filter to specific project by name |
+
+**Outcome values:** `friction`, `commits`, `zero_commit`, `cost`, `duration`, `tool_errors`
+
+**Factor values:** `has_claude_md`, `uses_task_agent`, `uses_mcp`, `uses_web_search`, `is_saw`, `tool_call_count`, `duration`, `input_tokens`
+
+**Output:** Returns correlation analysis with:
+- For **numeric factors** (tool_call_count, duration, input_tokens): Pearson correlation coefficient, p-value, n
+- For **boolean factors** (has_claude_md, uses_task_agent, etc.): Mean outcome for true vs false groups, delta, n for each group
+
+Groups with n < 10 sessions are flagged as **low-confidence**.
+
+**Use case:** "Find which session attributes correlate strongest with low friction. Does SAW reduce zero-commit rate? Does MCP usage increase cost?"
+
+**Example:** To check if having CLAUDE.md reduces friction:
+```json
+{
+  "outcome": "friction",
+  "factor": "has_claude_md"
+}
+```
+
+Returns grouped comparison showing mean friction for sessions with vs without CLAUDE.md.
+
+---
+
 ### AI Ops
 
 #### `search_transcripts`
@@ -450,7 +541,7 @@ Each result:
 
 #### `get_project_anomalies`
 
-Detects anomalous sessions for a project using per-project z-score baselines. On first call for a project, computes and persists a baseline automatically from all available sessions. Subsequent calls load the stored baseline. Returns both the baseline stats and the list of anomalous sessions.
+Detects anomalous sessions for a project using per-project z-score baselines. On first call for a project, computes and persists a baseline automatically from all available sessions. Subsequent calls load the stored baseline. **Baselines auto-refresh on every run using exponential decay weighting (decay=0.9), so recent sessions have more influence than older ones.** Baseline drift after workflow changes (e.g., adopting SAW) resolves automatically within ~10-15 sessions. Returns both the baseline stats and the list of anomalous sessions.
 
 Project resolution follows the same pattern as `get_project_health`: active session's project is used if no `project` arg is provided, falling back to the most recent closed session.
 

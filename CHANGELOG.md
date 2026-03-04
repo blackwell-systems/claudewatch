@@ -2,6 +2,12 @@
 
 All notable changes to claudewatch are documented here.
 
+## [0.8.1] - 2026-03-04
+
+### Fixed
+
+- **Multi-project attribution rollout completion** — `get_session_dashboard`, `get_session_stats`, `get_recent_sessions`, and `get_saw_sessions` now use `sessionPrimaryProject` for weighted activity-based project resolution. Previously these tools still used `resolveProjectName` (launch directory fallback), while other tools updated in v0.8.0 were already using weighted attribution. All MCP tools now consistently apply multi-project attribution.
+
 ## [0.8.0] - 2026-03-04
 
 ### Added
