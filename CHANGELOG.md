@@ -2,6 +2,25 @@
 
 All notable changes to claudewatch are documented here.
 
+## [0.9.2] - 2026-03-04
+
+### Added
+
+- **Memory tool behavioral protocols** — explicit WHEN→DO triggers that tell Claude when to use cross-session memory tools, moving from passive "you can query" to imperative "WHEN X, DO Y" protocols:
+  - **Session start**: On "continue"/"resume"/"keep working on", call `get_task_history(query: "<topic>")` to check prior attempts. If status is "abandoned" or "in_progress", read blockers/solution before proceeding.
+  - **Error patterns**: On repetitive tool failures (2-3x same error), STOP and call `get_blockers()` to check for known issues with documented solutions.
+  - **User frustration signals**: When user says "this isn't working", "why is this broken", or "we tried this before", immediately call BOTH `get_task_history` and `get_blockers` to surface prior context.
+  - **Context pressure**: At "pressure" level, call `extract_current_session_memory` before compaction to preserve work-in-progress.
+  - **After major work**: When completing features, fixing bugs, or finishing multi-step tasks, call `extract_current_session_memory` to save context while fresh.
+  - **Before destructive operations**: ALWAYS call `extract_current_session_memory` before: git reset --hard, git push --force, rm -rf, large refactors, or any operation that could lose work.
+  - **Before large features**: Query `get_task_history(query: "<feature>")` to check prior attempts. If "abandoned", read why it failed and avoid same approach.
+- **SessionStart briefing update** — added `get_task_history`, `get_blockers`, and `extract_current_session_memory` to the tool list displayed at every session start.
+- **`claudewatch install` update** — behavioral protocols are now embedded in the CLAUDE.md template. Users who run `claudewatch install` will automatically get the updated guidance with memory tool triggers.
+
+### Rationale
+
+Behavioral protocols have **observable triggers** (counts, thresholds, exact phrases) rather than vague judgments ("large", "complex", "might be"). This makes them reliable: Claude can detect "same tool failed 3 times" or user said "this isn't working", but cannot reliably detect "this seems large". Triggers follow the pattern: `get_project_health` works ("call immediately at session start") because it has a concrete trigger. Memory tools now have the same structure.
+
 ## [0.9.1] - 2026-03-04
 
 ### Added
