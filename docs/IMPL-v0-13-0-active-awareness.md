@@ -948,10 +948,10 @@ After all Wave 2 agents complete:
 - ⬜ Not Started
 
 **Merge status:**
-- [ ] Wave 2 Agent A merged to main
-- [ ] Wave 2 Agent B merged to main (after A)
-- [ ] Wave 2 Agent C merged to main
-- [ ] All tests passing
+- [x] Wave 2 Agent A merged to main
+- [x] Wave 2 Agent B merged to main (after A)
+- [x] Wave 2 Agent C merged to main
+- [x] All tests passing
 - [ ] Manual verification complete
 - [ ] v0.13.0 ready for release
 
