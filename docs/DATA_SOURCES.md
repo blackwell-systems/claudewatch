@@ -622,3 +622,151 @@ internal/suggest/     (generate ranked improvement suggestions)
 | `get_session_friction` | `facets/*.json` |
 | `set_session_project` | `~/.config/claudewatch/tags.json` (read + write) |
 | `claudewatch scan` | All of the above, writes to `claudewatch.db` |
+
+---
+
+## 15. Data sent to background agents
+
+The data flow described above is **inbound to claudewatch** (what it reads from Claude Code's storage). This section documents the inverse: **data claudewatch and Claude Code send TO background agents** during parallel workflows.
+
+### SAW agent inputs (Scout-and-Wave protocol)
+
+When Claude Code invokes the `/saw` skill, the orchestrator launches Scout and Wave agents as background tasks. Each agent type receives different input data:
+
+#### Scout agent
+
+**Spawned by:** User via `/saw scout <feature-description>` or `/saw` (auto-scouts if no IMPL doc exists)
+
+**Data sent to agent:**
+- **Feature description** — user's natural language request (e.g., "add metrics export to observability platforms")
+- **Codebase context** — current working directory, git repository state, file tree structure (via Glob/Grep tools the Scout calls)
+- **Existing IMPL docs** — list of `docs/IMPL-*.md` files to avoid duplicate feature analysis
+- **Project-specific context** — `CLAUDE.md`, `README.md`, package structure, test patterns
+
+**Output artifact:**
+- `docs/IMPL-<feature-slug>.md` — contains suitability verdict, wave structure, interface contracts, file ownership table, agent prompts, scaffolds section
+
+**How data is passed:**
+- Agent tool with `run_in_background: true`
+- Prompt string contains: feature description + scout.md instructions
+- Agent has read-only access to repository via Read/Glob/Grep tools
+- IMPL doc written to disk via Write tool, committed to main branch
+
+#### Scaffold Agent
+
+**Spawned by:** Orchestrator after Scout completes and user approves IMPL doc, if Scaffolds section is non-empty with `Status: pending`
+
+**Data sent to agent:**
+- **IMPL doc path** — path to the approved `docs/IMPL-<feature-slug>.md`
+- **Scaffolds section** — list of type scaffold files to create (file path + exact contents)
+- **Interface contracts** — the full interface definitions that multiple agents will reference
+
+**Output artifacts:**
+- Scaffold source files (e.g., `internal/export/types.go`) committed to HEAD
+- Updated IMPL doc with `Status: committed` and commit SHA for each scaffold file
+
+**How data is passed:**
+- Agent tool with `run_in_background: true`, no worktree isolation (works on main)
+- Prompt string contains: IMPL doc path + scaffold-agent.md instructions
+- Agent reads IMPL doc via Read tool, writes scaffold files via Write tool
+- Commits directly to main branch before any Wave Agent launches
+
+#### Wave Agents
+
+**Spawned by:** Orchestrator for each agent in the current wave, after scaffolds are committed
+
+**Data sent to agent:**
+- **Agent prompt** — extracted from the IMPL doc's `### Agent {letter}` section (9-field template)
+- **Interface contracts** — shared type definitions, function signatures, API boundaries
+- **File ownership table** — which files this agent owns (disjoint from other agents in the wave)
+- **Scaffold files** — committed type files to import from (not redefine)
+- **Verification gates** — commands to run before reporting complete (build, test, lint)
+- **Wave context** — wave number (e.g., wave1, wave2), agent letter (A, B, C)
+
+**Output artifacts:**
+- Source files in agent's ownership scope (created or modified)
+- Commits to worktree branch `wave{N}-agent-{letter}`
+- Completion report appended to IMPL doc (`### Agent {letter} - Completion Report`)
+
+**How data is passed:**
+- Agent tool with `run_in_background: true` and `isolation: "worktree"`
+- Worktree created at `.claude/worktrees/wave{N}-agent-{letter}`
+- Prompt string contains: full agent prompt from IMPL doc + wave context
+- Agent has full read/write access within worktree isolation
+- Commits to worktree branch, orchestrator merges to main after wave completes
+
+### General background agents
+
+When Claude Code launches a general-purpose background agent (not SAW-specific), different data flows apply:
+
+**Spawned by:** `Agent` tool with `run_in_background: true`
+
+**Data sent to agent:**
+- **Task description** — concise description of what the agent should do (e.g., "Analyze codebase for API patterns")
+- **Prompt** — full instruction set for the agent
+- **Conversation context** — depending on agent type, may include prior conversation history
+- **Working directory** — current `cwd` from parent session
+
+**Output artifacts:**
+- Task output file at `/private/tmp/claude-{pid}/{task-id}.output`
+- Notification sent to parent session when complete (via queue-operation entry)
+- Optional: files written to disk, commits, or other side effects
+
+**How data is passed:**
+- Agent tool with `prompt` and `description` parameters
+- Agent spawns as subprocess with isolated conversation context
+- Output streamed to temporary file, parent session notified on completion
+- Parent reads output file via TaskOutput or Read tool
+
+### Background task result correlation
+
+Background agents (both SAW and general) return results to the main session via **queue-operation entries** in the transcript:
+
+**JSONL entry structure:**
+```json
+{
+  "type": "queue-operation",
+  "operation": "enqueue",
+  "timestamp": "2026-03-04T10:15:32.123Z",
+  "content": "<task_id>abc123</task_id>...<total_tokens>4521</total_tokens>...",
+  "sessionId": "20260304-101523-def456"
+}
+```
+
+**What claudewatch extracts:**
+- `tool_use_id` — correlates background task to original `Task` tool use
+- `total_tokens` — token usage from background agent (for cost attribution)
+- `completion_timestamp` — when background task actually finished (backfills agent span end time)
+
+**Why this matters:**
+- SessionMeta token counts only include foreground turns by default
+- Background agent tokens appear in queue-operation entries, not assistant messages
+- `ParseSingleTranscript` (internal/claude/transcripts.go) parses these entries to build complete `AgentSpan` records
+- SAW observability tools (get_saw_sessions, get_saw_wave_breakdown) rely on this correlation
+
+### Data NOT sent to agents
+
+For privacy and security:
+- **Credentials** — no environment variables, API keys, or tokens passed to agents
+- **Full conversation history** — agents get task-specific prompt, not full parent session history (unless explicitly included in prompt)
+- **Other sessions' data** — agents have no access to `~/.claude/` metadata outside their task scope
+- **User's file system** — agents confined to repository root (or worktree root for SAW Wave Agents)
+
+### Data flow summary
+
+```
+User → Claude Code → /saw skill
+                       │
+                       ├─► Scout agent (reads: repo files, writes: IMPL doc)
+                       │      ↓
+                       ├─► Scaffold agent (reads: IMPL doc, writes: scaffold files)
+                       │      ↓
+                       └─► Wave agents (reads: IMPL + scaffolds, writes: feature code)
+                              ↓
+                           Orchestrator (reads: completion reports, merges worktrees)
+                              ↓
+                           Main branch (feature complete)
+
+Background task results:
+  Wave agent → queue-operation entry → transcript JSONL → claudewatch parsing
+```
