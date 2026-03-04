@@ -622,3 +622,757 @@ internal/suggest/     (generate ranked improvement suggestions)
 | `get_session_friction` | `facets/*.json` |
 | `set_session_project` | `~/.config/claudewatch/tags.json` (read + write) |
 | `claudewatch scan` | All of the above, writes to `claudewatch.db` |
+
+---
+
+## 15. Real-world examples
+
+### Example SessionMeta file
+
+`~/.claude/usage-data/session-meta/20260304-101523-a1b2c3d4.json`
+
+```json
+{
+  "session_id": "20260304-101523-a1b2c3d4",
+  "project_path": "/Users/dayna/code/claudewatch",
+  "start_time": "2026-03-04T10:15:23Z",
+  "duration_minutes": 42,
+  "user_message_count": 12,
+  "assistant_message_count": 15,
+  "tool_counts": {
+    "Read": 18,
+    "Edit": 8,
+    "Bash": 5,
+    "Glob": 3,
+    "Write": 2
+  },
+  "languages": {
+    "go": 14,
+    "markdown": 2
+  },
+  "git_commits": 2,
+  "git_pushes": 1,
+  "input_tokens": 45230,
+  "output_tokens": 12140,
+  "first_prompt": "add metrics export feature",
+  "user_interruptions": 1,
+  "user_response_times": [12.5, 8.3, 5.1, 15.2],
+  "tool_errors": 2,
+  "tool_error_categories": {
+    "file_not_found": 1,
+    "command_failed": 1
+  },
+  "uses_task_agent": false,
+  "uses_mcp": true,
+  "uses_web_search": false,
+  "uses_web_fetch": false,
+  "lines_added": 847,
+  "lines_removed": 34,
+  "files_modified": 6,
+  "message_hours": [10, 10, 10, 10, 10, 11],
+  "user_message_timestamps": [
+    "2026-03-04T10:15:23Z",
+    "2026-03-04T10:18:45Z",
+    "2026-03-04T10:25:12Z"
+  ]
+}
+```
+
+### Example JSONL transcript entries
+
+`~/.claude/projects/abc123def456/20260304-101523-a1b2c3d4.jsonl` (selected lines)
+
+**User message:**
+```json
+{"type":"user","timestamp":"2026-03-04T10:15:23.456Z","sessionId":"20260304-101523-a1b2c3d4","message":{"role":"user","content":[{"type":"text","text":"add metrics export feature"}]}}
+```
+
+**Assistant message with tool use:**
+```json
+{"type":"assistant","timestamp":"2026-03-04T10:15:25.123Z","sessionId":"20260304-101523-a1b2c3d4","message":{"role":"assistant","content":[{"type":"text","text":"I'll add a metrics export feature..."},{"type":"tool_use","id":"toolu_01ABC123","name":"Read","input":{"file_path":"/Users/dayna/code/claudewatch/internal/analyzer/metrics.go"}}],"usage":{"input_tokens":4521,"output_tokens":342}}}
+```
+
+**Tool result:**
+```json
+{"type":"user","timestamp":"2026-03-04T10:15:26.789Z","sessionId":"20260304-101523-a1b2c3d4","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01ABC123","content":"file content here...","is_error":false}]}}
+```
+
+**Queue operation (background agent completion):**
+```json
+{"type":"queue-operation","operation":"enqueue","timestamp":"2026-03-04T10:42:15.234Z","content":"<task_id>abc123</task_id><agent_name>Scout</agent_name><total_tokens>8521</total_tokens><tool_use_id>toolu_01XYZ789</tool_use_id>","sessionId":"20260304-101523-a1b2c3d4"}
+```
+
+**Context compaction:**
+```json
+{"type":"summary","timestamp":"2026-03-04T10:35:12.456Z","sessionId":"20260304-101523-a1b2c3d4","data":{"compacted_turns":15,"tokens_before":180000,"tokens_after":95000}}
+```
+
+### Example SessionFacet file
+
+`~/.claude/usage-data/facets/20260304-101523-a1b2c3d4.json`
+
+```json
+{
+  "session_id": "20260304-101523-a1b2c3d4",
+  "underlying_goal": "Implement metrics export functionality for external observability platforms",
+  "goal_categories": {
+    "feature_development": 1
+  },
+  "outcome": "successful",
+  "user_satisfaction_counts": {
+    "satisfied": 1
+  },
+  "claude_helpfulness": "very_helpful",
+  "session_type": "feature_implementation",
+  "friction_counts": {
+    "retry:Bash": 1,
+    "tool_error": 1
+  },
+  "friction_detail": "Minor linter errors requiring retry",
+  "primary_success": "Complete metrics export feature with tests and documentation",
+  "brief_summary": "Added Prometheus metrics export with privacy-safe aggregation"
+}
+```
+
+### Example StatsCache excerpt
+
+`~/.claude/stats-cache.json` (partial)
+
+```json
+{
+  "version": 3,
+  "lastComputedDate": "2026-03-04",
+  "totalSessions": 487,
+  "modelUsage": {
+    "claude-sonnet-4": {
+      "inputTokens": 12450000,
+      "outputTokens": 3210000,
+      "cacheReadInputTokens": 8500000,
+      "cacheCreationInputTokens": 450000,
+      "costUSD": 234.56,
+      "contextWindow": 200000
+    },
+    "claude-opus-4": {
+      "inputTokens": 2340000,
+      "outputTokens": 890000,
+      "costUSD": 89.23,
+      "contextWindow": 200000
+    }
+  },
+  "dailyActivity": [
+    {
+      "date": "2026-03-04",
+      "sessions": 8,
+      "totalDurationMinutes": 342,
+      "totalInputTokens": 345000,
+      "totalOutputTokens": 89000
+    }
+  ]
+}
+```
+
+---
+
+## 16. Session lifecycle timeline
+
+Understanding **when** each file gets written is critical to understanding staleness and why certain operations succeed or fail.
+
+### Active session (T=0 to T=end)
+
+```
+T+0.0s    User launches Claude Code, navigates to project directory
+          └─ Claude Code checks ~/.claude/settings.json for hooks/permissions
+
+T+0.2s    User types first prompt: "add metrics export feature"
+          └─ ~/.claude/history.jsonl ← appended with HistoryEntry
+          └─ sessionId generated: 20260304-101523-a1b2c3d4
+
+T+0.5s    Claude Code creates transcript file (if first session in this project)
+          └─ ~/.claude/projects/{projectHash}/20260304-101523-a1b2c3d4.jsonl created
+          └─ File held open by Claude Code process (append mode)
+
+T+1.0s    First assistant response
+          └─ JSONL ← {"type":"assistant",...,"usage":{"input_tokens":4521,...}}
+          └─ JSONL is flushed to disk immediately (crash safety)
+
+T+1.5s    Tool execution (Read tool)
+          └─ JSONL ← {"type":"assistant",...,"content":[{"type":"tool_use",...}]}
+          └─ JSONL ← {"type":"user",...,"content":[{"type":"tool_result",...}]}
+
+T+2.0s    File modification (Edit tool)
+          └─ ~/.claude/file-history/20260304-101523-a1b2c3d4/{hash}@v1 created
+          └─ Changed file written to file-history (snapshot)
+
+[... 40 minutes of back-and-forth ...]
+
+T+35m     Context approaching limit
+          └─ JSONL ← {"type":"summary",...} (compaction event)
+          └─ Older turns summarized, full transcript still preserved
+
+T+42m     User types "exit" or closes session
+          └─ Claude Code begins session close sequence
+```
+
+### Session close (T=end)
+
+```
+T+42m00s  Session close triggered
+          └─ Claude Code computes final statistics from JSONL
+
+T+42m01s  SessionMeta written
+          └─ ~/.claude/usage-data/session-meta/20260304-101523-a1b2c3d4.json created
+          └─ Contains: token counts, tool counts, git commits, duration, etc.
+          └─ All values are FINAL (frozen at this instant)
+
+T+42m02s  SessionFacet analysis
+          └─ Claude Code analyzes full session for qualitative metrics
+          └─ ~/.claude/usage-data/facets/20260304-101523-a1b2c3d4.json created
+          └─ Contains: goal, outcome, friction, satisfaction
+
+T+42m03s  JSONL file closed
+          └─ File descriptor released (no longer held open)
+          └─ File mtime = session close time
+
+T+42m04s  StatsCache updated
+          └─ ~/.claude/stats-cache.json recomputed
+          └─ Aggregates all sessions, updates daily totals
+```
+
+### Key timing implications
+
+**Why session-meta can be stale:**
+- SessionMeta written at T+42m (session close)
+- JSONL continuously appended until T+42m
+- If session is RESUMED later, JSONL continues appending but SessionMeta stays frozen
+- claudewatch detects staleness via `JSONL mtime > SessionMeta mtime`
+
+**Why lsof is necessary for active session detection:**
+- During active session (T+0 to T+42m), JSONL file descriptor is OPEN
+- After session close (T+42m+), file descriptor is CLOSED
+- `lsof -c claude` shows open file descriptors
+- mtime alone cannot distinguish "active now" from "closed 2 minutes ago"
+
+**Why facets may have fewer sessions than session-meta:**
+- Facet analysis is compute-intensive
+- If Claude Code crashes during facet writing (T+42m02s), facet file is not created
+- SessionMeta may exist (written at T+42m01s) but facet does not
+- This is why `ParseAllFacets` returns fewer entries than `ParseAllSessionMeta`
+
+**Why stats-cache is eventually consistent:**
+- Updated at T+42m04s (AFTER session-meta and facets)
+- If you query stats-cache immediately after a session, it may not include that session yet
+- Next session close will update it
+- claudewatch MCP tools bypass stats-cache and read session-meta directly for accuracy
+
+---
+
+## 17. Performance characteristics
+
+claudewatch's performance depends heavily on **which files it reads** and **how many sessions exist**.
+
+### Fast operations (< 100ms)
+
+These read only lightweight index files:
+
+**`get_session_stats` (active session):**
+- `lsof -c claude -F n` (3-second timeout, but typically 10-50ms)
+- Parse single JSONL file (streaming, stops at last `assistant` entry with token usage)
+- **Cost**: O(active_session_size), typically 500-2000 lines
+
+**`get_recent_sessions` (N=5):**
+- Read `session-meta/*.json` (file enumeration, stat, read)
+- Read `facets/*.json` (same)
+- Read `stats-cache.json` (single file)
+- **Cost**: O(N), where N is number of sessions requested (default 5)
+
+**`set_session_project`:**
+- Read `tags.json` (single small file, <10KB)
+- Write `tags.json` (atomic write-to-temp + rename)
+- **Cost**: O(1)
+
+### Medium operations (100ms - 1s)
+
+These scan all session metadata but not transcripts:
+
+**`get_project_health`:**
+- Walk `session-meta/` directory (enumerate all .json files)
+- Parse each SessionMeta (JSON decode)
+- Walk `facets/` directory (same)
+- **Cost**: O(total_sessions), where total_sessions is typically 100-1000
+- **Bottleneck**: Filesystem directory listing + JSON parsing
+
+**`get_effectiveness`:**
+- Same as `get_project_health`
+- Plus: read multiple `CLAUDE.md` files from project directories
+- **Cost**: O(total_sessions) + O(projects)
+
+**`get_cost_velocity` / `get_context_pressure` (live session):**
+- Parse single active JSONL (full file, not streaming)
+- Extract all `assistant` entries with token counts
+- Compute rolling window stats
+- **Cost**: O(active_session_size), typically 2000-5000 lines
+
+### Slow operations (1s - 10s)
+
+These parse full JSONL transcripts for all sessions:
+
+**`get_agent_performance`:**
+- Walk `projects/` directory recursively (all subdirectories)
+- Parse EVERY `.jsonl` file fully (not streaming)
+- Extract `Task` and `TaskStop` tool uses
+- Reconstruct agent spans from tool_use/tool_result pairs
+- **Cost**: O(total_sessions × avg_transcript_size)
+- **Bottleneck**: JSONL parsing (each line is JSON decoded)
+
+**`get_saw_sessions` + `get_saw_wave_breakdown`:**
+- Same as `get_agent_performance`
+- Additional filtering for SAW-tagged agents (description contains `[SAW:wave`)
+- **Cost**: O(total_sessions × avg_transcript_size)
+
+**`get_project_health` (with agent metrics):**
+- Combines `get_project_health` (medium) + `get_agent_performance` (slow)
+- **Cost**: O(total_sessions) + O(total_sessions × avg_transcript_size)
+
+### Very slow operations (10s+)
+
+**`claudewatch scan` (full index rebuild):**
+- All of the above operations combined
+- Plus: `ParseAllFileHistory` (walks `file-history/{sessionID}/` for all sessions)
+- Plus: friction detection across all sessions
+- Plus: suggestion generation
+- Plus: SQLite writes (insert/update for every session)
+- **Cost**: O(total_sessions × avg_transcript_size) + O(total_file_versions)
+- **Typical duration**: 5-30 seconds for 500 sessions
+
+### Performance optimization strategies
+
+**1. mtime caching**
+
+claudewatch uses `buildSessionJSONLIndex` to build an in-memory map of `sessionID → (JSONL path, mtime)` once per operation. This avoids repeated filesystem traversals:
+
+```go
+// Build index once
+index := buildSessionJSONLIndex(claudeHome)
+
+// Check staleness for each session (O(1) lookup)
+for each session in session-meta/ {
+    jsonlPath, jsonlMtime := index[sessionID]
+    if jsonlMtime.After(metaMtime) {
+        // stale, overlay from JSONL
+    }
+}
+```
+
+**2. Streaming JSONL parsing**
+
+Active session parsing stops early:
+
+```go
+// ParseActiveSession reads line-by-line until it finds enough data
+for scanner.Scan() {
+    entry := parseJSONLEntry(scanner.Bytes())
+    if entry.Type == "assistant" {
+        // Extract tokens, increment turn count
+        // Don't need to parse the entire file
+    }
+}
+```
+
+For full transcript parsing (`ParseSingleTranscript`), every line must be parsed because agent spans can appear anywhere.
+
+**3. Parallel session parsing**
+
+`ParseAllSessionMeta` could be parallelized (not currently implemented):
+
+```go
+// NOT implemented, but would be:
+for each metaFile in session-meta/ {
+    go func(path string) {
+        meta := parseSessionMeta(path)
+        results <- meta
+    }(metaFile)
+}
+```
+
+Currently serial because filesystem I/O dominates CPU time.
+
+**4. Database caching**
+
+`claudewatch scan` writes to SQLite (`~/.config/claudewatch/claudewatch.db`). Most MCP tools bypass the database and read files directly because:
+- Live data accuracy matters more than speed
+- Database can be stale if user hasn't run `scan` recently
+- Parsing 500 sessions takes 1-2 seconds, which is acceptable for interactive use
+
+### When to use the database
+
+The database is useful for:
+- Queries over historical data (last 30 days, trend analysis)
+- Joins across multiple tables (sessions × friction events × suggestions)
+- Pre-aggregated metrics that are expensive to compute
+
+MCP tools that DO use the database:
+- `get_suggestions` (reads pre-computed suggestion rankings)
+- `get_task_history` / `get_blockers` (reads memory extraction results)
+
+---
+
+## 18. Claude Code internals (the "why" behind the data model)
+
+### Why JSONL instead of JSON?
+
+**Streaming writes + crash safety:**
+
+Claude Code writes transcript entries one line at a time as they occur. If the process crashes mid-session:
+
+```
+Line 1: {"type":"user",...}
+Line 2: {"type":"assistant",...}
+Line 3: {"type":"user",...}
+[CRASH - file closed unexpectedly]
+```
+
+The file is still valid JSONL — you can parse lines 1-3. With a single JSON object, a crash mid-write would leave an invalid file:
+
+```
+{"entries":[
+  {"type":"user",...},
+  {"type":"assistant",...},
+  {"type":"user",...
+[CRASH - file truncated, not valid JSON]
+```
+
+**Append-only performance:**
+
+Appending a line to a file is O(1). Rewriting an entire JSON array is O(file_size).
+
+### Why session-meta is written at session close
+
+**Requires full context:**
+
+Many SessionMeta fields cannot be computed until the session ends:
+
+- `DurationMinutes` — needs start and end timestamps
+- `GitCommits` — Claude Code watches for `git commit` tool uses throughout the session
+- `ToolCounts` — summed across all turns
+- `UserInterruptions` — detected when user sends a message while assistant is "thinking"
+
+**Trade-off: freshness vs completeness**
+
+Claude Code chose **completeness** (write accurate data once at end) over **freshness** (write partial data continuously). This is why claudewatch implements the staleness overlay.
+
+### Why facets are separate from session-meta
+
+**Different write timing:**
+
+- SessionMeta: fast aggregation (token counts, tool counts) — written in <50ms
+- Facets: LLM-powered analysis (goal understanding, satisfaction inference) — takes 1-5 seconds
+
+If they were in the same file, session close would be blocked waiting for facet analysis. Separate files allow:
+
+1. Write SessionMeta immediately (fast)
+2. Write Facets asynchronously (slow)
+3. If facet analysis fails, SessionMeta still exists
+
+**Different data types:**
+
+- SessionMeta: structured counts (integers, maps)
+- Facets: qualitative analysis (strings, enums)
+
+They serve different purposes and have different consumers.
+
+### Why stats-cache exists
+
+**Expensive recomputation avoidance:**
+
+Computing aggregate statistics across all sessions requires:
+- Parsing every session-meta file
+- Summing token counts, computing cost
+- Grouping by date, model, project
+
+This takes 1-5 seconds for 500 sessions. Without a cache, every `claude stats` invocation would be slow.
+
+**Trade-off: speed vs accuracy**
+
+Stats-cache is updated at session close. Between sessions, it may be slightly stale. This is acceptable for overview stats but not for precise queries (which bypass the cache).
+
+### Why file-history exists
+
+**Undo capability:**
+
+Claude Code needs to support "undo" for Edit operations. Versioned snapshots allow:
+
+```
+user: "edit login.ts"
+claude: [writes edit]
+user: "undo that"
+claude: [reads {hash}@v1, restores previous version]
+```
+
+**Audit trail:**
+
+For debugging "what did Claude change?" questions, file-history shows exactly what was edited and when.
+
+**Storage cost:**
+
+File-history can grow large (100s of MB for long-running projects). Claude Code periodically garbage-collects old versions.
+
+### Why lsof is needed
+
+**Distinguishing active from recent:**
+
+Filesystem mtime tells you "when was this file last modified?" but not "is it currently open?"
+
+```
+Session A: closed 30 seconds ago (mtime = now-30s)
+Session B: active now, last write 5 minutes ago (mtime = now-5m)
+```
+
+If you sort by mtime, Session A looks more recent than Session B, but Session B is actually active.
+
+`lsof -c claude` tells you which files the `claude` process has open RIGHT NOW. This is the only reliable way to detect active sessions.
+
+**Fallback for when lsof fails:**
+
+If lsof times out or is unavailable (some systems restrict it), claudewatch falls back to "most recent mtime < 5 minutes ago" heuristic. This is less reliable but better than nothing.
+
+### Why history.jsonl exists separately from transcripts
+
+**Cross-session prompt history:**
+
+`history.jsonl` accumulates prompts across ALL sessions. It enables:
+
+- Arrow-up to recall previous prompts (across sessions)
+- Search through command history
+- Analytics: "what are users most commonly asking for?"
+
+If prompts were only in per-session transcripts, you'd need to scan 100s of files to find "what did I ask 3 days ago?"
+
+---
+
+## 19. Worked example: Full trace of one session
+
+Let's follow a complete session from start to finish, showing exactly what gets written where and when.
+
+### T+0s: Session start
+
+**User action:** Opens Claude Code, navigates to `/Users/dayna/code/claudewatch`, types "add prometheus metrics export"
+
+**Files written:**
+
+`~/.claude/history.jsonl` (appended):
+```json
+{"display":"add prometheus metrics export","pastedContents":{},"timestamp":1709550923000,"project":"claudewatch","sessionId":"20260304-101523-a1b2c3d4"}
+```
+
+**Files created:**
+
+`~/.claude/projects/a1b2c3d4ef5678/20260304-101523-a1b2c3d4.jsonl`:
+```json
+{"type":"user","timestamp":"2026-03-04T10:15:23.456Z","sessionId":"20260304-101523-a1b2c3d4","message":{"role":"user","content":[{"type":"text","text":"add prometheus metrics export"}]}}
+```
+
+### T+2s: First assistant response
+
+**Claude Code action:** Generates response with tool uses
+
+**JSONL (appended 1 line):**
+```json
+{"type":"assistant","timestamp":"2026-03-04T10:15:25.123Z","sessionId":"20260304-101523-a1b2c3d4","message":{"role":"assistant","content":[{"type":"text","text":"I'll add a Prometheus metrics export feature. Let me start by reading the existing analyzer code."},{"type":"tool_use","id":"toolu_01ABC","name":"Read","input":{"file_path":"/Users/dayna/code/claudewatch/internal/analyzer/metrics.go"}}],"usage":{"input_tokens":4521,"output_tokens":182}}}
+```
+
+### T+2.1s: Tool result
+
+**Claude Code action:** Executes Read tool, returns result
+
+**JSONL (appended 1 line):**
+```json
+{"type":"user","timestamp":"2026-03-04T10:15:25.234Z","sessionId":"20260304-101523-a1b2c3d4","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01ABC","content":"[file contents: 450 lines of Go code]","is_error":false}]}}
+```
+
+### T+5s: File edit
+
+**Claude Code action:** Assistant uses Edit tool to modify a file
+
+**JSONL (appended 2 lines):**
+```json
+{"type":"assistant","timestamp":"2026-03-04T10:15:28.567Z","sessionId":"20260304-101523-a1b2c3d4","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01DEF","name":"Edit","input":{"file_path":"/Users/dayna/code/claudewatch/internal/export/exporter.go","old_string":"...","new_string":"..."}}],"usage":{"input_tokens":5234,"output_tokens":234}}}
+{"type":"user","timestamp":"2026-03-04T10:15:28.890Z","sessionId":"20260304-101523-a1b2c3d4","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01DEF","content":"File updated successfully","is_error":false}]}}
+```
+
+**File-history (created):**
+
+`~/.claude/file-history/20260304-101523-a1b2c3d4/abc123def456@v1`:
+```
+[snapshot of exporter.go before the edit]
+```
+
+### T+10s: User interrupts with new message
+
+**User action:** Types "also add documentation" while Claude is thinking
+
+**JSONL (appended 1 line):**
+```json
+{"type":"user","timestamp":"2026-03-04T10:15:33.123Z","sessionId":"20260304-101523-a1b2c3d4","message":{"role":"user","content":[{"type":"text","text":"also add documentation"}]}}
+```
+
+**SessionMeta will record:** `UserInterruptions: 1`
+
+### T+35m: Context compaction
+
+**Claude Code action:** Context window approaching limit, triggers summarization
+
+**JSONL (appended 1 line):**
+```json
+{"type":"summary","timestamp":"2026-03-04T10:50:15.456Z","sessionId":"20260304-101523-a1b2c3d4","data":{"compacted_turns":18,"tokens_before":185000,"tokens_after":92000}}
+```
+
+### T+40m: Git commit
+
+**Claude Code action:** Assistant runs `git commit` command
+
+**JSONL (appended 2 lines):**
+```json
+{"type":"assistant","timestamp":"2026-03-04T10:55:12.345Z","sessionId":"20260304-101523-a1b2c3d4","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01GHI","name":"Bash","input":{"command":"git add internal/export/ && git commit -m \"feat(export): add Prometheus exporter\""}}],"usage":{"input_tokens":6234,"output_tokens":145}}}
+{"type":"user","timestamp":"2026-03-04T10:55:13.567Z","sessionId":"20260304-101523-a1b2c3d4","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01GHI","content":"[main abc123] feat(export): add Prometheus exporter\n 3 files changed, 450 insertions(+)","is_error":false}]}}
+```
+
+**SessionMeta will record:** `GitCommits: 1`, `GitPushes: 0`
+
+### T+42m: Session close
+
+**User action:** Types "exit" or closes Claude Code
+
+**Claude Code action:** Session close sequence begins
+
+#### T+42m00s: Compute final statistics
+
+Claude Code scans the JSONL file and computes:
+- Total turns: 27 user, 32 assistant
+- Token usage: 185,230 input, 45,120 output
+- Tool counts: Read=18, Edit=8, Write=2, Bash=5, Glob=3
+- Languages: go=22, markdown=3
+- Git commits: 1 (found `git commit` in Bash tool input)
+- Tool errors: 2 (found `is_error: true` in tool_result entries)
+- Duration: 42 minutes (last timestamp - first timestamp)
+
+#### T+42m01s: Write SessionMeta
+
+**File created:**
+
+`~/.claude/usage-data/session-meta/20260304-101523-a1b2c3d4.json`:
+```json
+{
+  "session_id": "20260304-101523-a1b2c3d4",
+  "project_path": "/Users/dayna/code/claudewatch",
+  "start_time": "2026-03-04T10:15:23Z",
+  "duration_minutes": 42,
+  "user_message_count": 27,
+  "assistant_message_count": 32,
+  "tool_counts": {"Read": 18, "Edit": 8, "Write": 2, "Bash": 5, "Glob": 3},
+  "languages": {"go": 22, "markdown": 3},
+  "git_commits": 1,
+  "git_pushes": 0,
+  "input_tokens": 185230,
+  "output_tokens": 45120,
+  "first_prompt": "add prometheus metrics export",
+  "user_interruptions": 1,
+  "user_response_times": [12.5, 8.3, 5.1, 15.2],
+  "tool_errors": 2,
+  "tool_error_categories": {"file_not_found": 1, "command_failed": 1},
+  "uses_task_agent": false,
+  "uses_mcp": true,
+  "uses_web_search": false,
+  "uses_web_fetch": false,
+  "lines_added": 847,
+  "lines_removed": 34,
+  "files_modified": 6,
+  "message_hours": [10, 10, 10, 10, 10, 10, 10, 10, 11],
+  "user_message_timestamps": ["2026-03-04T10:15:23Z", "2026-03-04T10:18:45Z", ...]
+}
+```
+
+#### T+42m02s: Facet analysis
+
+Claude Code sends the full transcript to an LLM with a prompt: "Analyze this session and extract: goal, outcome, friction, satisfaction"
+
+**File created:**
+
+`~/.claude/usage-data/facets/20260304-101523-a1b2c3d4.json`:
+```json
+{
+  "session_id": "20260304-101523-a1b2c3d4",
+  "underlying_goal": "Implement Prometheus metrics export functionality",
+  "goal_categories": {"feature_development": 1},
+  "outcome": "successful",
+  "user_satisfaction_counts": {"satisfied": 1},
+  "claude_helpfulness": "very_helpful",
+  "session_type": "feature_implementation",
+  "friction_counts": {"retry:Bash": 1, "tool_error": 1},
+  "friction_detail": "Minor file not found error, one command retry",
+  "primary_success": "Complete Prometheus export implementation with tests",
+  "brief_summary": "Added metrics export feature with Prometheus text format support"
+}
+```
+
+#### T+42m03s: JSONL file closed
+
+Claude Code releases the file descriptor for the JSONL file. It's no longer "open" from `lsof`'s perspective.
+
+#### T+42m04s: Update stats-cache
+
+Claude Code recomputes aggregate statistics across all sessions:
+
+**File updated:**
+
+`~/.claude/stats-cache.json` (dailyActivity array gets new entry):
+```json
+{
+  "dailyActivity": [
+    {
+      "date": "2026-03-04",
+      "sessions": 8,
+      "totalDurationMinutes": 384,
+      "totalInputTokens": 1523450,
+      "totalOutputTokens": 423120
+    }
+  ],
+  "modelUsage": {
+    "claude-sonnet-4": {
+      "inputTokens": 12635230,
+      "outputTokens": 3255120,
+      "costUSD": 237.84
+    }
+  }
+}
+```
+
+### What claudewatch sees
+
+**Immediately during session (T+0 to T+42m):**
+
+If you run `claudewatch mcp get_session_stats`:
+1. `FindActiveSessionPath` runs `lsof -c claude`, finds the open JSONL file
+2. `ParseActiveSession` reads the JSONL, computes live stats:
+   - Tokens: 185230 input, 45120 output (from `usage` fields in assistant messages)
+   - Turn counts: 27 user, 32 assistant
+   - **Live**: true (indicates data is from active session, not from session-meta)
+
+**After session close (T+42m+):**
+
+If you run `claudewatch mcp get_session_stats`:
+1. `FindActiveSessionPath` runs `lsof -c claude`, finds NO open JSONL file
+2. Falls back to `ParseAllSessionMeta`
+3. Reads `session-meta/20260304-101523-a1b2c3d4.json`
+4. Returns the same stats, but **Live**: false
+
+**If session is resumed later:**
+
+User reopens Claude Code in the same project tomorrow, Claude Code finds the existing sessionId and continues:
+
+1. JSONL file is reopened (file descriptor open again)
+2. New entries appended (T+24h00s: `{"type":"user",...}`)
+3. SessionMeta still shows data from T+42m (stale!)
+4. claudewatch detects: `JSONL mtime > SessionMeta mtime`
+5. Overlays live data from JSONL (current tokens, turn counts)
+
+---
