@@ -1,24 +1,19 @@
 package mcp
 
-// projectWeightRef is a forward-reference type matching store.ProjectWeight.
-// Replace with store.ProjectWeight after Wave 1 Agent B completes.
-type projectWeightRef struct {
-	Project   string
-	RepoRoot  string
-	Weight    float64
-	ToolCalls int
-}
+import (
+	"github.com/blackwell-systems/claudewatch/internal/store"
+)
 
-// sessionMatchesProject returns true if the session is attributed to the given project.
-// Priority: (1) tag override, (2) any weight entry with Project == filter (case-insensitive),
-// (3) filepath.Base(projectPath) == filter (case-insensitive).
-func sessionMatchesProject(sessionID, projectPath string, tags map[string]string, weights []projectWeightRef, filter string) bool {
+// sessionMatchesProject returns true if the session's activity includes the
+// given project filter string. Matches against primary project name or any
+// project in the weights list.
+func sessionMatchesProject(sessionID, projectPath string, tags map[string]string, weights []store.ProjectWeight, filter string) bool {
 	panic("not implemented")
 }
 
-// sessionPrimaryProject returns the primary project name for a session.
-// Priority: (1) tag override, (2) weights[0].Project (highest weight, already sorted desc),
-// (3) filepath.Base(projectPath).
-func sessionPrimaryProject(sessionID, projectPath string, tags map[string]string, weights []projectWeightRef) string {
+// sessionPrimaryProject returns the primary project name for a session,
+// preferring the highest-weight project from weights if available, falling
+// back to resolveProjectName.
+func sessionPrimaryProject(sessionID, projectPath string, tags map[string]string, weights []store.ProjectWeight) string {
 	panic("not implemented")
 }
