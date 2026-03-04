@@ -145,14 +145,139 @@ The differentiating capability of claudewatch: extracting and analyzing multi-ag
 - **goreleaser**: Configured in `.goreleaser.yml` for linux/darwin/windows, amd64/arm64
 - **Installation**: `go install github.com/blackwell-systems/claudewatch/cmd/claudewatch@latest`
 
+## Common Blockers & Solutions
+
+### Session-Meta Cache Stale
+**Symptom:** Metrics don't show recent sessions or model usage is missing
+**Solution:** `rm -rf ~/.claude/usage-data/session-meta/*.json && claudewatch scan`
+**Prevention:** Code auto-rebuilds stale cache, but manual clear sometimes needed
+
+### Model Usage Shows `<synthetic>`
+**Symptom:** Model breakdown includes `<synthetic>` with $0 cost
+**Cause:** Some assistant messages lack `model` field in transcript
+**Solution:** Expected behavior. Filter in display if needed
+
+### MCP Tool Schema Mismatch
+**Symptom:** Claude Code shows "tool failed" with no clear error
+**Solution:** Verify parameter names in `tools.go` match handler exactly. Test with: `echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"tool_name"},"id":1}' | claudewatch mcp`
+
+### SQLite Lock Error
+**Symptom:** `database is locked` when running commands
+**Solution:** `killall claudewatch` (check for multiple processes)
+**Location:** `~/.config/claudewatch/claudewatch.db`
+
+### Hook Fires Too Frequently
+**Symptom:** PostToolUse alert appears every few tool calls
+**Solution:** Hook rate-limits with 30s cooldown via `~/.cache/claudewatch-hook.ts`. Adjust `hookCooldownSeconds` in `internal/app/hook.go` if needed
+
+### Transcript Parsing Hangs
+**Symptom:** `claudewatch scan` hangs on large sessions (>100MB)
+**Solution:** Already handled with 10MB buffer. If still fails, check for corrupted JSONL (missing newlines)
+
 ## Quick Debugging
 
 - **Config not loading?** Check `~/.config/claudewatch/config.yaml` exists. Use `--config` flag to override.
 - **Database locked?** Only one instance can write. Check for hung processes: `lsof ~/.config/claudewatch/claudewatch.db`
 - **Parser failing?** Test with actual data: `go run ./cmd/claudewatch scan --verbose --json | jq .`
 - **Suggest rule missing?** Verify registered in `suggest/engine.go` and implements `Rule` function type.
+- **MCP tool not working?** Test directly: `claudewatch mcp < test-request.json`
+- **Cost calculations wrong?** Verify using `analyzer.DefaultPricing` for consistency
+
+## Documentation Standards
+
+**CLI commands** (`docs/cli.md`): Brief description, usage examples with flags, output format description
+**MCP tools** (`docs/mcp.md`): Purpose, input schema, output schema, use case (when Claude should call)
+**CHANGELOG** (`CHANGELOG.md`): Follow Keep a Changelog spec - Added/Changed/Fixed/Removed sections, write for users not developers
+**IMPL docs** (`docs/IMPL-*.md`): Design spec before implementation - suitability assessment, interfaces, file ownership, wave structure
+
+## Security & Privacy
+
+- **No network calls:** All data stays local at `~/.claude/` (except `fix --ai` which calls Anthropic API with explicit opt-in)
+- **No telemetry:** Zero analytics, tracking, or remote logging
+- **Sensitive data:** Transcripts may contain code, credentials, API keys
+  - Never upload transcripts to external services
+  - Never log transcript content without explicit flag
+- **SQLite contents:** Session IDs, project names, timestamps only - no code or transcript content
+- **Cross-session memory:** `~/.config/claudewatch/projects/<project>/working-memory.json` contains task descriptions, blockers - user-editable, can be deleted anytime
 
 ## Related Projects
 
 - **interview-kit** (CLAUDE.md reference): primitives-first approach, narrative prose style
 - **crosschain-verifier** (CLAUDE.md reference): two-repo architecture, testing patterns
+
+---
+
+## Self-Reflection Guidelines for Contributors
+
+### Before Writing Any Code
+
+**Ask yourself:**
+- Have I read this CLAUDE.md? (If no, read it NOW)
+- Does this feature already exist? (Run `claudewatch --help` to check)
+- Am I about to re-implement something that's already shipped?
+- Do I understand the architecture well enough to know where this code belongs?
+
+### After Reading 3+ Files
+
+**Pause and ask:**
+- Am I exploring or implementing? (If stuck reading, call `get_drift_signal`)
+- Have I found what I'm looking for, or am I drifting?
+- Should I use a subagent for this exploration instead?
+
+### After Writing Code, Before Moving On
+
+**Check:**
+- Did I write tests? (If no, STOP and write them now)
+- Did I follow the naming conventions? (Analyze*/Parse*/Create-Get-Update-Delete)
+- Will this break backwards compatibility? (SessionMeta, MCP API, CLI flags)
+- Did I check for import cycles? (internal/mcp must NOT import internal/app)
+
+### After Completing a Feature
+
+**Verify:**
+- Did I update docs? (cli.md, mcp.md, CHANGELOG.md, README counts)
+- Did I run the full test suite? (`go test ./...`)
+- Can I explain why this code is better than alternatives?
+- Should I call `extract_current_session_memory` to preserve what I learned?
+
+### Mid-Session (Every 30 Minutes)
+
+**Reflect:**
+- Am I stuck in an error loop? (Same failure 2-3 times = call `get_blockers()`)
+- Is my approach working, or should I try something else?
+- Have I ignored a PostToolUse hook warning? (If yes, call `get_session_dashboard` NOW)
+- Am I making progress, or just generating activity?
+
+---
+
+## Dogfooding Protocol
+
+**We eat our own dog food.** When developing claudewatch:
+- Run with claudewatch installed and active
+- Let hooks fire (don't disable them to "avoid noise")
+- When PostToolUse hook alerts, call `get_session_dashboard` as instructed
+- When hitting blockers, call `get_blockers()` before debugging
+- After completing features, call `extract_current_session_memory`
+- Track our own friction rate - target <10%
+
+**Credibility matters:** We can't evangelize CLAUDE.md best practices without having an exemplary one ourselves. We can't recommend hooks without using them. We can't sell observability without measuring ourselves.
+
+**Self-awareness questions to ask during development:**
+- "Am I practicing what we preach?" (Using hooks, calling get_blockers, extracting memory)
+- "Would I use this tool if I weren't building it?" (If no, why are we building it?)
+- "Is this the simplest solution that could work?" (Complexity is a code smell)
+- "Am I solving a real problem or building something cool?" (Former ships, latter doesn't)
+- "If this were someone else's PR, would I approve it?" (Be your own tough reviewer)
+
+---
+
+## Quality Checklist
+
+Before merging any change:
+
+1. ✅ `go test ./...` passes
+2. ✅ `go build ./cmd/claudewatch` succeeds
+3. ✅ `claudewatch metrics --days 7` completes without panic
+4. ✅ `claudewatch scan` doesn't regress on known projects
+5. ✅ Documentation updated (cli.md, mcp.md, CHANGELOG.md)
+6. ✅ No backwards compatibility breaks (SessionMeta, MCP API, CLI flags)

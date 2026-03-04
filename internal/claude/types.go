@@ -85,8 +85,15 @@ type SessionMeta struct {
 	LinesAdded            int            `json:"lines_added"`
 	LinesRemoved          int            `json:"lines_removed"`
 	FilesModified         int            `json:"files_modified"`
-	MessageHours          []int          `json:"message_hours"`
-	UserMessageTimestamps []string       `json:"user_message_timestamps"`
+	MessageHours          []int                 `json:"message_hours"`
+	UserMessageTimestamps []string              `json:"user_message_timestamps"`
+	ModelUsage            map[string]ModelStats `json:"model_usage,omitempty"`
+}
+
+// ModelStats tracks token counts for a specific model.
+type ModelStats struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
 }
 
 // SessionFacet represents qualitative session analysis from ~/.claude/usage-data/facets/*.json.

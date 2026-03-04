@@ -32,6 +32,123 @@ func TestAnalyzeModels_Nil(t *testing.T) {
 	}
 }
 
+func TestAnalyzeModelsFromSessions_Empty(t *testing.T) {
+	result := AnalyzeModelsFromSessions(nil)
+	if len(result.Models) != 0 {
+		t.Errorf("expected 0 models for nil sessions, got %d", len(result.Models))
+	}
+
+	result = AnalyzeModelsFromSessions([]claude.SessionMeta{})
+	if len(result.Models) != 0 {
+		t.Errorf("expected 0 models for empty sessions, got %d", len(result.Models))
+	}
+}
+
+func TestAnalyzeModelsFromSessions_SingleSession(t *testing.T) {
+	sessions := []claude.SessionMeta{
+		{
+			SessionID: "test-123",
+			ModelUsage: map[string]claude.ModelStats{
+				"claude-sonnet-4-6": {
+					InputTokens:  100_000,
+					OutputTokens: 50_000,
+				},
+			},
+		},
+	}
+
+	result := AnalyzeModelsFromSessions(sessions)
+
+	if len(result.Models) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(result.Models))
+	}
+
+	model := result.Models[0]
+	if model.ModelName != "claude-sonnet-4-6" {
+		t.Errorf("expected model name 'claude-sonnet-4-6', got %q", model.ModelName)
+	}
+	if model.Tier != TierSonnet {
+		t.Errorf("expected tier 'sonnet', got %q", model.Tier)
+	}
+	if model.InputTokens != 100_000 {
+		t.Errorf("expected 100k input tokens, got %d", model.InputTokens)
+	}
+	if model.OutputTokens != 50_000 {
+		t.Errorf("expected 50k output tokens, got %d", model.OutputTokens)
+	}
+	if model.TotalTokens != 150_000 {
+		t.Errorf("expected 150k total tokens, got %d", model.TotalTokens)
+	}
+
+	// Verify cost calculation: 100k input at $3/M + 50k output at $15/M = $0.30 + $0.75 = $1.05
+	expectedCost := 1.05
+	if model.CostUSD < expectedCost-0.01 || model.CostUSD > expectedCost+0.01 {
+		t.Errorf("expected cost ~$%.2f, got $%.2f", expectedCost, model.CostUSD)
+	}
+}
+
+func TestAnalyzeModelsFromSessions_MultipleModels(t *testing.T) {
+	sessions := []claude.SessionMeta{
+		{
+			SessionID: "test-123",
+			ModelUsage: map[string]claude.ModelStats{
+				"claude-sonnet-4-6": {
+					InputTokens:  100_000,
+					OutputTokens: 50_000,
+				},
+				"claude-opus-4-6": {
+					InputTokens:  50_000,
+					OutputTokens: 25_000,
+				},
+			},
+		},
+		{
+			SessionID: "test-456",
+			ModelUsage: map[string]claude.ModelStats{
+				"claude-sonnet-4-6": {
+					InputTokens:  200_000,
+					OutputTokens: 100_000,
+				},
+			},
+		},
+	}
+
+	result := AnalyzeModelsFromSessions(sessions)
+
+	if len(result.Models) != 2 {
+		t.Fatalf("expected 2 models, got %d", len(result.Models))
+	}
+
+	// Models should be sorted by cost descending.
+	// Sonnet: (300k input * $3/M) + (150k output * $15/M) = $0.90 + $2.25 = $3.15
+	// Opus: (50k input * $15/M) + (25k output * $75/M) = $0.75 + $1.875 = $2.625
+	// So Sonnet should be first.
+	if result.Models[0].Tier != TierSonnet {
+		t.Errorf("expected first model to be sonnet, got %q", result.Models[0].Tier)
+	}
+	if result.Models[1].Tier != TierOpus {
+		t.Errorf("expected second model to be opus, got %q", result.Models[1].Tier)
+	}
+
+	// Verify aggregation: sonnet should have 300k input, 150k output.
+	sonnet := result.Models[0]
+	if sonnet.InputTokens != 300_000 {
+		t.Errorf("expected sonnet 300k input tokens, got %d", sonnet.InputTokens)
+	}
+	if sonnet.OutputTokens != 150_000 {
+		t.Errorf("expected sonnet 150k output tokens, got %d", sonnet.OutputTokens)
+	}
+
+	// Verify potential savings (Opus cost - Opus cost at Sonnet rates).
+	// Opus actual: $2.625
+	// Opus at Sonnet rates: (50k * $3/M) + (25k * $15/M) = $0.15 + $0.375 = $0.525
+	// Savings: $2.625 - $0.525 = $2.10
+	expectedSavings := 2.10
+	if result.PotentialSavings < expectedSavings-0.01 || result.PotentialSavings > expectedSavings+0.01 {
+		t.Errorf("expected savings ~$%.2f, got $%.2f", expectedSavings, result.PotentialSavings)
+	}
+}
+
 func TestAnalyzeModels_SingleModel(t *testing.T) {
 	stats := &claude.StatsCache{
 		ModelUsage: map[string]claude.ModelUsage{

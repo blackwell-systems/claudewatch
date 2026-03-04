@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/blackwell-systems/claudewatch/internal/analyzer"
 	"github.com/blackwell-systems/claudewatch/internal/claude"
@@ -47,6 +48,7 @@ type metricsOutput struct {
 	Satisfaction   analyzer.SatisfactionScore     `json:"satisfaction"`
 	Agents         analyzer.AgentPerformance      `json:"agents"`
 	Tokens         tokenUsage                     `json:"tokens"`
+	Models         *analyzer.ModelAnalysis        `json:"models,omitempty"`
 	Commits        analyzer.CommitAnalysis        `json:"commits"`
 	Conversation   *analyzer.ConversationAnalysis `json:"conversation,omitempty"`
 	Confidence     analyzer.ConfidenceAnalysis    `json:"confidence"`
@@ -138,6 +140,12 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 	// Compute token usage from sessions.
 	tokens := computeTokenUsage(sessions)
 
+	// Analyze model usage from sessions.
+	var modelAnalysis *analyzer.ModelAnalysis
+	if ma := analyzer.AnalyzeModelsFromSessions(sessions); len(ma.Models) > 0 {
+		modelAnalysis = &ma
+	}
+
 	// Conversation quality (optional, may fail).
 	var convAnalysis *analyzer.ConversationAnalysis
 	if ca, err := analyzer.AnalyzeConversations(cfg.ClaudeHome); err == nil {
@@ -163,6 +171,7 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 			Satisfaction:   satisfaction,
 			Agents:         agents,
 			Tokens:         tokens,
+			Models:         modelAnalysis,
 			Commits:        commitAnalysis,
 			Conversation:   convAnalysis,
 			Confidence:     confidence,
@@ -182,6 +191,9 @@ func runMetrics(cmd *cobra.Command, args []string) error {
 	renderEfficiency(efficiency)
 	renderSatisfaction(satisfaction)
 	renderTokenUsage(sessions)
+	if modelAnalysis != nil {
+		renderModelUsage(*modelAnalysis)
+	}
 	renderFeatureAdoption(efficiency.FeatureAdoption)
 	renderAgentPerformance(agents)
 	renderCommitPatterns(commitAnalysis)
@@ -353,6 +365,67 @@ func renderTokenUsage(sessions []claude.SessionMeta) {
 		output.StyleValue.Render(formatTokenCount(totalTokens/n)))
 
 	fmt.Println()
+}
+
+func renderModelUsage(ma analyzer.ModelAnalysis) {
+	fmt.Println(output.Section("Model Usage"))
+
+	if len(ma.Models) == 0 {
+		fmt.Printf(" %s\n\n", output.StyleMuted.Render("No model usage data available"))
+		return
+	}
+
+	// Show each model with its cost and token breakdown.
+	for _, m := range ma.Models {
+		// Normalize model name for display.
+		displayName := normalizeModelName(m.ModelName)
+
+		fmt.Printf(" %-20s $%-7.2f (%2.0f%% of spend)   %s tokens (%2.0f%%)\n",
+			output.StyleLabel.Render(displayName),
+			m.CostUSD,
+			m.CostPercent,
+			formatTokenCount(m.TotalTokens),
+			m.TokenPercent)
+	}
+
+	// Show potential savings if Opus usage is significant.
+	if ma.PotentialSavings > 0.50 {
+		fmt.Printf("\n %s %s\n",
+			output.StyleError.Render("⚠"),
+			output.StyleMuted.Render(fmt.Sprintf("Potential savings: $%.2f if Opus usage moved to Sonnet", ma.PotentialSavings)))
+	}
+
+	fmt.Println()
+}
+
+// normalizeModelName converts verbose model IDs to friendly display names.
+func normalizeModelName(modelName string) string {
+	lower := strings.ToLower(modelName)
+
+	// Claude 4.6 series.
+	if strings.Contains(lower, "opus-4-6") || strings.Contains(lower, "opus-4.6") {
+		return "claude-opus-4.6"
+	}
+	if strings.Contains(lower, "sonnet-4-6") || strings.Contains(lower, "sonnet-4.6") {
+		return "claude-sonnet-4.6"
+	}
+	if strings.Contains(lower, "haiku-4-6") || strings.Contains(lower, "haiku-4.6") {
+		return "claude-haiku-4.6"
+	}
+
+	// Claude 4.5 series.
+	if strings.Contains(lower, "sonnet-4-5") || strings.Contains(lower, "sonnet-4.5") {
+		return "claude-sonnet-4.5"
+	}
+	if strings.Contains(lower, "haiku-4-5") || strings.Contains(lower, "haiku-4.5") {
+		return "claude-haiku-4.5"
+	}
+
+	// Fallback: return as-is, truncated if too long.
+	if len(modelName) > 30 {
+		return modelName[:27] + "..."
+	}
+	return modelName
 }
 
 func renderFeatureAdoption(fa analyzer.FeatureAdoption) {

@@ -60,10 +60,10 @@ claudewatch metrics --json > week.json
 - **Tool Usage** — breakdown by tool type and frequency
 - **Agent Performance** — by type: success rate, average duration, kill rate
 - **Token Usage** — cache hit rate, input/output ratio, per-session averages
-- **Model Usage** — spend and token share by model, overspend flag
+- **Model Usage** — per-model cost and token breakdown (sonnet/opus/haiku), spend percentages, and potential savings if Opus usage moved to Sonnet
 - **Project Confidence** — read vs. write ratio per project, low-confidence warnings
 
-**JSON sections** (with `--json`): `velocity`, `efficiency`, `satisfaction`, `agents`, `tokens`, `commits`, `conversation`, `confidence`, `friction_trends`, `cost_per_outcome`, `effectiveness`, `planning`.
+**JSON sections** (with `--json`): `velocity`, `efficiency`, `satisfaction`, `agents`, `tokens`, `models`, `commits`, `conversation`, `confidence`, `friction_trends`, `cost_per_outcome`, `effectiveness`, `planning`.
 
 ---
 

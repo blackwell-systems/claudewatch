@@ -122,13 +122,30 @@ During the session:
 - **Before destructive operations:** ALWAYS call ` + b + `extract_current_session_memory` + b + ` before:
   git reset --hard, git push --force, rm -rf, large refactors, or any operation that could
   lose work if it fails.
+- **When stuck exploring:** If you find yourself reading files repeatedly without making
+  progress, call ` + b + `get_drift_signal` + b + `. If status is "drifting" (reads dominate recent
+  window but session has edits), you may be avoiding implementation. Consider scoping down
+  or asking the user for clarification.
+- **When user asks "how did we...?":** If the user references prior work ("how did we solve X?",
+  "what approach did we use for Y?"), call ` + b + `search_transcripts(query: "X")` + b + ` to find
+  relevant sessions before ` + b + `get_task_history` + b + `. Transcripts include tool calls and
+  conversation context that task history summaries might miss.
+- **Before major commits:** After making many edits, check ` + b + `get_session_dashboard` + b + ` for
+  the commit-to-attempt ratio. High ratio (commits/edits close to 1.0) means steady progress.
+  Low ratio (<0.3) suggests guessing — investigate before committing potentially broken code.
+- **Mid-session memory check:** Every 30-45 minutes in long sessions, ask yourself: "Have I
+  learned something worth preserving?" If you've diagnosed a tricky bug, discovered an
+  architectural pattern, or identified a blocker, call ` + b + `extract_current_session_memory` + b + `
+  now. Don't wait until end-of-session when context might be lost to compaction.
 
 Available claudewatch MCP tools:
-- ` + b + `get_session_dashboard` + b + ` — all live metrics in one call (start here when the hook fires)
+- ` + b + `get_session_dashboard` + b + ` — all live metrics in one call (includes drift signal, commit ratio, and all other live data)
 - ` + b + `get_project_health` + b + ` — session count, friction rate, CLAUDE.md status, agent success rate
 - ` + b + `get_task_history` + b + ` — query previous task attempts by description
 - ` + b + `get_blockers` + b + ` — list known blockers with solutions
 - ` + b + `extract_current_session_memory` + b + ` — checkpoint task state immediately (before risky ops, after milestones, in long sessions)
+- ` + b + `search_transcripts` + b + ` — full-text search across all session transcripts (use when user asks "how did we...?")
+- ` + b + `get_drift_signal` + b + ` — detect when you're stuck reading without implementing
 - ` + b + `get_live_friction` + b + ` — real-time friction event stream
 - ` + b + `get_context_pressure` + b + ` — context window utilization
 - ` + b + `get_cost_velocity` + b + ` — cost burn rate (last 10 min)

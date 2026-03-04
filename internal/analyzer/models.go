@@ -243,3 +243,109 @@ func AnalyzeTokens(stats *claude.StatsCache, sessions []claude.SessionMeta) Toke
 
 	return ts
 }
+
+// AnalyzeModelsFromSessions computes per-model cost and token breakdowns from
+// session metadata. This is an alternative to AnalyzeModels that works with
+// SessionMeta.ModelUsage instead of requiring StatsCache.
+func AnalyzeModelsFromSessions(sessions []claude.SessionMeta) ModelAnalysis {
+	result := ModelAnalysis{
+		TierCosts:  make(map[ModelTier]float64),
+		TierTokens: make(map[ModelTier]int64),
+	}
+
+	// Aggregate model usage across all sessions.
+	modelStats := make(map[string]claude.ModelStats)
+	for _, sess := range sessions {
+		for modelName, stats := range sess.ModelUsage {
+			existing := modelStats[modelName]
+			existing.InputTokens += stats.InputTokens
+			existing.OutputTokens += stats.OutputTokens
+			modelStats[modelName] = existing
+		}
+	}
+
+	if len(modelStats) == 0 {
+		return result
+	}
+
+	// Build per-model breakdowns with cost calculations.
+	for name, stats := range modelStats {
+		tier := ClassifyModelTier(name)
+		pricing := getPricingForTier(tier)
+
+		inputCost := tokensToCost(int64(stats.InputTokens), pricing.InputPerMillion)
+		outputCost := tokensToCost(int64(stats.OutputTokens), pricing.OutputPerMillion)
+		totalCost := inputCost + outputCost
+		totalTokens := int64(stats.InputTokens + stats.OutputTokens)
+
+		mb := ModelBreakdown{
+			ModelName:    name,
+			Tier:         tier,
+			InputTokens:  int64(stats.InputTokens),
+			OutputTokens: int64(stats.OutputTokens),
+			TotalTokens:  totalTokens,
+			CostUSD:      totalCost,
+		}
+		result.Models = append(result.Models, mb)
+		result.TotalCost += totalCost
+		result.TotalTokens += totalTokens
+		result.TierCosts[tier] += totalCost
+		result.TierTokens[tier] += totalTokens
+	}
+
+	// Compute percentages.
+	for i := range result.Models {
+		if result.TotalCost > 0 {
+			result.Models[i].CostPercent = result.Models[i].CostUSD / result.TotalCost * 100
+		}
+		if result.TotalTokens > 0 {
+			result.Models[i].TokenPercent = float64(result.Models[i].TotalTokens) / float64(result.TotalTokens) * 100
+		}
+	}
+
+	// Sort by cost descending.
+	sort.Slice(result.Models, func(i, j int) bool {
+		return result.Models[i].CostUSD > result.Models[j].CostUSD
+	})
+
+	// Dominant tier by cost.
+	maxCost := 0.0
+	for tier, cost := range result.TierCosts {
+		if cost > maxCost {
+			maxCost = cost
+			result.DominantTier = tier
+		}
+	}
+
+	// Opus cost percentage.
+	if result.TotalCost > 0 {
+		result.OpusCostPercent = result.TierCosts[TierOpus] / result.TotalCost * 100
+	}
+
+	// Potential savings: what Opus usage would cost at Sonnet rates.
+	sonnetPricing := DefaultPricing["sonnet"]
+	for _, mb := range result.Models {
+		if mb.Tier == TierOpus {
+			sonnetEquiv := tokensToCost(mb.InputTokens, sonnetPricing.InputPerMillion) +
+				tokensToCost(mb.OutputTokens, sonnetPricing.OutputPerMillion)
+			result.PotentialSavings += mb.CostUSD - sonnetEquiv
+		}
+	}
+
+	return result
+}
+
+// getPricingForTier returns the ModelPricing for a given tier.
+func getPricingForTier(tier ModelTier) ModelPricing {
+	switch tier {
+	case TierOpus:
+		return DefaultPricing["opus"]
+	case TierSonnet:
+		return DefaultPricing["sonnet"]
+	case TierHaiku:
+		return DefaultPricing["haiku"]
+	default:
+		// Default to sonnet pricing for unknown models.
+		return DefaultPricing["sonnet"]
+	}
+}

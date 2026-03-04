@@ -6,8 +6,15 @@ All notable changes to claudewatch are documented here.
 
 ### Added
 
+- **Model usage tracking** — `claudewatch metrics` now shows per-model cost and token breakdown with potential savings analysis. Extracts model information from Claude Code transcripts, aggregates token usage per model (sonnet/opus/haiku), computes costs using tier-specific pricing, and displays a "Model Usage" section showing each model's spend percentage, token percentage, and potential savings if Opus usage moved to Sonnet. Data stored in SessionMeta.ModelUsage field and available via JSON output. Addresses the gap between documented example output and actual implementation.
 - **`claudewatch memory status`** — new command shows cross-project memory summary: total tasks and blockers across all projects, last extraction timestamp, most recent task with status, and per-project breakdown sorted by task count. Provides immediate feedback that the memory system is working and visibility into what Claude can query via `get_task_history` and `get_blockers`.
 - **Drift detection in PostToolUse hook** — hook now fires on read-heavy loops: when you've made at least one edit in the session but the last 15 tool calls are ≥60% reads with zero writes, the hook exits 2 with a specific alert suggesting `get_drift_signal` or `get_blockers()`. Catches stuck exploration patterns early (after 8-10 consecutive reads) instead of waiting for harder thresholds like consecutive errors.
+- **Enhanced behavioral cues in `claudewatch install`** — added 4 new observable triggers to the global CLAUDE.md template:
+  - **Drift detection**: When stuck reading files repeatedly without progress, call `get_drift_signal` to detect avoidance patterns
+  - **Historical search**: When user asks "how did we solve X?", call `search_transcripts` before `get_task_history` to find full conversation context
+  - **Commit quality gate**: After many edits, check `get_session_dashboard` for commit-to-attempt ratio before committing (high ratio = steady progress, low ratio = investigate)
+  - **Meta-memory reminder**: Every 30-45 minutes in long sessions, ask "Have I learned something worth preserving?" and extract if yes to prevent context loss from compaction
+  - Tool list updated to include `search_transcripts` and `get_drift_signal` with usage notes
 
 ## [0.9.0] - 2026-03-04
 

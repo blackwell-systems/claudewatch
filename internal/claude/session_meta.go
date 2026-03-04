@@ -99,6 +99,7 @@ func parseJSONLToSessionMeta(jsonlPath string) (*SessionMeta, error) {
 		meta := &SessionMeta{
 			ToolCounts:          make(map[string]int),
 			ToolErrorCategories: make(map[string]int),
+			ModelUsage:          make(map[string]ModelStats),
 		}
 		meta.SessionID = strings.TrimSuffix(filepath.Base(jsonlPath), ".jsonl")
 		meta.ProjectPath = filepath.Base(filepath.Dir(jsonlPath))
@@ -108,6 +109,7 @@ func parseJSONLToSessionMeta(jsonlPath string) (*SessionMeta, error) {
 	var meta SessionMeta
 	meta.ToolCounts = make(map[string]int)
 	meta.ToolErrorCategories = make(map[string]int)
+	meta.ModelUsage = make(map[string]ModelStats)
 
 	var startTimeSet bool
 	var firstEntryTime, lastEntryTime time.Time
@@ -163,6 +165,15 @@ func parseJSONLToSessionMeta(jsonlPath string) (*SessionMeta, error) {
 				if err := json.Unmarshal(entry.Message, &msg); err == nil {
 					meta.InputTokens += msg.Usage.InputTokens
 					meta.OutputTokens += msg.Usage.OutputTokens
+
+					// Track per-model token usage.
+					if msg.Model != "" {
+						stats := meta.ModelUsage[msg.Model]
+						stats.InputTokens += msg.Usage.InputTokens
+						stats.OutputTokens += msg.Usage.OutputTokens
+						meta.ModelUsage[msg.Model] = stats
+					}
+
 					for _, block := range msg.Content {
 						if block.Type != "tool_use" {
 							continue
@@ -245,6 +256,7 @@ func parseJSONLToSessionMeta(jsonlPath string) (*SessionMeta, error) {
 // assistantMsgWithContent is an internal type that extends assistantMsgUsage
 // with the content blocks needed to extract tool-use information.
 type assistantMsgWithContent struct {
+	Model   string         `json:"model"`
 	Content []ContentBlock `json:"content"`
 	Usage   struct {
 		InputTokens  int `json:"input_tokens"`
