@@ -181,9 +181,9 @@ func TestWorkingMemoryStore_AddOrUpdateTask_Merge(t *testing.T) {
 		TaskIdentifier: "merge-task",
 		Sessions:       []string{"session1", "session2"}, // session1 overlaps
 		Status:         "completed",
-		BlockersHit:    []string{"blocker2"},             // new blocker
+		BlockersHit:    []string{"blocker2"}, // new blocker
 		Solution:       "fixed",
-		Commits:        []string{"commit1", "commit2"},   // commit1 overlaps
+		Commits:        []string{"commit1", "commit2"}, // commit1 overlaps
 	}
 	if err := store.AddOrUpdateTask(task2); err != nil {
 		t.Fatalf("AddOrUpdateTask failed: %v", err)

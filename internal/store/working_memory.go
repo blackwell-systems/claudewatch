@@ -12,29 +12,29 @@ import (
 // TaskMemory represents a single task's history across sessions.
 type TaskMemory struct {
 	TaskIdentifier string    `json:"task_identifier"`
-	Sessions       []string  `json:"sessions"`        // session IDs that worked on this task
-	Status         string    `json:"status"`          // "completed", "abandoned", "in_progress"
-	BlockersHit    []string  `json:"blockers_hit"`    // descriptions of blockers encountered
-	Solution       string    `json:"solution"`        // how it was resolved (empty if abandoned)
-	Commits        []string  `json:"commits"`         // commit SHAs produced
+	Sessions       []string  `json:"sessions"`     // session IDs that worked on this task
+	Status         string    `json:"status"`       // "completed", "abandoned", "in_progress"
+	BlockersHit    []string  `json:"blockers_hit"` // descriptions of blockers encountered
+	Solution       string    `json:"solution"`     // how it was resolved (empty if abandoned)
+	Commits        []string  `json:"commits"`      // commit SHAs produced
 	LastUpdated    time.Time `json:"last_updated"`
 }
 
 // BlockerMemory represents a known blocker for this project.
 type BlockerMemory struct {
-	File        string    `json:"file"`         // file path (if file-specific)
-	Issue       string    `json:"issue"`        // description of the problem
-	Solution    string    `json:"solution"`     // how to resolve (if known)
-	Encountered []string  `json:"encountered"`  // dates encountered (YYYY-MM-DD format)
+	File        string    `json:"file"`        // file path (if file-specific)
+	Issue       string    `json:"issue"`       // description of the problem
+	Solution    string    `json:"solution"`    // how to resolve (if known)
+	Encountered []string  `json:"encountered"` // dates encountered (YYYY-MM-DD format)
 	LastSeen    time.Time `json:"last_seen"`
 }
 
 // WorkingMemory is the root structure stored in working-memory.json.
 type WorkingMemory struct {
-	Tasks        map[string]*TaskMemory `json:"tasks"`          // keyed by task_identifier
+	Tasks        map[string]*TaskMemory `json:"tasks"` // keyed by task_identifier
 	Blockers     []*BlockerMemory       `json:"blockers"`
-	ContextHints []string               `json:"context_hints"`  // frequently needed files
-	LastScanned  time.Time              `json:"last_scanned"`   // last time memory was updated
+	ContextHints []string               `json:"context_hints"` // frequently needed files
+	LastScanned  time.Time              `json:"last_scanned"`  // last time memory was updated
 }
 
 // WorkingMemoryStore reads and writes working memory data.
