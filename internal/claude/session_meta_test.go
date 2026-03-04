@@ -264,14 +264,14 @@ func TestParseAllSessionMeta_StaleCache(t *testing.T) {
 	}
 }
 
-// ---------- parseJSONLToSessionMeta tests ----------
+// ---------- ParseJSONLToSessionMeta tests ----------
 
 func TestParseJSONLToSessionMeta_Basic(t *testing.T) {
 	dir := t.TempDir()
 	jsonlPath := createTestJSONL(t, dir, "hash1", "sess-abc",
 		minimalJSONL("sess-abc", "/home/user/myproject"))
 
-	meta, err := parseJSONLToSessionMeta(jsonlPath)
+	meta, err := ParseJSONLToSessionMeta(jsonlPath)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -315,7 +315,7 @@ func TestParseJSONLToSessionMeta_ToolCounts(t *testing.T) {
 	}
 	jsonlPath := createTestJSONL(t, dir, "hash1", "s1", lines)
 
-	meta, err := parseJSONLToSessionMeta(jsonlPath)
+	meta, err := ParseJSONLToSessionMeta(jsonlPath)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -347,7 +347,7 @@ func TestParseJSONLToSessionMeta_ToolErrors(t *testing.T) {
 	}
 	jsonlPath := createTestJSONL(t, dir, "hash1", "s1", lines)
 
-	meta, err := parseJSONLToSessionMeta(jsonlPath)
+	meta, err := ParseJSONLToSessionMeta(jsonlPath)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -364,7 +364,7 @@ func TestParseJSONLToSessionMeta_WebFlags(t *testing.T) {
 	}
 	jsonlPath := createTestJSONL(t, dir, "hash1", "s1", lines)
 
-	meta, err := parseJSONLToSessionMeta(jsonlPath)
+	meta, err := ParseJSONLToSessionMeta(jsonlPath)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -386,7 +386,7 @@ func TestParseJSONLToSessionMeta_DurationMinutes(t *testing.T) {
 	}
 	jsonlPath := createTestJSONL(t, dir, "hash1", "s1", lines)
 
-	meta, err := parseJSONLToSessionMeta(jsonlPath)
+	meta, err := ParseJSONLToSessionMeta(jsonlPath)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -405,7 +405,7 @@ func TestParseJSONLToSessionMeta_FallbackIDs(t *testing.T) {
 	}
 	jsonlPath := createTestJSONL(t, dir, "myhash", "mysession", lines)
 
-	meta, err := parseJSONLToSessionMeta(jsonlPath)
+	meta, err := ParseJSONLToSessionMeta(jsonlPath)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
