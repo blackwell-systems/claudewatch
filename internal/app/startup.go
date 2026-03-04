@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/blackwell-systems/claudewatch/internal/analyzer"
 	"github.com/blackwell-systems/claudewatch/internal/claude"
@@ -93,6 +94,14 @@ func runStartup(cmd *cobra.Command, args []string) {
 	agentTasks, _ := claude.ParseAgentTasks(cfg.ClaudeHome)
 	agentSuccessStr := "n/a"
 	var projectTaskCount, projectTaskCompleted int
+
+	// Track agent performance by type
+	type agentTypeSummary struct {
+		count     int
+		completed int
+	}
+	agentByType := make(map[string]*agentTypeSummary)
+
 	for _, task := range agentTasks {
 		if _, ok := sessionIDs[task.SessionID]; !ok {
 			continue
@@ -101,11 +110,29 @@ func runStartup(cmd *cobra.Command, args []string) {
 		if task.Status == "completed" {
 			projectTaskCompleted++
 		}
+
+		// Track by agent type
+		if agentByType[task.AgentType] == nil {
+			agentByType[task.AgentType] = &agentTypeSummary{}
+		}
+		agentByType[task.AgentType].count++
+		if task.Status == "completed" {
+			agentByType[task.AgentType].completed++
+		}
 	}
 	if projectTaskCount > 0 {
 		pct := int(float64(projectTaskCompleted) / float64(projectTaskCount) * 100)
 		agentSuccessStr = fmt.Sprintf("%d%%", pct)
 	}
+
+	// Identify failing agents (0% success rate)
+	var failingAgents []string
+	for agentType, summary := range agentByType {
+		if summary.completed == 0 && summary.count > 0 {
+			failingAgents = append(failingAgents, agentType)
+		}
+	}
+	sort.Strings(failingAgents)
 
 	// Regression check: warn if the project's friction or cost has regressed vs baseline.
 	var regressionWarning string
@@ -123,6 +150,40 @@ func runStartup(cmd *cobra.Command, args []string) {
 		})
 		if regStatus.Regressed {
 			regressionWarning = fmt.Sprintf("║ ⚠ regression: %s\n", regStatus.Message)
+		}
+	}
+
+	// Average tool errors per session
+	var totalToolErrors int
+	for _, sess := range projectSessions {
+		totalToolErrors += sess.ToolErrors
+	}
+	avgToolErrors := 0.0
+	if sessionCount > 0 {
+		avgToolErrors = float64(totalToolErrors) / float64(sessionCount)
+	}
+
+	// Count new blockers since last session
+	newBlockerCount := 0
+	memoryPath := filepath.Join(config.ConfigDir(), "working-memory.json")
+	if memStore := store.NewWorkingMemoryStore(memoryPath); memStore != nil {
+		if wm, wmErr := memStore.Load(); wmErr == nil {
+			// Find second-most-recent session end time (if exists)
+			if len(projectSessions) > 1 {
+				// Sessions are sorted newest-first in ParseAllSessionMeta
+				sort.Slice(projectSessions, func(i, j int) bool {
+					return projectSessions[i].StartTime > projectSessions[j].StartTime
+				})
+				secondMostRecent := projectSessions[1]
+				lastSessionEnd := claude.ParseTimestamp(secondMostRecent.StartTime).Add(
+					time.Duration(secondMostRecent.DurationMinutes) * time.Minute,
+				)
+				for _, blocker := range wm.Blockers {
+					if blocker.LastSeen.After(lastSessionEnd) {
+						newBlockerCount++
+					}
+				}
+			}
 		}
 	}
 
@@ -172,10 +233,47 @@ func runStartup(cmd *cobra.Command, args []string) {
 	// Print to stdout so Claude Code injects this into Claude's context at session start.
 	// SessionStart hooks: stdout → Claude's context. stderr + exit 2 → user terminal only.
 	fmt.Printf("╔ claudewatch | %s | %s | friction: %s\n", projectName, sessionStr, frictionStr)
-	fmt.Printf("║ CLAUDE.md: %s | agent success: %s | %s\n", claudeMD, agentSuccessStr, tip)
+
+	// High friction warning
+	if frictionRate >= 0.6 {
+		fmt.Printf("║ ⚠ HIGH FRICTION ENVIRONMENT - verify commands before execution\n")
+	} else if frictionRate >= 0.3 {
+		fmt.Printf("║ ⚠ Moderate friction detected - watch for error patterns\n")
+	}
+
+	// Line 2: CLAUDE.md status, agent success, avg tool errors
+	avgToolErrorsStr := fmt.Sprintf("%.1f", avgToolErrors)
+	fmt.Printf("║ CLAUDE.md: %s | agent success: %s | avg %s tool errors/session (project baseline)\n",
+		claudeMD, agentSuccessStr, avgToolErrorsStr)
+
+	// Agent failures by type
+	if len(failingAgents) > 0 {
+		fmt.Printf("║\n")
+		fmt.Printf("║ Agent failures by type:\n")
+		for _, agentType := range failingAgents {
+			summary := agentByType[agentType]
+			fmt.Printf("║   • %s: 0%% success (0/%d completed) - DO NOT SPAWN\n", agentType, summary.count)
+		}
+	}
+
+	// New blockers count
+	if newBlockerCount > 0 {
+		fmt.Printf("║\n")
+		fmt.Printf("║ %d new blocker(s) since last session → call get_blockers() for details\n", newBlockerCount)
+	}
+
+	// Regression warning
 	if regressionWarning != "" {
+		fmt.Printf("║\n")
 		fmt.Print(regressionWarning)
 	}
+
+	// Tip line
+	fmt.Printf("║\n")
+	fmt.Printf("║ %s\n", tip)
+
+	// Tools listing and hook status
+	fmt.Printf("║\n")
 	fmt.Printf("║ tools: get_session_dashboard · get_project_health · get_task_history · get_blockers · extract_current_session_memory · get_live_friction · get_context_pressure · get_cost_velocity · get_suggestions\n")
 	fmt.Printf("╚ PostToolUse hook active → fires on errors/context/cost → call get_session_dashboard\n")
 }
