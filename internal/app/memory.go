@@ -7,14 +7,17 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/blackwell-systems/claudewatch/internal/claude"
 	"github.com/blackwell-systems/claudewatch/internal/config"
+	"github.com/blackwell-systems/claudewatch/internal/memory"
 	"github.com/blackwell-systems/claudewatch/internal/output"
 	"github.com/blackwell-systems/claudewatch/internal/store"
 	"github.com/spf13/cobra"
 )
 
 var (
-	memoryFlagProject string
+	memoryFlagProject   string
+	memoryFlagSessionID string
 )
 
 var memoryCmd = &cobra.Command{
@@ -42,11 +45,24 @@ If --project is not specified, derives project name from current directory.`,
 	RunE: runMemoryClear,
 }
 
+var memoryExtractCmd = &cobra.Command{
+	Use:   "extract",
+	Short: "Extract memory from current or specified session",
+	Long: `Extract task and blocker memory from a session and store it immediately.
+Useful for checkpointing long sessions or manually extracting from a specific session.
+If --session-id is not specified, extracts from the currently active session.
+If --project is not specified, derives project name from current directory.`,
+	RunE: runMemoryExtract,
+}
+
 func init() {
 	memoryCmd.PersistentFlags().StringVar(&memoryFlagProject, "project", "", "Project name (defaults to basename of current directory)")
 
+	memoryExtractCmd.Flags().StringVar(&memoryFlagSessionID, "session-id", "", "Session ID to extract from (defaults to current active session)")
+
 	memoryCmd.AddCommand(memoryShowCmd)
 	memoryCmd.AddCommand(memoryClearCmd)
+	memoryCmd.AddCommand(memoryExtractCmd)
 
 	rootCmd.AddCommand(memoryCmd)
 }
@@ -219,5 +235,140 @@ func runMemoryClear(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("Working memory cleared for %s.\n", projectName)
+	return nil
+}
+
+func runMemoryExtract(cmd *cobra.Command, args []string) error {
+	cfg, err := config.Load(flagConfig)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	projectName, err := getProjectName()
+	if err != nil {
+		return err
+	}
+
+	// Determine target session ID
+	var targetSessionID string
+	if memoryFlagSessionID != "" {
+		targetSessionID = memoryFlagSessionID
+	} else {
+		// Find active session
+		activePath, err := claude.FindActiveSessionPath(cfg.ClaudeHome)
+		if err != nil {
+			return fmt.Errorf("finding active session: %w", err)
+		}
+		if activePath == "" {
+			return fmt.Errorf("no active session found")
+		}
+		// Extract session ID from path: ~/.claude/projects/<hash>/<sessionID>.jsonl
+		targetSessionID = strings.TrimSuffix(filepath.Base(activePath), ".jsonl")
+	}
+
+	// Load all sessions for this project
+	sessions, err := claude.ParseAllSessionMeta(cfg.ClaudeHome)
+	if err != nil {
+		return fmt.Errorf("reading sessions: %w", err)
+	}
+
+	// Filter to project sessions
+	var projectSessions []claude.SessionMeta
+	for _, s := range sessions {
+		if filepath.Base(s.ProjectPath) == projectName {
+			projectSessions = append(projectSessions, s)
+		}
+	}
+
+	if len(projectSessions) == 0 {
+		return fmt.Errorf("no sessions found for project %s", projectName)
+	}
+
+	// Find the target session
+	var targetSession *claude.SessionMeta
+	for i := range projectSessions {
+		if projectSessions[i].SessionID == targetSessionID {
+			targetSession = &projectSessions[i]
+			break
+		}
+	}
+
+	if targetSession == nil {
+		return fmt.Errorf("session %s not found", targetSessionID)
+	}
+
+	// Load all facets and find the one for this session
+	allFacetsForProject, err := claude.ParseAllFacets(cfg.ClaudeHome)
+	if err != nil {
+		return fmt.Errorf("reading facets: %w", err)
+	}
+
+	var sessionFacet *claude.SessionFacet
+	for i := range allFacetsForProject {
+		if allFacetsForProject[i].SessionID == targetSessionID {
+			sessionFacet = &allFacetsForProject[i]
+			break
+		}
+	}
+
+	if sessionFacet == nil {
+		return fmt.Errorf("no AI analysis (facet) found for session %s", targetSessionID)
+	}
+
+	// Extract commits
+	commits := memory.GetCommitSHAsSince(targetSession.ProjectPath, targetSession.StartTime)
+
+	// Open working memory store
+	storePath := getMemoryStorePath(projectName)
+	memStore := store.NewWorkingMemoryStore(storePath)
+
+	// Extract task memory
+	task, err := memory.ExtractTaskMemory(*targetSession, sessionFacet, commits)
+	if err != nil {
+		return fmt.Errorf("extracting task memory: %w", err)
+	}
+
+	if task != nil {
+		if err := memStore.AddOrUpdateTask(task); err != nil {
+			return fmt.Errorf("storing task memory: %w", err)
+		}
+		fmt.Printf("✓ Extracted task: %s\n", task.TaskIdentifier)
+		fmt.Printf("  Status: %s\n", task.Status)
+		if len(task.Commits) > 0 {
+			fmt.Printf("  Commits: %d\n", len(task.Commits))
+		}
+	} else {
+		fmt.Println("✓ No task data extracted (session may lack clear goal)")
+	}
+
+	// Extract blockers (take last 10 sessions for chronic pattern detection)
+	recentSessions := projectSessions
+	if len(recentSessions) > 10 {
+		recentSessions = recentSessions[:10]
+	}
+
+	// Load all facets for blocker context
+	allFacets, err := claude.ParseAllFacets(cfg.ClaudeHome)
+	if err != nil {
+		return fmt.Errorf("reading facets for blocker context: %w", err)
+	}
+
+	blockers, err := memory.ExtractBlockers(*targetSession, sessionFacet, projectName, recentSessions, allFacets)
+	if err != nil {
+		return fmt.Errorf("extracting blockers: %w", err)
+	}
+
+	if len(blockers) > 0 {
+		for _, blocker := range blockers {
+			if err := memStore.AddBlocker(blocker); err != nil {
+				return fmt.Errorf("storing blocker: %w", err)
+			}
+		}
+		fmt.Printf("✓ Extracted %d blocker(s)\n", len(blockers))
+	} else {
+		fmt.Println("✓ No blockers extracted")
+	}
+
+	fmt.Printf("\nMemory extracted from session %s\n", targetSessionID[:7])
 	return nil
 }

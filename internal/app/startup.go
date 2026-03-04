@@ -10,6 +10,7 @@ import (
 	"github.com/blackwell-systems/claudewatch/internal/analyzer"
 	"github.com/blackwell-systems/claudewatch/internal/claude"
 	"github.com/blackwell-systems/claudewatch/internal/config"
+	"github.com/blackwell-systems/claudewatch/internal/memory"
 	"github.com/blackwell-systems/claudewatch/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -287,10 +288,10 @@ func updateWorkingMemoryIfNeeded(cfg *config.Config, projectName string, session
 	}
 
 	// Extract commits.
-	commits := getCommitSHAsSince(mostRecent.ProjectPath, mostRecent.StartTime)
+	commits := memory.GetCommitSHAsSince(mostRecent.ProjectPath, mostRecent.StartTime)
 
 	// Extract task memory.
-	task, err := ExtractTaskMemory(*mostRecent, sessionFacet, commits)
+	task, err := memory.ExtractTaskMemory(*mostRecent, sessionFacet, commits)
 	if err != nil {
 		return fmt.Errorf("extract task memory: %w", err)
 	}
@@ -305,7 +306,7 @@ func updateWorkingMemoryIfNeeded(cfg *config.Config, projectName string, session
 	if len(recentSessions) > 10 {
 		recentSessions = recentSessions[:10]
 	}
-	blockers, err := ExtractBlockers(*mostRecent, sessionFacet, projectName, recentSessions, facets)
+	blockers, err := memory.ExtractBlockers(*mostRecent, sessionFacet, projectName, recentSessions, facets)
 	if err != nil {
 		return fmt.Errorf("extract blockers: %w", err)
 	}

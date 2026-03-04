@@ -15,7 +15,7 @@ var mcpCmd = &cobra.Command{
 	Use:   "mcp",
 	Short: "Run an MCP stdio server for use with Claude Code",
 	Long: `Start a Model Context Protocol stdio server that Claude Code can
-query during a session. The server exposes 28 MCP tools across 7 categories:
+query during a session. The server exposes 29 MCP tools across 7 categories:
 
   • Session & cost tracking (get_session_stats, get_cost_budget, get_cost_summary, etc.)
   • Live self-reflection (get_session_dashboard, get_drift_signal, get_token_velocity, etc.)

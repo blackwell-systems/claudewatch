@@ -1,4 +1,4 @@
-package app
+package memory
 
 import (
 	"crypto/sha256"
@@ -183,9 +183,9 @@ func suggestSolutionForFriction(frictionType string) string {
 	}
 }
 
-// getCommitSHAsSince returns commit SHAs made after startTime in the given repo.
+// GetCommitSHAsSince returns commit SHAs made after startTime in the given repo.
 // Returns empty slice on error or if no commits found.
-func getCommitSHAsSince(repoPath, startTime string) []string {
+func GetCommitSHAsSince(repoPath, startTime string) []string {
 	if repoPath == "" || startTime == "" {
 		return nil
 	}
