@@ -4,6 +4,8 @@ All notable changes to claudewatch are documented here.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-03-04
+
 ### Added
 
 - **Automated MCP server setup** — `claudewatch install` now configures both CLAUDE.md behavioral protocols AND MCP server in ~/.claude.json. No more manual JSON editing. Flags: `--skip-mcp` (CLAUDE.md only), `--mcp-only` (MCP only). Both operations are idempotent and preserve existing config.
