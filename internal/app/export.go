@@ -10,15 +10,15 @@ import (
 )
 
 var (
-	exportFormat       string
-	exportProject      string
-	exportDays         int
-	exportOutput       string
-	exportPerProject   bool
-	exportPerDay       bool
-	exportPerModel     bool
+	exportFormat        string
+	exportProject       string
+	exportDays          int
+	exportOutput        string
+	exportPerProject    bool
+	exportPerDay        bool
+	exportPerModel      bool
 	exportSAWComparison bool
-	exportDetailed     bool
+	exportDetailed      bool
 )
 
 var exportCmd = &cobra.Command{

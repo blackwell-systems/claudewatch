@@ -764,18 +764,18 @@ func filterFacetsBySessionIDs(facets []claude.SessionFacet, sessions []claude.Se
 
 // SessionDetail represents per-session data for detailed export.
 type SessionDetail struct {
-	SessionID       string    `json:"session_id"`
-	ProjectName     string    `json:"project_name"`
-	Timestamp       time.Time `json:"timestamp"`
-	DurationMin     float64   `json:"duration_min"`
-	Commits         int       `json:"commits"`
-	ToolErrors      int       `json:"tool_errors"`
-	CostUSD         float64   `json:"cost_usd"`
-	Model           string    `json:"model"`
-	IsSAW           bool      `json:"is_saw"`
-	FrictionEvents  int       `json:"friction_events"`
-	InputTokens     int       `json:"input_tokens"`
-	OutputTokens    int       `json:"output_tokens"`
+	SessionID      string    `json:"session_id"`
+	ProjectName    string    `json:"project_name"`
+	Timestamp      time.Time `json:"timestamp"`
+	DurationMin    float64   `json:"duration_min"`
+	Commits        int       `json:"commits"`
+	ToolErrors     int       `json:"tool_errors"`
+	CostUSD        float64   `json:"cost_usd"`
+	Model          string    `json:"model"`
+	IsSAW          bool      `json:"is_saw"`
+	FrictionEvents int       `json:"friction_events"`
+	InputTokens    int       `json:"input_tokens"`
+	OutputTokens   int       `json:"output_tokens"`
 }
 
 // CollectDetailedMetrics returns per-session details.
