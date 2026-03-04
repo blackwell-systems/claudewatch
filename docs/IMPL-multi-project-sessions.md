@@ -241,8 +241,8 @@ func resolveProjectWeights(sessionID, projectPath string, tags map[string]string
 
 | File | Contents | Import path | Status |
 |------|----------|-------------|--------|
-| `internal/claude/repo_extract.go` | `ProjectWeight` struct (stub only) | `github.com/blackwell-systems/claudewatch/internal/claude` | pending |
-| `internal/mcp/project_filter.go` | `sessionMatchesProject` + `sessionPrimaryProject` (stub only) | `github.com/blackwell-systems/claudewatch/internal/mcp` | pending |
+| `internal/claude/repo_extract.go` | `ProjectWeight` struct (stub only) | `github.com/blackwell-systems/claudewatch/internal/claude` | committed (ad7457b) |
+| `internal/mcp/project_filter.go` | `sessionMatchesProject` + `sessionPrimaryProject` (stub only) | `github.com/blackwell-systems/claudewatch/internal/mcp` | committed (ad7457b — partial: uses local projectWeightRef, store.ProjectWeight pending Wave 1B) |
 
 **Scaffold 1 (`claude/repo_extract.go`):** Installed before Wave 1. Wave 1 Agent A replaces it with the full implementation. Required so all agents can import `claude.ProjectWeight`.
 
