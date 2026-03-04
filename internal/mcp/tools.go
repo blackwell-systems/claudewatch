@@ -184,6 +184,17 @@ func (s *Server) loadTags() map[string]string {
 	return tags
 }
 
+// loadAllWeightsTools loads the full session-project-weights map from disk.
+// Returns an empty map on any error (non-fatal: missing file is normal).
+func (s *Server) loadAllWeightsTools() map[string][]store.ProjectWeight {
+	ws := store.NewSessionProjectWeightsStore(s.weightsStorePath)
+	m, err := ws.Load()
+	if err != nil || m == nil {
+		return map[string][]store.ProjectWeight{}
+	}
+	return m
+}
+
 // resolveProjectName returns tags[sessionID] if an override exists,
 // falling back to filepath.Base(projectPath).
 func resolveProjectName(sessionID, projectPath string, tags map[string]string) string {
@@ -219,9 +230,10 @@ func (s *Server) handleGetSessionStats(args json.RawMessage) (any, error) {
 			// Step 3: build and return the live result. Do NOT write to the DB.
 			cost := analyzer.EstimateSessionCost(*meta, pricing, ratio)
 			tags := s.loadTags()
+			allWeights := s.loadAllWeightsTools()
 			return SessionStatsResult{
 				SessionID:     meta.SessionID,
-				ProjectName:   resolveProjectName(meta.SessionID, meta.ProjectPath, tags),
+				ProjectName:   sessionPrimaryProject(meta.SessionID, meta.ProjectPath, tags, allWeights[meta.SessionID]),
 				StartTime:     meta.StartTime,
 				DurationMin:   meta.DurationMinutes, // 0 for live sessions — expected
 				InputTokens:   meta.InputTokens,
@@ -249,12 +261,13 @@ func (s *Server) handleGetSessionStats(args json.RawMessage) (any, error) {
 	})
 
 	tags := s.loadTags()
+	allWeights := s.loadAllWeightsTools()
 	session := sessions[0]
 	cost := analyzer.EstimateSessionCost(session, pricing, ratio)
 
 	return SessionStatsResult{
 		SessionID:     session.SessionID,
-		ProjectName:   resolveProjectName(session.SessionID, session.ProjectPath, tags),
+		ProjectName:   sessionPrimaryProject(session.SessionID, session.ProjectPath, tags, allWeights[session.SessionID]),
 		StartTime:     session.StartTime,
 		DurationMin:   session.DurationMinutes,
 		InputTokens:   session.InputTokens,
@@ -343,6 +356,7 @@ func (s *Server) handleGetRecentSessions(args json.RawMessage) (any, error) {
 	}
 
 	tags := s.loadTags()
+	allWeights := s.loadAllWeightsTools()
 	ratio := s.loadCacheRatio()
 	pricing := analyzer.DefaultPricing["sonnet"]
 
@@ -359,7 +373,7 @@ func (s *Server) handleGetRecentSessions(args json.RawMessage) (any, error) {
 
 		result = append(result, RecentSession{
 			SessionID:     session.SessionID,
-			ProjectName:   resolveProjectName(session.SessionID, session.ProjectPath, tags),
+			ProjectName:   sessionPrimaryProject(session.SessionID, session.ProjectPath, tags, allWeights[session.SessionID]),
 			StartTime:     session.StartTime,
 			DurationMin:   session.DurationMinutes,
 			EstimatedCost: cost,
@@ -402,9 +416,10 @@ func (s *Server) handleGetSAWSessions(args json.RawMessage) (any, error) {
 		return nil, err
 	}
 	tags := s.loadTags()
+	allWeights := s.loadAllWeightsTools()
 	metaMap := make(map[string]string, len(metas))
 	for _, meta := range metas {
-		metaMap[meta.SessionID] = resolveProjectName(meta.SessionID, meta.ProjectPath, tags)
+		metaMap[meta.SessionID] = sessionPrimaryProject(meta.SessionID, meta.ProjectPath, tags, allWeights[meta.SessionID])
 	}
 
 	result := make([]SAWSessionSummary, 0, len(sawSessions))
