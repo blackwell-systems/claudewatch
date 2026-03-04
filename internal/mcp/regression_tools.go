@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"sort"
 
 	"github.com/blackwell-systems/claudewatch/internal/analyzer"
@@ -46,6 +47,8 @@ func (s *Server) handleGetRegressionStatus(args json.RawMessage) (any, error) {
 	}
 
 	tags := s.loadTags()
+	weightsPath := filepath.Join(filepath.Dir(s.tagStorePath), "session-project-weights.json")
+	allWeights := loadAllWeights(weightsPath)
 
 	// Determine the target project name (same pattern as handleGetProjectAnomalies).
 	project := ""
@@ -57,7 +60,7 @@ func (s *Server) handleGetRegressionStatus(args json.RawMessage) (any, error) {
 		if activeErr == nil && activePath != "" {
 			meta, parseErr := claude.ParseActiveSession(activePath)
 			if parseErr == nil && meta != nil && meta.ProjectPath != "" {
-				project = resolveProjectName(meta.SessionID, meta.ProjectPath, tags)
+				project = sessionPrimaryProject(meta.SessionID, meta.ProjectPath, tags, allWeights[meta.SessionID])
 			}
 		}
 
@@ -74,14 +77,14 @@ func (s *Server) handleGetRegressionStatus(args json.RawMessage) (any, error) {
 			sort.Slice(sorted, func(i, j int) bool {
 				return sorted[i].StartTime > sorted[j].StartTime
 			})
-			project = resolveProjectName(sorted[0].SessionID, sorted[0].ProjectPath, tags)
+			project = sessionPrimaryProject(sorted[0].SessionID, sorted[0].ProjectPath, tags, allWeights[sorted[0].SessionID])
 		}
 	}
 
 	// Filter sessions for the target project.
 	var projectSessions []claude.SessionMeta
 	for _, sess := range sessions {
-		if resolveProjectName(sess.SessionID, sess.ProjectPath, tags) == project {
+		if sessionMatchesProject(sess.SessionID, sess.ProjectPath, tags, allWeights[sess.SessionID], project) {
 			projectSessions = append(projectSessions, sess)
 		}
 	}
