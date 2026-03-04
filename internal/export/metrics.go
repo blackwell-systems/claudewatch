@@ -161,7 +161,7 @@ func CollectMetrics(cfg *config.Config, projectFilter string, days int) (MetricS
 	snapshot.ModelUsagePct = computeModelUsagePercent(sessions)
 
 	// Compute agent metrics
-	if agentTasks != nil && len(agentTasks) > 0 {
+	if len(agentTasks) > 0 {
 		agentPerf := analyzer.AnalyzeAgents(agentTasks)
 		snapshot.AgentSuccessRate = agentPerf.SuccessRate
 		// Compute agent usage rate: sessions with agents / total sessions
