@@ -25,6 +25,8 @@ Claude Code already records rich session data locally -- tool usage, friction ev
 
 **Give Claude a mirror.** `claudewatch install` writes a behavioral contract into `~/.claude/CLAUDE.md`. Two shell hooks — `claudewatch startup` (SessionStart) and `claudewatch hook` (PostToolUse) — orient Claude at session start and alert it mid-session when thresholds are crossed. The MCP server gives Claude queryable access to its own project health, agent history, and live session metrics. Together these form a self-monitoring layer that runs inside every Claude Code session: Claude knows what project it's on, what friction it generated last time, and when to stop and reassess — without requiring you to prompt it explicitly.
 
+For multi-repo workflows, weighted attribution automatically routes sessions to their dominant project based on which files were actually touched, not just launch directory. Drift detection identifies when a session shifts from writing to reading-only (a signal you're stuck exploring). Factor analysis correlates session attributes against outcomes to answer "what predicts success on this project?" — all queryable by Claude mid-session.
+
 **Measure where you are.** `scan` scores every project's AI readiness. `metrics` shows session trends over time -- friction rate, correction rate, cost per outcome, model usage, cache efficiency, agent success rates. Cost-per-outcome connects your token spend to what you actually shipped: cost per commit, cost per file modified, and whether successful sessions cost more or less than failed ones. Model usage analysis shows which models are consuming your budget and flags overspend. Project confidence scoring tells you where Claude knows enough to act vs where it's stuck reading -- a proxy for whether your CLAUDE.md gives the AI enough context to be productive.
 
 ```
@@ -325,7 +327,7 @@ claudewatch mcp --budget 20        # enable daily budget tracking ($20 limit)
 }
 ```
 
-**Tools exposed (22 tools across 5 categories):**
+**Tools exposed (26 tools across 6 categories):**
 
 *Session & cost:*
 
@@ -347,6 +349,7 @@ claudewatch mcp --budget 20        # enable daily budget tracking ($20 limit)
 | `get_live_friction` | Friction events detected so far — retries, error bursts, tool failures |
 | `get_context_pressure` | Context window utilization — comfortable, filling, pressure, or critical |
 | `get_cost_velocity` | Cost burn rate over the last 10 minutes — efficient, normal, or burning |
+| `get_drift_signal` | Drift detection — classifies last 20 tool calls as exploring, implementing, or drifting (stuck reading without writing) |
 
 *Project & pattern analysis:*
 
@@ -356,6 +359,8 @@ claudewatch mcp --budget 20        # enable daily budget tracking ($20 limit)
 | `get_project_comparison` | All projects ranked side by side — health, friction, CLAUDE.md status |
 | `get_suggestions` | Ranked improvement suggestions by impact score |
 | `get_stale_patterns` | Chronic friction that recurs across sessions with no CLAUDE.md fix |
+| `get_project_anomalies` | Detect sessions with abnormal cost or friction using z-score analysis — auto-refreshing baselines adapt to workflow changes |
+| `get_regression_status` | Check if project friction rate or cost has regressed beyond baseline threshold |
 
 *Agent & workflow analytics:*
 
@@ -366,6 +371,19 @@ claudewatch mcp --budget 20        # enable daily budget tracking ($20 limit)
 | `get_session_friction` | Friction events for a specific session |
 | `get_saw_sessions` | SAW parallel agent sessions with wave and agent counts |
 | `get_saw_wave_breakdown` | Per-wave timing and agent status for a SAW session |
+| `get_cost_attribution` | Break down token cost by tool type for a session — which tools consumed your budget |
+
+*Multi-project analysis:*
+
+| Tool | Description |
+|------|-------------|
+| `get_session_projects` | Weighted per-repo breakdown for sessions touching multiple repos — shows cost and activity distribution across projects |
+
+*Factor analysis:*
+
+| Tool | Description |
+|------|-------------|
+| `get_causal_insights` | Correlate session attributes (has_claude_md, is_saw, tool_call_count) against outcomes (friction, commits, cost) to find what predicts success |
 
 *Session management:*
 
