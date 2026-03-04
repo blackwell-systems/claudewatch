@@ -603,3 +603,48 @@ After each wave completes, work through the Orchestrator Post-Merge Checklist be
 | 2 | D | Attribute command integration | TO-DO |
 | 2 | E | Test coverage for session discovery and menu UI | TO-DO |
 | — | Orch | Post-merge integration + binary install | TO-DO |
+
+---
+
+### Agent B - Completion Report
+
+**status:** complete
+
+**worktree:** .claude/worktrees/wave1-agent-B
+
+**commit:** 735246a
+
+**files_changed:** []
+
+**files_created:**
+- internal/ui/session_menu.go
+- internal/ui/session_menu_test.go
+- internal/ui/tty.go (temporary for build - Agent C will provide canonical version)
+
+**interface_deviations:** []
+
+**out_of_scope_deps:**
+- Created minimal tty.go to satisfy build requirements during parallel execution. Agent C owns this file and will provide the canonical implementation. The interface is identical: `func IsTTY() bool`. At merge time, Agent C's version will take precedence.
+
+**tests_added:**
+- TestSelectSession_ValidSelection
+- TestSelectSession_EmptyList
+- TestSelectSession_OutOfRange
+- TestSelectSession_NonNumeric
+- TestFormatTimeAgo (with subtests for different time ranges)
+- TestErrorTypes (validates error sentinels are distinct)
+
+**verification:** PASS
+
+All verification gates passed:
+- `go build ./internal/ui` - PASS
+- `go vet ./internal/ui` - PASS
+- `go test ./internal/ui -v` - PASS (all 10 tests passing)
+
+**Notes:**
+- Implemented `SelectSession` function with interactive numbered menu
+- Uses `bufio.ReadString('\n')` pattern consistent with existing codebase
+- Time formatting follows existing `formatTimeSince` style but optimized for shorter durations (minutes/hours)
+- Error handling covers all specified edge cases: empty list, non-TTY, cancelled input, invalid selection
+- Tests document expected behavior even where full stdin mocking isn't implemented
+- TTY check delegated to `ui.IsTTY()` as specified in interface contract
