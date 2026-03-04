@@ -40,6 +40,13 @@ func FindActiveSessions(claudeHome string, activeThreshold time.Duration) ([]Act
 			return nil
 		}
 
+		// Skip subagent files (they're in subdirectories like "subagents/")
+		// Main session files are directly under the project directory
+		relPath, _ := filepath.Rel(projectsDir, path)
+		if strings.Contains(relPath, string(filepath.Separator)+"subagents"+string(filepath.Separator)) {
+			return nil
+		}
+
 		// Get file info to check modification time
 		info, err := d.Info()
 		if err != nil {

@@ -221,3 +221,38 @@ func TestFindActiveSessions_NestedProjectStructure(t *testing.T) {
 	// Project name should be the immediate parent directory
 	assert.Equal(t, "inner-project", sessions[0].ProjectName)
 }
+
+func TestFindActiveSessions_SkipsSubagentFiles(t *testing.T) {
+	// Setup: create session with subagent files (SAW pattern)
+	tmpDir := t.TempDir()
+	projectsDir := filepath.Join(tmpDir, "projects")
+	projectDir := filepath.Join(projectsDir, "myproject")
+	sessionDir := filepath.Join(projectDir, "session-main-1234")
+	subagentsDir := filepath.Join(sessionDir, "subagents")
+	assert.NoError(t, os.MkdirAll(subagentsDir, 0o755))
+
+	now := time.Now()
+
+	// Create main session file (should be included)
+	mainSessionPath := filepath.Join(projectDir, "session-main-1234.jsonl")
+	assert.NoError(t, os.WriteFile(mainSessionPath, []byte("{}"), 0o644))
+	assert.NoError(t, os.Chtimes(mainSessionPath, now, now))
+
+	// Create subagent files (should be excluded)
+	subagent1Path := filepath.Join(subagentsDir, "agent-a123456789abc.jsonl")
+	subagent2Path := filepath.Join(subagentsDir, "agent-b987654321def.jsonl")
+	assert.NoError(t, os.WriteFile(subagent1Path, []byte("{}"), 0o644))
+	assert.NoError(t, os.WriteFile(subagent2Path, []byte("{}"), 0o644))
+	assert.NoError(t, os.Chtimes(subagent1Path, now, now))
+	assert.NoError(t, os.Chtimes(subagent2Path, now, now))
+
+	// Act
+	sessions, err := FindActiveSessions(tmpDir, 15*time.Minute)
+
+	// Assert: only main session returned, subagent files filtered out
+	assert.NoError(t, err)
+	assert.Len(t, sessions, 1)
+	assert.Equal(t, "session-main-1234", sessions[0].SessionID)
+	assert.Equal(t, "myproject", sessions[0].ProjectName)
+	assert.Equal(t, mainSessionPath, sessions[0].Path)
+}
