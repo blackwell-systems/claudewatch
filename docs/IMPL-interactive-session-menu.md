@@ -599,7 +599,34 @@ After each wave completes, work through the Orchestrator Post-Merge Checklist be
 | 0 | Scaffold | Create `internal/store/sessions.go` with ActiveSession type | TO-DO |
 | 1 | A | Active session discovery (`FindActiveSessions`) | TO-DO |
 | 1 | B | Interactive session menu (`SelectSession`) | TO-DO |
-| 1 | C | TTY detection (`IsTTY`) | TO-DO |
+| 1 | C | TTY detection (`IsTTY`) | COMPLETE |
 | 2 | D | Attribute command integration | TO-DO |
 | 2 | E | Test coverage for session discovery and menu UI | TO-DO |
 | — | Orch | Post-merge integration + binary install | TO-DO |
+
+---
+
+### Agent C - Completion Report
+**status:** complete
+**worktree:** .claude/worktrees/wave1-agent-C
+**commit:** ee4318b6091a5efd3edc149497bf850e07d452ef
+**files_changed:** []
+**files_created:**
+  - internal/ui/tty.go
+  - internal/ui/tty_test.go
+
+**interface_deviations:** []
+**out_of_scope_deps:** []
+**tests_added:**
+  - TestIsTTY_NotTerminal (verifies false in CI/test environments)
+  - TestIsTTY_SubprocessWithoutTTY (subprocess test with piped stdio)
+  - TestIsTTY_Documentation (manual testing procedure)
+
+**verification:** PASS
+
+**notes:**
+- Implementation follows interface contract exactly
+- Uses `mattn/go-isatty` for cross-platform TTY detection
+- Checks both stdin and stdout to prevent prompts in piped contexts
+- All tests pass with full coverage of TTY detection logic
+- go vet and go build pass without errors
