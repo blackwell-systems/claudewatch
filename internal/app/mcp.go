@@ -15,11 +15,16 @@ var mcpCmd = &cobra.Command{
 	Use:   "mcp",
 	Short: "Run an MCP stdio server for use with Claude Code",
 	Long: `Start a Model Context Protocol stdio server that Claude Code can
-query during a session. The server exposes three tools:
+query during a session. The server exposes 26 MCP tools across 6 categories:
 
-  get_session_stats   Token usage, cost, and duration for the current session
-  get_cost_budget     Today's spend vs daily budget
-  get_recent_sessions Last N sessions with cost, friction, and project name
+  • Session & cost tracking (get_session_stats, get_cost_budget, get_cost_summary, etc.)
+  • Live self-reflection (get_session_dashboard, get_drift_signal, get_token_velocity, etc.)
+  • Project & pattern analysis (get_project_health, get_suggestions, get_stale_patterns, etc.)
+  • Agent & workflow analytics (get_agent_performance, get_saw_sessions, get_cost_attribution, etc.)
+  • Multi-project analysis (get_session_projects for weighted repo attribution)
+  • Factor analysis (get_causal_insights to correlate attributes with outcomes)
+
+See docs/mcp.md for complete tool reference.
 
 Add to your Claude Code MCP configuration (~/.claude/settings.json):
   {"mcpServers":{"claudewatch":{"command":"claudewatch","args":["mcp"]}}}`,
