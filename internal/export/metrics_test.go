@@ -125,8 +125,8 @@ func TestComputeModelUsagePercent(t *testing.T) {
 	result := computeModelUsagePercent(sessions)
 
 	require.NotNil(t, result)
-	assert.InDelta(t, 66.67, result["claude-opus-4"], 0.1)     // 2/3 sessions = 66.67%
-	assert.InDelta(t, 33.33, result["claude-sonnet-4"], 0.1)   // 1/3 sessions = 33.33%
+	assert.InDelta(t, 66.67, result["claude-opus-4"], 0.1)   // 2/3 sessions = 66.67%
+	assert.InDelta(t, 33.33, result["claude-sonnet-4"], 0.1) // 1/3 sessions = 33.33%
 }
 
 func TestComputeModelUsagePercent_EmptySessions(t *testing.T) {
@@ -182,8 +182,8 @@ func TestLimitFrictionTypes(t *testing.T) {
 	frictionByType := map[string]int{
 		"wrong_approach":       50,
 		"excessive_analysis":   40,
-		"retry:Bash":          30,
-		"buggy_code":          20,
+		"retry:Bash":           30,
+		"buggy_code":           20,
 		"user_rejected_action": 10,
 		"low_frequency_error":  5,
 	}
@@ -200,7 +200,7 @@ func TestLimitFrictionTypes(t *testing.T) {
 func TestLimitFrictionTypes_BelowLimit(t *testing.T) {
 	frictionByType := map[string]int{
 		"wrong_approach": 50,
-		"retry:Bash":    30,
+		"retry:Bash":     30,
 	}
 
 	limited := LimitFrictionTypes(frictionByType, 10)
@@ -225,27 +225,27 @@ func TestComputeActiveMinutes(t *testing.T) {
 func TestAnalyzeEfficiency(t *testing.T) {
 	sessions := []claude.SessionMeta{
 		{
-			ToolErrors:       5,
+			ToolErrors:        5,
 			UserInterruptions: 2,
-			InputTokens:      10000,
-			OutputTokens:     5000,
+			InputTokens:       10000,
+			OutputTokens:      5000,
 			ToolErrorCategories: map[string]int{
 				"permission_denied": 3,
-				"file_not_found":   2,
+				"file_not_found":    2,
 			},
 			ToolCounts: map[string]int{
-				"Read":  10,
-				"Edit":  5,
-				"Bash":  3,
+				"Read": 10,
+				"Edit": 5,
+				"Bash": 3,
 			},
 			UsesTaskAgent: true,
-			UsesMCP:      false,
+			UsesMCP:       false,
 		},
 		{
-			ToolErrors:       3,
+			ToolErrors:        3,
 			UserInterruptions: 1,
-			InputTokens:      8000,
-			OutputTokens:     4000,
+			InputTokens:       8000,
+			OutputTokens:      4000,
 			ToolErrorCategories: map[string]int{
 				"file_not_found": 3,
 			},
@@ -254,15 +254,15 @@ func TestAnalyzeEfficiency(t *testing.T) {
 				"Write": 2,
 			},
 			UsesTaskAgent: false,
-			UsesMCP:      true,
+			UsesMCP:       true,
 		},
 	}
 
 	metrics := AnalyzeEfficiency(sessions)
 
 	assert.Equal(t, 2, metrics.TotalSessions)
-	assert.InDelta(t, 4.0, metrics.AvgToolErrorsPerSession, 0.01) // (5+3)/2
-	assert.InDelta(t, 1.5, metrics.AvgInterruptionsPerSession, 0.01) // (2+1)/2
+	assert.InDelta(t, 4.0, metrics.AvgToolErrorsPerSession, 0.01)     // (5+3)/2
+	assert.InDelta(t, 1.5, metrics.AvgInterruptionsPerSession, 0.01)  // (2+1)/2
 	assert.Equal(t, 5, metrics.ErrorCategoryTotals["file_not_found"]) // 2+3
 	assert.Equal(t, 3, metrics.ErrorCategoryTotals["permission_denied"])
 	assert.Equal(t, 18, metrics.ToolUsageTotals["Read"]) // 10+8
@@ -317,9 +317,9 @@ func TestFilterFacetsByDays(t *testing.T) {
 	now := time.Now()
 
 	facets := []claude.SessionFacet{
-		{SessionID: now.Add(-1 * 24 * time.Hour).Format("20060102-150405") + "-abc123"},
-		{SessionID: now.Add(-10 * 24 * time.Hour).Format("20060102-150405") + "-def456"},
-		{SessionID: now.Add(-40 * 24 * time.Hour).Format("20060102-150405") + "-ghi789"},
+		{SessionID: now.Add(-1*24*time.Hour).Format("20060102-150405") + "-abc123"},
+		{SessionID: now.Add(-10*24*time.Hour).Format("20060102-150405") + "-def456"},
+		{SessionID: now.Add(-40*24*time.Hour).Format("20060102-150405") + "-ghi789"},
 	}
 
 	filtered := filterFacetsByDays(facets, 30)
