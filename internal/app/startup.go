@@ -53,6 +53,12 @@ func runStartup(cmd *cobra.Command, args []string) {
 
 	// Friction data from facets.
 	facets, _ := claude.ParseAllFacets(cfg.ClaudeHome)
+
+	// Update working memory from most recent completed session.
+	if err := updateWorkingMemoryIfNeeded(cfg, projectName, projectSessions, facets); err != nil {
+		// Non-fatal: log to stderr, continue.
+		_, _ = fmt.Fprintf(os.Stderr, "claudewatch: memory update failed: %v\n", err)
+	}
 	frictionTypeCounts := make(map[string]int)
 	frictionSessionCount := 0
 	for _, f := range facets {
@@ -217,4 +223,97 @@ func startupTip(topFriction string) string {
 	default:
 		return "tip: call get_project_health for project baseline"
 	}
+}
+
+// updateWorkingMemoryIfNeeded checks if the most recent completed session
+// for this project is missing from working memory. If so, extracts and stores it.
+func updateWorkingMemoryIfNeeded(cfg *config.Config, projectName string, sessions []claude.SessionMeta, facets []claude.SessionFacet) error {
+	if len(sessions) == 0 {
+		return nil
+	}
+
+	// Find the active session path to exclude it.
+	activePath, _ := claude.FindActiveSessionPath(cfg.ClaudeHome)
+	activeSessionID := ""
+	if activePath != "" {
+		activeSessionID = strings.TrimSuffix(filepath.Base(filepath.Dir(activePath)), ".jsonl")
+	}
+
+	// Find most recent completed session (not the active one).
+	var mostRecent *claude.SessionMeta
+	for i := range sessions {
+		if sessions[i].SessionID == activeSessionID {
+			continue
+		}
+		if mostRecent == nil || sessions[i].StartTime > mostRecent.StartTime {
+			mostRecent = &sessions[i]
+		}
+	}
+
+	if mostRecent == nil {
+		return nil
+	}
+
+	// Find the facet for this session.
+	var sessionFacet *claude.SessionFacet
+	for i := range facets {
+		if facets[i].SessionID == mostRecent.SessionID {
+			sessionFacet = &facets[i]
+			break
+		}
+	}
+
+	if sessionFacet == nil {
+		// No facet means no AI analysis available; skip.
+		return nil
+	}
+
+	// Open working memory store.
+	memoryPath := filepath.Join(config.ConfigDir(), "working-memory.json")
+	memStore := store.NewWorkingMemoryStore(memoryPath)
+	wm, err := memStore.Load()
+	if err != nil {
+		return fmt.Errorf("load working memory: %w", err)
+	}
+
+	// Check if this session is already in working memory.
+	for _, task := range wm.Tasks {
+		for _, sid := range task.Sessions {
+			if sid == mostRecent.SessionID {
+				// Already extracted.
+				return nil
+			}
+		}
+	}
+
+	// Extract commits.
+	commits := getCommitSHAsSince(mostRecent.ProjectPath, mostRecent.StartTime)
+
+	// Extract task memory.
+	task, err := ExtractTaskMemory(*mostRecent, sessionFacet, commits)
+	if err != nil {
+		return fmt.Errorf("extract task memory: %w", err)
+	}
+	if task != nil {
+		if err := memStore.AddOrUpdateTask(task); err != nil {
+			return fmt.Errorf("store task memory: %w", err)
+		}
+	}
+
+	// Extract blockers (take last 10 sessions for chronic pattern detection).
+	recentSessions := sessions
+	if len(recentSessions) > 10 {
+		recentSessions = recentSessions[:10]
+	}
+	blockers, err := ExtractBlockers(*mostRecent, sessionFacet, projectName, recentSessions, facets)
+	if err != nil {
+		return fmt.Errorf("extract blockers: %w", err)
+	}
+	for _, blocker := range blockers {
+		if err := memStore.AddBlocker(blocker); err != nil {
+			return fmt.Errorf("store blocker: %w", err)
+		}
+	}
+
+	return nil
 }
