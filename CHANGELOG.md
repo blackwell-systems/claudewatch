@@ -2,6 +2,12 @@
 
 All notable changes to claudewatch are documented here.
 
+## [Unreleased]
+
+### Added
+
+- **`claudewatch memory status`** — new command shows cross-project memory summary: total tasks and blockers across all projects, last extraction timestamp, most recent task with status, and per-project breakdown sorted by task count. Provides immediate feedback that the memory system is working and visibility into what Claude can query via `get_task_history` and `get_blockers`.
+
 ## [0.9.0] - 2026-03-04
 
 ### Added

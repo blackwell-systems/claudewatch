@@ -172,6 +172,91 @@ claudewatch log --metric review_time --value 1800 --type duration --note "auth P
 
 ---
 
+### memory
+
+Manage cross-session working memory for projects. Working memory stores task history, blockers, and context hints that Claude can query via MCP tools (`get_task_history`, `get_blockers`). Memory is automatically extracted from completed sessions by the SessionStart hook, or can be manually checkpointed with `memory extract`.
+
+**Subcommands:**
+
+#### memory status
+
+Show cross-project memory summary: total tasks and blockers across all projects, last extraction timestamp, most recent task with status, and per-project breakdown sorted by task count.
+
+```bash
+claudewatch memory status
+```
+
+**Output:**
+```
+Cross-session Memory Status
+─────────────────────────────────────────
+Tasks stored:           8 (across 3 projects)
+Blockers recorded:      4
+Last extraction:        2 minutes ago
+Most recent task:       "implement drift detection" (completed, claudewatch)
+
+Projects with memory:
+  claudewatch          5 tasks, 2 blockers
+  commitmux           2 tasks, 1 blocker
+  scout-and-wave      1 task, 1 blocker
+
+Run 'claudewatch memory show --project <name>' for details
+```
+
+#### memory show
+
+Display detailed working memory for a project: task history with sessions, status, commits, solutions, and blockers hit; blocker list with file, issue, solution, and last-seen timestamp.
+
+```bash
+claudewatch memory show                  # current project (from cwd)
+claudewatch memory show --project commitmux
+```
+
+**Flags:**
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--project <name>` | No | Project name (defaults to basename of current directory) |
+
+#### memory extract
+
+Extract task and blocker memory from a session immediately. Useful for checkpointing long sessions, before risky operations, or after completing major work. If `--session-id` is not specified, extracts from the currently active session.
+
+```bash
+claudewatch memory extract                        # extract from active session
+claudewatch memory extract --session-id abc123   # extract from specific session
+claudewatch memory extract --project myproject   # override project name
+```
+
+**Flags:**
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--session-id <id>` | No | Session ID to extract from (defaults to active session) |
+| `--project <name>` | No | Project name (defaults to basename of current directory) |
+
+**Output:**
+- Task identifier, status, commit count
+- Blocker count
+- Confirmation that memory is queryable
+
+#### memory clear
+
+Delete working memory for a project. Prompts for confirmation before deletion.
+
+```bash
+claudewatch memory clear                  # current project
+claudewatch memory clear --project myproject
+```
+
+**Flags:**
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--project <name>` | No | Project name (defaults to basename of current directory) |
+
+---
+
 ### watch
 
 Background daemon that monitors session data and sends desktop notifications on friction spikes, new stale patterns, agent kill rate increases, and zero-commit streaks. Uses Notification Center on macOS and libnotify on Linux.
