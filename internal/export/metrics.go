@@ -802,14 +802,12 @@ func CollectDetailedMetrics(cfg *config.Config, projectFilter string, days int) 
 		facets = nil // Non-fatal
 	}
 	frictionBySession := make(map[string]int)
-	if facets != nil {
-		for _, f := range facets {
-			count := 0
-			for _, c := range f.FrictionCounts {
-				count += c
-			}
-			frictionBySession[f.SessionID] = count
+	for _, f := range facets {
+		count := 0
+		for _, c := range f.FrictionCounts {
+			count += c
 		}
+		frictionBySession[f.SessionID] = count
 	}
 
 	// Build detailed records

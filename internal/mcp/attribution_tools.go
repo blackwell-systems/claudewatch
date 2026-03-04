@@ -45,7 +45,7 @@ func (s *Server) handleGetCostAttribution(args json.RawMessage) (any, error) {
 		CacheWritePerMillion: ap.CacheWritePerMillion}
 	// NOTE: store.ComputeAttribution takes store.ModelPricing (not analyzer.ModelPricing)
 	// due to an import cycle — the struct fields are identical.
-	rows, err, _ := store.ComputeAttribution(sessionID, s.claudeHome, pricing)
+	rows, _, err := store.ComputeAttribution(sessionID, s.claudeHome, pricing)
 	if err != nil {
 		return nil, err
 	}

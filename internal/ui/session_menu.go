@@ -33,7 +33,7 @@ func SelectSession(sessions []store.ActiveSession) (string, error) {
 	}
 
 	// Print header
-	fmt.Fprintf(os.Stdout, "Multiple active sessions detected:\n\n")
+	_, _ = fmt.Fprintf(os.Stdout, "Multiple active sessions detected:\n\n")
 
 	// Print numbered list
 	for i, session := range sessions {
@@ -42,12 +42,12 @@ func SelectSession(sessions []store.ActiveSession) (string, error) {
 			sessionIDShort = sessionIDShort[:12]
 		}
 		timeAgo := formatTimeAgo(session.LastModified)
-		fmt.Fprintf(os.Stdout, "  %d. %s  %-15s  (%s)\n",
+		_, _ = fmt.Fprintf(os.Stdout, "  %d. %s  %-15s  (%s)\n",
 			i+1, sessionIDShort, session.ProjectName, timeAgo)
 	}
 
 	// Print prompt
-	fmt.Fprintf(os.Stdout, "\nSelect session (1-%d) or Ctrl+C to cancel: ", len(sessions))
+	_, _ = fmt.Fprintf(os.Stdout, "\nSelect session (1-%d) or Ctrl+C to cancel: ", len(sessions))
 
 	// Read user input
 	reader := bufio.NewReader(os.Stdin)

@@ -56,7 +56,7 @@ func runAttribute(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	rows, err, selectedSessionID := store.ComputeAttribution(sessionID, cfg.ClaudeHome, pricing)
+	rows, selectedSessionID, err := store.ComputeAttribution(sessionID, cfg.ClaudeHome, pricing)
 	if err != nil {
 		return fmt.Errorf("computing attribution: %w", err)
 	}
