@@ -3,7 +3,6 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"sort"
 
 	"github.com/blackwell-systems/claudewatch/internal/analyzer"
@@ -54,7 +53,7 @@ func (s *Server) handleGetProjectAnomalies(args json.RawMessage) (any, error) {
 	}
 
 	tags := s.loadTags()
-	weightsPath := filepath.Join(filepath.Dir(s.tagStorePath), "session-project-weights.json")
+	weightsPath := s.weightsStorePath
 	allWeights := loadAllWeights(weightsPath)
 
 	// Determine the target project name (same pattern as handleGetProjectHealth).

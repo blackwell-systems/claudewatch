@@ -158,6 +158,7 @@ func addTools(s *Server) {
 	addRegressionTools(s)
 	addCorrelateTools(s)
 	addAttributionTools(s)
+	addMultiProjectTools(s)
 	s.registerTool(toolDef{
 		Name:        "get_project_comparison",
 		Description: "All projects compared side by side in a single call. Returns a ranked list of all projects with health score, friction rate, has_claude_md, agent success rate, and session count.",
@@ -181,6 +182,17 @@ func (s *Server) loadTags() map[string]string {
 		return map[string]string{}
 	}
 	return tags
+}
+
+// loadProjectWeights loads the session project weights store.
+// Returns an empty map on any error (non-fatal: missing weights file is normal).
+func (s *Server) loadProjectWeights() map[string][]store.ProjectWeight {
+	ws := store.NewSessionProjectWeightsStore(s.weightsStorePath)
+	weights, err := ws.Load()
+	if err != nil || weights == nil {
+		return map[string][]store.ProjectWeight{}
+	}
+	return weights
 }
 
 // resolveProjectName returns tags[sessionID] if an override exists,

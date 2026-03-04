@@ -61,7 +61,7 @@ func (s *Server) handleGetProjectComparison(args json.RawMessage) (any, error) {
 
 	tags := s.loadTags()
 
-	weightsPath := filepath.Join(filepath.Dir(s.tagStorePath), "session-project-weights.json")
+	weightsPath := s.weightsStorePath
 	allWeights := loadAllWeightsPT(weightsPath)
 
 	// Group sessions by project base name (with tag/weights override).

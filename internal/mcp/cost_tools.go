@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"encoding/json"
-	"path/filepath"
 	"sort"
 	"time"
 
@@ -56,7 +55,7 @@ func (s *Server) handleGetCostSummary(args json.RawMessage) (any, error) {
 	}
 
 	tags := s.loadTags()
-	weightsPath := filepath.Join(filepath.Dir(s.tagStorePath), "session-project-weights.json")
+	weightsPath := s.weightsStorePath
 	allWeights := loadAllWeightsCT(weightsPath)
 
 	ratio := s.loadCacheRatio()
