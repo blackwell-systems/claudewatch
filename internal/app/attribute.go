@@ -2,13 +2,17 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/blackwell-systems/claudewatch/internal/analyzer"
 	"github.com/blackwell-systems/claudewatch/internal/config"
 	"github.com/blackwell-systems/claudewatch/internal/output"
 	"github.com/blackwell-systems/claudewatch/internal/store"
+	"github.com/blackwell-systems/claudewatch/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -52,6 +56,32 @@ func runAttribute(cmd *cobra.Command, args []string) error {
 
 	sessionID := attrFlagSession
 
+	// If no session specified, check for multiple active sessions
+	if sessionID == "" {
+		activeSessions, err := store.FindActiveSessions(cfg.ClaudeHome, 15*time.Minute)
+		if err != nil {
+			return fmt.Errorf("finding active sessions: %w", err)
+		}
+
+		if len(activeSessions) > 1 {
+			// Multiple active sessions - prompt user to select
+			if !ui.IsTTY() {
+				return fmt.Errorf("multiple active sessions found (use --session to specify):\n%s",
+					formatSessionList(activeSessions))
+			}
+
+			selectedID, err := ui.SelectSession(activeSessions)
+			if err != nil {
+				if errors.Is(err, ui.ErrCancelled) {
+					return fmt.Errorf("selection cancelled")
+				}
+				return fmt.Errorf("session selection: %w", err)
+			}
+			sessionID = selectedID
+		}
+		// If 0 or 1 active sessions, let ComputeAttribution use existing logic
+	}
+
 	rows, err, selectedSessionID := store.ComputeAttribution(sessionID, cfg.ClaudeHome, pricing)
 	if err != nil {
 		return fmt.Errorf("computing attribution: %w", err)
@@ -88,4 +118,13 @@ func runAttribute(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	return nil
+}
+
+// formatSessionList formats active sessions for non-TTY error message
+func formatSessionList(sessions []store.ActiveSession) string {
+	var sb strings.Builder
+	for _, s := range sessions {
+		sb.WriteString(fmt.Sprintf("  - %s (%s)\n", s.SessionID[:12], s.ProjectName))
+	}
+	return sb.String()
 }
