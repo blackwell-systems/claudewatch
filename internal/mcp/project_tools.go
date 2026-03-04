@@ -8,7 +8,19 @@ import (
 
 	"github.com/blackwell-systems/claudewatch/internal/analyzer"
 	"github.com/blackwell-systems/claudewatch/internal/claude"
+	"github.com/blackwell-systems/claudewatch/internal/store"
 )
+
+// loadAllWeights loads per-session project weights from disk.
+// Returns an empty map on any error (non-fatal: missing weights file is normal).
+func loadAllWeightsPT(weightsPath string) map[string][]store.ProjectWeight {
+	ws := store.NewSessionProjectWeightsStore(weightsPath)
+	m, err := ws.Load()
+	if err != nil || m == nil {
+		return map[string][]store.ProjectWeight{}
+	}
+	return m
+}
 
 // ProjectComparisonResult holds comparison metrics across all projects.
 type ProjectComparisonResult struct {
@@ -49,14 +61,22 @@ func (s *Server) handleGetProjectComparison(args json.RawMessage) (any, error) {
 
 	tags := s.loadTags()
 
-	// Group sessions by project base name (with tag override).
+	weightsPath := filepath.Join(filepath.Dir(s.tagStorePath), "session-project-weights.json")
+	allWeights := loadAllWeightsPT(weightsPath)
+
+	// Group sessions by project base name (with tag/weights override).
 	type projectGroup struct {
 		sessions    []claude.SessionMeta
 		projectPath string
 	}
 	groups := make(map[string]*projectGroup)
 	for _, sess := range sessions {
-		name := resolveProjectName(sess.SessionID, sess.ProjectPath, tags)
+		var name string
+		if w := allWeights[sess.SessionID]; len(w) > 0 {
+			name = sessionPrimaryProject(sess.SessionID, sess.ProjectPath, tags, w)
+		} else {
+			name = resolveProjectName(sess.SessionID, sess.ProjectPath, tags)
+		}
 		g, ok := groups[name]
 		if !ok {
 			g = &projectGroup{}
