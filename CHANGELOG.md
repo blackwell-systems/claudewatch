@@ -4,6 +4,8 @@ All notable changes to claudewatch are documented here.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-03-04
+
 ### Added
 
 - **Universal session selection pattern** — Extracted interactive session selection into a shared abstraction (`internal/app/SelectSession`) with functional options pattern. Four commands now share consistent session selection UX: `attribute`, `replay`, `memory extract`, and `experiment tag`. When multiple active sessions exist (modified within 15 min), shows interactive menu in TTY or helpful error in non-TTY. Options: `WithMostRecentFallback()` (falls back to most recent if no active sessions), `RequireActiveSession()` (strict active-only mode). Benefits: DRY (eliminated 76 lines of duplicated logic), consistent UX across all commands, configurable per-command behavior via functional options.
