@@ -4,6 +4,8 @@ All notable changes to claudewatch are documented here.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-03-04
+
 ### Added
 
 - **Model usage tracking** — `claudewatch metrics` now shows per-model cost and token breakdown with potential savings analysis. Extracts model information from Claude Code transcripts, aggregates token usage per model (sonnet/opus/haiku), computes costs using tier-specific pricing, and displays a "Model Usage" section showing each model's spend percentage, token percentage, and potential savings if Opus usage moved to Sonnet. Data stored in SessionMeta.ModelUsage field and available via JSON output. Addresses the gap between documented example output and actual implementation.
