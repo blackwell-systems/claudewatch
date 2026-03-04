@@ -281,7 +281,7 @@ Then add the MCP server to `~/.claude.json`:
 | `correlate` | Correlate session attributes against outcomes (friction, commits, cost, etc.) to find what predicts success |
 | `suggest` | Ranked improvements with impact scores |
 | `fix` | Generate and apply CLAUDE.md patches from session data |
-| `memory` | View, extract, or clear cross-session task history and blockers (`memory show`, `memory extract`, `memory clear`) |
+| `memory` | Cross-session task history and blockers (`memory status`, `memory show`, `memory extract`, `memory clear`) |
 | `track` | Snapshot metrics to SQLite, diff against previous |
 | `log` | Inject custom metrics (scale, boolean, counter, duration) |
 | `watch` | Background daemon with desktop alerts on friction spikes |
