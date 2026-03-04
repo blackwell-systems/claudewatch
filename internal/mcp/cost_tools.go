@@ -8,7 +8,19 @@ import (
 
 	"github.com/blackwell-systems/claudewatch/internal/analyzer"
 	"github.com/blackwell-systems/claudewatch/internal/claude"
+	"github.com/blackwell-systems/claudewatch/internal/store"
 )
+
+// loadAllWeightsCT loads per-session project weights from disk.
+// Returns an empty map on any error (non-fatal: missing weights file is normal).
+func loadAllWeightsCT(weightsPath string) map[string][]store.ProjectWeight {
+	ws := store.NewSessionProjectWeightsStore(weightsPath)
+	m, err := ws.Load()
+	if err != nil || m == nil {
+		return map[string][]store.ProjectWeight{}
+	}
+	return m
+}
 
 // CostSummaryResult holds aggregated cost data across time buckets and projects.
 type CostSummaryResult struct {
@@ -42,6 +54,10 @@ func (s *Server) handleGetCostSummary(args json.RawMessage) (any, error) {
 	if err != nil {
 		sessions = nil
 	}
+
+	tags := s.loadTags()
+	weightsPath := filepath.Join(filepath.Dir(s.tagStorePath), "session-project-weights.json")
+	allWeights := loadAllWeightsCT(weightsPath)
 
 	ratio := s.loadCacheRatio()
 	pricing := analyzer.DefaultPricing["sonnet"]
@@ -87,7 +103,12 @@ func (s *Server) handleGetCostSummary(args json.RawMessage) (any, error) {
 			}
 		}
 
-		projectName := filepath.Base(session.ProjectPath)
+		var projectName string
+		if w := allWeights[session.SessionID]; len(w) > 0 {
+			projectName = sessionPrimaryProject(session.SessionID, session.ProjectPath, tags, w)
+		} else {
+			projectName = resolveProjectName(session.SessionID, session.ProjectPath, tags)
+		}
 		a, ok := byProject[projectName]
 		if !ok {
 			a = &projectAccum{}
