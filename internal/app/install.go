@@ -202,21 +202,33 @@ func buildClaudeMDSection() string {
 	return claudeMDMarkerStart + `
 ## claudewatch
 
-At the start of every session you will receive a claudewatch briefing injected
-into your context. When you see it:
-1. Call ` + b + `get_project_health` + b + ` (claudewatch MCP) immediately to calibrate to
-   this project's friction patterns, session history, and readiness before starting work.
-2. Note the friction level and dominant friction type — adjust your approach
-   accordingly (e.g. if ` + b + `retry:Bash` + b + ` dominates, verify commands before running them).
-3. **Check for prior context:** If the user says "continue", "resume", "keep working on",
-   or references previous work, call ` + b + `get_task_history(query: "<topic>")` + b + ` to see what
-   was attempted before. If you find a matching task with status "abandoned" or "in_progress",
-   read its blockers/solution before proceeding.
+**CRITICAL: SESSION START PROTOCOL — MANDATORY, NOT OPTIONAL**
+
+At the start of EVERY session (new or resumed), you MUST execute this protocol
+BEFORE responding to the user's request:
+
+1. **REQUIRED:** Call ` + b + `get_project_health` + b + ` (claudewatch MCP) immediately.
+   This is NOT optional. This is NOT a suggestion. Do not skip this step.
+   You cannot calibrate to friction patterns, historical blockers, or agent
+   failure modes without this baseline. Proceeding without it means repeating
+   known failures.
+
+2. **REQUIRED:** Read and internalize the friction metrics returned. If friction
+   rate > 30%, you are operating in a high-error environment. If specific agent
+   types show 0% success rate, DO NOT spawn them. If top friction type is
+   ` + b + `buggy_code` + b + ` or ` + b + `retry:Bash` + b + `, verify every command before execution.
+
+3. **REQUIRED when resuming work:** If the user says "continue", "resume", "keep
+   working on", or references previous work, call ` + b + `get_task_history(query: "<topic>")` + b + `
+   BEFORE attempting implementation. If you find a matching task with status
+   "abandoned" or "in_progress", read its blockers/solution. Do not repeat
+   failed approaches.
 
 During the session:
-- If the PostToolUse hook fires with a ` + b + `⚠` + b + ` warning, **stop what you are doing**
-  and call ` + b + `get_session_dashboard` + b + ` (claudewatch MCP) before continuing.
-  Do not proceed until you have assessed the situation.
+- **BLOCKING REQUIREMENT:** If the PostToolUse hook fires with a ` + b + `⚠` + b + ` warning,
+  you MUST stop immediately and call ` + b + `get_session_dashboard` + b + ` (claudewatch MCP).
+  Do NOT continue without assessing the situation. This warning indicates error loops,
+  drift, context pressure, or cost spikes that require immediate attention.
 - If context pressure reaches "pressure" or "critical", consider compacting or
   scoping down the current task. **At "pressure" level, call ` + b + `extract_current_session_memory` + b + `
   before compaction to preserve work-in-progress.**

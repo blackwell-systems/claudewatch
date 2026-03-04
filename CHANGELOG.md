@@ -4,6 +4,10 @@ All notable changes to claudewatch are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **Strengthened CLAUDE.md protocol language to mandatory directives** — Rewrote `install` command's generated CLAUDE.md section with explicit non-optional language. Session start protocol now begins with "**CRITICAL: SESSION START PROTOCOL — MANDATORY, NOT OPTIONAL**" and uses "**REQUIRED:**", "This is NOT optional", "Do not skip this step", "you MUST stop immediately" framing instead of passive "you should" suggestions. Added consequences for skipping steps ("Proceeding without it means repeating known failures"). PostToolUse hook changed from "stop what you are doing" to "**BLOCKING REQUIREMENT:** you MUST stop immediately". Goal: increase agent compliance with `get_project_health` baseline checks and memory tool usage at session start.
+
 ## [0.12.0] - 2026-03-04
 
 ### Added
