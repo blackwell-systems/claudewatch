@@ -92,18 +92,43 @@ into your context. When you see it:
    this project's friction patterns, session history, and readiness before starting work.
 2. Note the friction level and dominant friction type — adjust your approach
    accordingly (e.g. if ` + b + `retry:Bash` + b + ` dominates, verify commands before running them).
+3. **Check for prior context:** If the user says "continue", "resume", "keep working on",
+   or references previous work, call ` + b + `get_task_history(query: "<topic>")` + b + ` to see what
+   was attempted before. If you find a matching task with status "abandoned" or "in_progress",
+   read its blockers/solution before proceeding.
 
 During the session:
 - If the PostToolUse hook fires with a ` + b + `⚠` + b + ` warning, **stop what you are doing**
   and call ` + b + `get_session_dashboard` + b + ` (claudewatch MCP) before continuing.
   Do not proceed until you have assessed the situation.
 - If context pressure reaches "pressure" or "critical", consider compacting or
-  scoping down the current task.
+  scoping down the current task. **At "pressure" level, call ` + b + `extract_current_session_memory` + b + `
+  before compaction to preserve work-in-progress.**
 - If cost velocity is "burning", identify the source before continuing.
+- **When hitting errors or blockers:** Before retrying or investigating extensively,
+  call ` + b + `get_blockers()` + b + ` to check if this is a known issue with a documented solution.
+  If found, apply the solution instead of rediscovering it.
+- **On repetitive tool errors:** If the same tool/operation fails 2-3 times in a row,
+  STOP and call ` + b + `get_blockers()` + b + `. This pattern indicates a known issue, not a one-off mistake.
+- **Before implementing large features:** Query ` + b + `get_task_history(query: "<feature>")` + b + `
+  to check if this was attempted before. If status is "abandoned", read why it failed
+  and avoid the same approach.
+- **When user expresses frustration:** If user says "this isn't working", "why is this broken",
+  or "we tried this before", immediately call both ` + b + `get_task_history` + b + ` and ` + b + `get_blockers` + b + ` to
+  surface prior context. Don't make them repeat history.
+- **After completing major work:** When you finish implementing a feature, fixing a complex bug,
+  or completing a multi-step task, call ` + b + `extract_current_session_memory` + b + ` to save context while
+  it's fresh. Future sessions can query this via ` + b + `get_task_history` + b + ` and ` + b + `get_blockers` + b + `.
+- **Before destructive operations:** ALWAYS call ` + b + `extract_current_session_memory` + b + ` before:
+  git reset --hard, git push --force, rm -rf, large refactors, or any operation that could
+  lose work if it fails.
 
 Available claudewatch MCP tools:
 - ` + b + `get_session_dashboard` + b + ` — all live metrics in one call (start here when the hook fires)
 - ` + b + `get_project_health` + b + ` — session count, friction rate, CLAUDE.md status, agent success rate
+- ` + b + `get_task_history` + b + ` — query previous task attempts by description
+- ` + b + `get_blockers` + b + ` — list known blockers with solutions
+- ` + b + `extract_current_session_memory` + b + ` — checkpoint task state immediately (before risky ops, after milestones, in long sessions)
 - ` + b + `get_live_friction` + b + ` — real-time friction event stream
 - ` + b + `get_context_pressure` + b + ` — context window utilization
 - ` + b + `get_cost_velocity` + b + ` — cost burn rate (last 10 min)
