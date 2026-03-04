@@ -22,8 +22,8 @@ func (p *PrometheusExporter) Export(snapshot MetricSnapshot) ([]byte, error) {
 
 	// Helper function to write metric with labels
 	writeMetric := func(name, metricType, help string, value interface{}, labels map[string]string) {
-		buf.WriteString(fmt.Sprintf("# HELP %s %s\n", name, help))
-		buf.WriteString(fmt.Sprintf("# TYPE %s %s\n", name, metricType))
+		fmt.Fprintf(&buf, "# HELP %s %s\n", name, help)
+		fmt.Fprintf(&buf, "# TYPE %s %s\n", name, metricType)
 
 		labelStr := ""
 		if len(labels) > 0 {
@@ -39,7 +39,7 @@ func (p *PrometheusExporter) Export(snapshot MetricSnapshot) ([]byte, error) {
 			labelStr = "{" + strings.Join(pairs, ",") + "}"
 		}
 
-		buf.WriteString(fmt.Sprintf("%s%s %v\n\n", name, labelStr, value))
+		fmt.Fprintf(&buf, "%s%s %v\n\n", name, labelStr, value)
 	}
 
 	// Prepare labels
