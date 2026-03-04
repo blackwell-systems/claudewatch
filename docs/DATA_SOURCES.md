@@ -20,6 +20,11 @@ This document describes every file and directory that claudewatch reads from Cla
 12. [claudewatch-owned files](#12-claudewatch-owned-files)
 13. [The freshness/staleness problem](#13-the-freshnessstaleness-problem)
 14. [Data flow diagram](#14-data-flow-diagram)
+15. [Real-world examples](#15-real-world-examples)
+16. [Session lifecycle timeline](#16-session-lifecycle-timeline)
+17. [Performance characteristics](#17-performance-characteristics)
+18. [Claude Code internals (the "why" behind the data model)](#18-claude-code-internals-the-why-behind-the-data-model)
+19. [Worked example: Full trace of one session](#19-worked-example-full-trace-of-one-session)
 
 ---
 
