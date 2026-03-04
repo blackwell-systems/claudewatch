@@ -73,19 +73,20 @@ func loadOrParseSession(jsonlPath, cachePath, cacheDir, sessionID string) (*Sess
 		// Fall through to JSONL parse if cache read/unmarshal fails.
 	}
 
-	meta, err := parseJSONLToSessionMeta(jsonlPath)
+	meta, err := ParseJSONLToSessionMeta(jsonlPath)
 	if err == nil && meta != nil {
 		_ = writeSessionMetaCache(cacheDir, sessionID, meta)
 	}
 	return meta, err
 }
 
-// parseJSONLToSessionMeta performs a single-pass scan over a JSONL transcript
+// ParseJSONLToSessionMeta performs a single-pass scan over a JSONL transcript
 // file and derives a SessionMeta. It is the authoritative source for all
 // fields derivable from the transcript; fields that only Claude Code can
 // populate (Languages, LinesAdded, LinesRemoved, FilesModified, GitPushes,
 // UserInterruptions) are left at their zero values.
-func parseJSONLToSessionMeta(jsonlPath string) (*SessionMeta, error) {
+// This function handles live (incomplete) sessions via line-atomic truncation.
+func ParseJSONLToSessionMeta(jsonlPath string) (*SessionMeta, error) {
 	data, err := os.ReadFile(jsonlPath)
 	if err != nil {
 		return nil, err

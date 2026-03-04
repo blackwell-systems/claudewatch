@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blackwell-systems/claudewatch/internal/analyzer"
 	"github.com/blackwell-systems/claudewatch/internal/claude"
 	"github.com/blackwell-systems/claudewatch/internal/config"
 	"github.com/spf13/cobra"
@@ -19,6 +20,8 @@ const (
 	// Sonnet pricing ($/million tokens) — matches mcp/cost_velocity_tools.go
 	hookInputPerMillion  = 3.0
 	hookOutputPerMillion = 15.0
+	// Dashboard display interval (tool calls).
+	dashboardInterval = 50
 )
 
 var hookCmd = &cobra.Command{
@@ -46,7 +49,30 @@ func init() {
 }
 
 func runHook(cmd *cobra.Command, args []string) {
-	// Rate limiter: skip if within cooldown window.
+	cfg, err := config.Load(flagConfig)
+	if err != nil {
+		return
+	}
+
+	activePath, err := claude.FindActiveSessionPath(cfg.ClaudeHome)
+	if err != nil || activePath == "" {
+		return
+	}
+
+	// Periodic dashboard display (every 50 tool calls).
+	// This runs independently of threshold checks and has its own state file.
+	if shouldDisplayDashboard(activePath) {
+		pricing := claude.CostPricing{
+			InputPerMillion:  hookInputPerMillion,
+			OutputPerMillion: hookOutputPerMillion,
+		}
+		if dashboard, err := analyzer.ComputeSessionDashboard(activePath, pricing); err == nil {
+			fmt.Fprintln(os.Stderr, analyzer.FormatDashboard(dashboard))
+			recordDashboardDisplay(activePath, dashboard.ToolCallCount)
+		}
+	}
+
+	// Rate limiter for threshold checks: skip if within cooldown window.
 	stampFile := os.ExpandEnv("$HOME/.cache/claudewatch-hook.ts")
 	now := time.Now().Unix()
 	if data, err := os.ReadFile(stampFile); err == nil {
@@ -59,17 +85,7 @@ func runHook(cmd *cobra.Command, args []string) {
 	_ = os.MkdirAll(os.ExpandEnv("$HOME/.cache"), 0o755)
 	_ = os.WriteFile(stampFile, []byte(strconv.FormatInt(now, 10)), 0o644)
 
-	cfg, err := config.Load(flagConfig)
-	if err != nil {
-		return
-	}
-
 	cwd, _ := os.Getwd()
-
-	activePath, err := claude.FindActiveSessionPath(cfg.ClaudeHome)
-	if err != nil || activePath == "" {
-		return
-	}
 
 	// Priority 1: consecutive tool errors.
 	if n, err := claude.ParseLiveConsecutiveErrors(activePath, 50); err == nil && n >= hookThreshold {
@@ -183,4 +199,44 @@ func hookChronicPatternNote(cfg *config.Config, cwd string) string {
 	}
 
 	return fmt.Sprintf("chronic: %s in %.0f%% of recent sessions", topType, rate*100)
+}
+
+// shouldDisplayDashboard checks if the dashboard should be displayed based on
+// tool call count. Returns true if the tool call count has crossed a multiple
+// of dashboardInterval since the last display.
+func shouldDisplayDashboard(activePath string) bool {
+	// Get current tool call count using the full parser for accurate ToolCounts.
+	meta, err := claude.ParseJSONLToSessionMeta(activePath)
+	if err != nil {
+		return false
+	}
+
+	toolCallCount := 0
+	for _, count := range meta.ToolCounts {
+		toolCallCount += count
+	}
+
+	// Check if we've crossed a dashboard interval threshold.
+	countFile := os.ExpandEnv("$HOME/.cache/claudewatch-toolcount")
+	lastCount := 0
+	if data, err := os.ReadFile(countFile); err == nil {
+		if count, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil {
+			lastCount = count
+		}
+	}
+
+	// Display if we've crossed a multiple of dashboardInterval.
+	// For example: 0 → 50, 50 → 100, 100 → 150, etc.
+	lastInterval := lastCount / dashboardInterval
+	currentInterval := toolCallCount / dashboardInterval
+
+	return currentInterval > lastInterval && toolCallCount >= dashboardInterval
+}
+
+// recordDashboardDisplay records the current tool call count to prevent
+// duplicate displays at the same interval.
+func recordDashboardDisplay(activePath string, toolCallCount int) {
+	countFile := os.ExpandEnv("$HOME/.cache/claudewatch-toolcount")
+	_ = os.MkdirAll(os.ExpandEnv("$HOME/.cache"), 0o755)
+	_ = os.WriteFile(countFile, []byte(strconv.Itoa(toolCallCount)), 0o644)
 }
