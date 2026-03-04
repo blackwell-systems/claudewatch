@@ -220,7 +220,7 @@ claudewatch memory show --project commitmux
 
 #### memory extract
 
-Extract task and blocker memory from a session immediately. Useful for checkpointing long sessions, before risky operations, or after completing major work. If `--session-id` is not specified, extracts from the currently active session.
+Extract task and blocker memory from a session immediately. Useful for checkpointing long sessions, before risky operations, or after completing major work. If `--session-id` is not specified, uses active session selection (requires active session, no fallback to historical).
 
 ```bash
 claudewatch memory extract                        # extract from active session
@@ -228,11 +228,20 @@ claudewatch memory extract --session-id abc123   # extract from specific session
 claudewatch memory extract --project myproject   # override project name
 ```
 
+**Session Selection:**
+
+When `--session-id` is not provided:
+- **Multiple active sessions** (modified within 15 min):
+  - **TTY environment:** Shows interactive numbered menu. User selects by number or Ctrl+C to cancel.
+  - **Non-TTY/piped:** Returns error with session list and suggests using `--session-id`.
+- **Single active session:** Uses that session automatically.
+- **No active sessions:** Returns error (no fallback to historical sessions - extraction requires active work).
+
 **Flags:**
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `--session-id <id>` | No | Session ID to extract from (defaults to active session) |
+| `--session-id <id>` | No | Session ID to extract from. When omitted, uses active session selection. |
 | `--project <name>` | No | Project name (defaults to basename of current directory) |
 
 **Output:**
@@ -513,19 +522,30 @@ When `--session` is not specified:
 Walk through a session as a structured turn-by-turn timeline. Useful for post-mortems on expensive or high-friction sessions.
 
 ```bash
-claudewatch replay abc123def456
-claudewatch replay abc123 --from 10 --to 20
-claudewatch replay abc123 --json
+claudewatch replay                           # select from active sessions
+claudewatch replay abc123def456              # specific session
+claudewatch replay abc123 --from 10 --to 20  # range of turns
+claudewatch replay --json                    # JSON output
 ```
 
-**Args:** `<session-id>` (required)
+**Args:** `[session-id]` (optional)
+
+**Session Selection:**
+
+When `session-id` argument is not provided:
+- **Multiple active sessions** (modified within 15 min):
+  - **TTY environment:** Shows interactive numbered menu. User selects by number or Ctrl+C to cancel.
+  - **Non-TTY/piped:** Returns error with session list and suggests providing session ID.
+- **Single or zero active sessions:** Uses most recent session automatically.
 
 **Flags:**
 
 | Flag | Default | Description |
 |---|---|---|
+| `--session <id>` | auto-detected or most recent | Session ID to replay (same as positional arg) |
 | `--from <n>` | 1 | First turn to include (1-indexed) |
 | `--to <n>` | last turn | Last turn to include |
+| `--json` | false | Output as JSON for programmatic consumption |
 
 **Output:** Section header with session summary (total turns, total cost, friction count), then a table with columns: `Turn | Role | Tool | In Tok | Out Tok | Cost | F`. The `F` column is a friction marker.
 
@@ -547,7 +567,7 @@ claudewatch experiment report --project myproject
 |---|---|---|
 | `start` | `--project <name>`, `--note <text>` | Start a new experiment for a project |
 | `stop` | `--project <name>` | Stop the active experiment |
-| `tag` | `--project <name>`, `--variant <a\|b>`, `--session <id>` | Assign a session to a variant; defaults to most recent session |
+| `tag` | `--project <name>`, `--variant <a\|b>`, `--session <id>` | Assign a session to a variant. When `--session` is omitted, uses interactive selection from active sessions (TTY) or most recent (non-TTY/fallback). |
 | `report` | `--project <name>`, `--json` | Compare variant outcomes and declare a winner or "inconclusive" |
 
 **Output of `report`:** Comparison table showing avg cost, avg friction, and avg commits per variant, followed by a winner declaration or "inconclusive" if the difference is not statistically meaningful. With `--json`, returns the full per-variant metric breakdown.
