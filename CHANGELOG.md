@@ -2,6 +2,26 @@
 
 All notable changes to claudewatch are documented here.
 
+## [0.9.0] - 2026-03-04
+
+### Added
+
+- **Cross-session memory** — persistent working memory that tracks task history, blockers, and partial progress across Claude Code sessions. Turns claudewatch from a mirror (showing current state) into a journal (remembering past attempts).
+  - `memory show` CLI command displays tasks, blockers, and context hints for a project
+  - `memory clear` CLI command deletes working memory with confirmation prompt
+  - `get_task_history` MCP tool queries previous task attempts by description (substring match, case-insensitive)
+  - `get_blockers` MCP tool lists known blockers with date filtering (default: last 30 days)
+  - SessionStart hook lazy evaluation: on session N+1 start, checks if session N has been extracted yet; if not, extracts task and blocker data retroactively
+  - Task detection via `SessionFacet.UnderlyingGoal` (AI-generated task description already in data)
+  - Blocker extraction from `SessionFacet.FrictionCounts` and `Outcome` fields
+  - Status mapping: `fully_achieved` → completed, `not_achieved` → abandoned, otherwise in_progress
+  - Storage: `~/.config/claudewatch/projects/<project>/working-memory.json`
+  - Implemented via SAW v0.3.9 (3 waves, 4 agents, Scout phase, zero conflicts, ~25 min implementation time)
+
+### Implementation Notes
+
+Cross-session memory uses **SessionStart lazy evaluation** as a workaround for Claude Code's missing SessionEnd hook. When a session starts, the hook checks if the previous session for this project has been extracted yet. If not, it extracts task and blocker data from session metadata and facets before printing the briefing. This one-session delay is acceptable: memory from session N becomes available in session N+1.
+
 ## [0.8.1] - 2026-03-04 (Released)
 
 ### Fixed
