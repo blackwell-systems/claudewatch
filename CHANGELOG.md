@@ -2,6 +2,20 @@
 
 All notable changes to claudewatch are documented here.
 
+## [0.9.1] - 2026-03-04
+
+### Added
+
+- **On-demand memory extraction** — two new ways to extract working memory immediately instead of waiting for the next session:
+  - `memory extract` CLI command: manual checkpoint for long sessions or before risky operations. Extracts from current active session by default, or use `--session-id` to target a specific session.
+  - `extract_current_session_memory` MCP tool: Claude can trigger mid-session when reaching milestones or before potentially destructive operations. Returns structured JSON with extraction results (task identifier, status, commit count, blocker count).
+  - Both methods write to the same storage format (`~/.config/claudewatch/projects/<project>/working-memory.json`) and are immediately queryable via `get_task_history` and `get_blockers`.
+  - Tool count: 28 → 29 MCP tools
+
+### Changed
+
+- **Extraction logic refactored** — moved from `internal/app/memory_extract.go` to new `internal/memory` package to break import cycle between `app` and `mcp` packages. This allows both CLI commands and MCP tools to share extraction functions without circular dependencies.
+
 ## [0.9.0] - 2026-03-04
 
 ### Added

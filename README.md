@@ -25,7 +25,7 @@ Claude Code already records rich session data locally -- tool usage, friction ev
 
 **Give Claude a mirror.** `claudewatch install` writes a behavioral contract into `~/.claude/CLAUDE.md`. Two shell hooks — `claudewatch startup` (SessionStart) and `claudewatch hook` (PostToolUse) — orient Claude at session start and alert it mid-session when thresholds are crossed. The MCP server gives Claude queryable access to its own project health, agent history, and live session metrics. Together these form a self-monitoring layer that runs inside every Claude Code session: Claude knows what project it's on, what friction it generated last time, and when to stop and reassess — without requiring you to prompt it explicitly.
 
-Cross-session memory tracks task history, blockers, and partial progress across sessions. When you return to a task, Claude can query "what did we try before?" via `get_task_history` and "what blockers did we hit?" via `get_blockers`. The SessionStart hook automatically extracts memory from completed sessions — no manual logging required. View stored memory with `claudewatch memory show`, or let Claude query it directly mid-session.
+Cross-session memory tracks task history, blockers, and partial progress across sessions. When you return to a task, Claude can query "what did we try before?" via `get_task_history` and "what blockers did we hit?" via `get_blockers`. The SessionStart hook automatically extracts memory from completed sessions — no manual logging required. For long sessions or before risky operations, use `claudewatch memory extract` or the `extract_current_session_memory` MCP tool to checkpoint immediately. View stored memory with `claudewatch memory show`, or let Claude query it directly mid-session.
 
 For multi-repo workflows, weighted attribution automatically routes sessions to their dominant project based on which files were actually touched, not just launch directory. Drift detection identifies when a session shifts from writing to reading-only (a signal you're stuck exploring). Factor analysis correlates session attributes against outcomes to answer "what predicts success on this project?" — all queryable by Claude mid-session.
 
@@ -246,7 +246,7 @@ Then add the MCP server to `~/.claude.json`:
 |---|---|
 | 📗 [Quickstart](docs/quickstart.md) | Install, baseline, fix, measure — the full cycle in one guide |
 | 📘 [CLI Reference](docs/cli.md) | All commands and flags: `scan`, `metrics`, `gaps`, `suggest`, `fix`, `track`, `log`, `watch`, `hook`, `startup`, `install` |
-| 📙 [MCP Reference](docs/mcp.md) | All 28 MCP tools, setup, recommended usage pattern, and data freshness notes |
+| 📙 [MCP Reference](docs/mcp.md) | All 29 MCP tools, setup, recommended usage pattern, and data freshness notes |
 | 📕 [Effectiveness Scoring](docs/effectiveness.md) | How CLAUDE.md before/after scoring works, how to read verdicts, and what to do with regressions |
 
 ---
@@ -261,7 +261,7 @@ Then add the MCP server to `~/.claude.json`:
 | `correlate` | Correlate session attributes against outcomes (friction, commits, cost, etc.) to find what predicts success |
 | `suggest` | Ranked improvements with impact scores |
 | `fix` | Generate and apply CLAUDE.md patches from session data |
-| `memory` | View or clear cross-session task history and blockers (`memory show`, `memory clear`) |
+| `memory` | View, extract, or clear cross-session task history and blockers (`memory show`, `memory extract`, `memory clear`) |
 | `track` | Snapshot metrics to SQLite, diff against previous |
 | `log` | Inject custom metrics (scale, boolean, counter, duration) |
 | `watch` | Background daemon with desktop alerts on friction spikes |
@@ -303,7 +303,7 @@ Claude doesn't understand itself. It has no native access to its own session his
 
 claudewatch is the mirror that lets Claude see itself. The MCP server transforms raw transcript data into structured, queryable tools so that Claude can ask "how long did that parallel agent run take?" or "what has this session cost so far?" and get an answer it can immediately reason about — without leaving the session, without parsing JSONL, and without spending context on plumbing.
 
-The 28 MCP tools operate at two time scales:
+The 29 MCP tools operate at two time scales:
 
 - **Historical** — project health, agent performance, friction patterns, effectiveness scores. Claude queries its own track record to make better decisions: "plan agents get killed 40% of the time on this project, skip plan mode."
 - **Live** — token velocity, commit-to-attempt ratio, tool error rate, friction events. Claude monitors its own session in real time: "I'm generating errors at 30% rate, slow down and read more before editing."
@@ -394,6 +394,7 @@ claudewatch mcp --budget 20        # enable daily budget tracking ($20 limit)
 |------|-------------|
 | `get_task_history` | Query previous task attempts by description — returns task status, blockers encountered, solutions, and commits |
 | `get_blockers` | List known blockers for a project with date filtering — file-specific issues, solutions, and frequency of occurrence |
+| `extract_current_session_memory` | Extract and store memory from the current active session immediately — checkpoint for long sessions or before risky operations |
 
 *Session management:*
 
