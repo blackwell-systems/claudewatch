@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/blackwell-systems/claudewatch/internal/claude"
 	"github.com/blackwell-systems/claudewatch/internal/config"
@@ -55,6 +57,14 @@ If --project is not specified, derives project name from current directory.`,
 	RunE: runMemoryExtract,
 }
 
+var memoryStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show cross-session memory summary across all projects",
+	Long: `Display a summary of stored working memory: task counts, blocker counts,
+and last extraction time across all projects.`,
+	RunE: runMemoryStatus,
+}
+
 func init() {
 	memoryCmd.PersistentFlags().StringVar(&memoryFlagProject, "project", "", "Project name (defaults to basename of current directory)")
 
@@ -63,6 +73,7 @@ func init() {
 	memoryCmd.AddCommand(memoryShowCmd)
 	memoryCmd.AddCommand(memoryClearCmd)
 	memoryCmd.AddCommand(memoryExtractCmd)
+	memoryCmd.AddCommand(memoryStatusCmd)
 
 	rootCmd.AddCommand(memoryCmd)
 }
@@ -371,4 +382,191 @@ func runMemoryExtract(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("\nMemory extracted from session %s\n", targetSessionID[:7])
 	return nil
+}
+
+func runMemoryStatus(cmd *cobra.Command, args []string) error {
+	if flagNoColor {
+		output.SetNoColor(true)
+	}
+
+	// Scan for all projects with working memory
+	projectsDir := filepath.Join(config.ConfigDir(), "projects")
+
+	entries, err := os.ReadDir(projectsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Println("No working memory found yet.")
+			return nil
+		}
+		return fmt.Errorf("reading projects directory: %w", err)
+	}
+
+	type projectSummary struct {
+		name         string
+		taskCount    int
+		blockerCount int
+		lastUpdated  time.Time
+	}
+
+	var summaries []projectSummary
+	totalTasks := 0
+	totalBlockers := 0
+	var mostRecentUpdate time.Time
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		projectName := entry.Name()
+		storePath := filepath.Join(projectsDir, projectName, "working-memory.json")
+
+		// Check if working-memory.json exists
+		if _, err := os.Stat(storePath); os.IsNotExist(err) {
+			continue
+		}
+
+		memStore := store.NewWorkingMemoryStore(storePath)
+		wm, err := memStore.Load()
+		if err != nil {
+			continue // Skip projects with corrupt memory files
+		}
+
+		taskCount := len(wm.Tasks)
+		blockerCount := len(wm.Blockers)
+
+		if taskCount == 0 && blockerCount == 0 {
+			continue // Skip empty memory
+		}
+
+		summaries = append(summaries, projectSummary{
+			name:         projectName,
+			taskCount:    taskCount,
+			blockerCount: blockerCount,
+			lastUpdated:  wm.LastScanned,
+		})
+
+		totalTasks += taskCount
+		totalBlockers += blockerCount
+
+		if wm.LastScanned.After(mostRecentUpdate) {
+			mostRecentUpdate = wm.LastScanned
+		}
+	}
+
+	if len(summaries) == 0 {
+		fmt.Println("No working memory found yet.")
+		fmt.Println("\nMemory is automatically extracted from completed sessions.")
+		fmt.Println("Run 'claudewatch memory extract' to checkpoint the current session.")
+		return nil
+	}
+
+	// Display summary
+	fmt.Println(output.Section("Cross-session Memory Status"))
+	fmt.Println()
+
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Tasks stored:"),
+		output.StyleValue.Render(fmt.Sprintf("%d (across %d projects)", totalTasks, len(summaries))))
+
+	fmt.Printf(" %s %s\n",
+		output.StyleLabel.Render("Blockers recorded:"),
+		output.StyleValue.Render(fmt.Sprintf("%d", totalBlockers)))
+
+	if !mostRecentUpdate.IsZero() {
+		fmt.Printf(" %s %s\n",
+			output.StyleLabel.Render("Last extraction:"),
+			output.StyleValue.Render(formatTimeSince(mostRecentUpdate)))
+	}
+
+	// Find most recent task
+	var mostRecentTask *store.TaskMemory
+	var mostRecentProject string
+	for _, summary := range summaries {
+		storePath := filepath.Join(projectsDir, summary.name, "working-memory.json")
+		memStore := store.NewWorkingMemoryStore(storePath)
+		wm, err := memStore.Load()
+		if err != nil {
+			continue
+		}
+
+		for _, task := range wm.Tasks {
+			if mostRecentTask == nil || task.LastUpdated.After(mostRecentTask.LastUpdated) {
+				mostRecentTask = task
+				mostRecentProject = summary.name
+			}
+		}
+	}
+
+	if mostRecentTask != nil {
+		fmt.Printf(" %s %s %s\n",
+			output.StyleLabel.Render("Most recent task:"),
+			output.StyleValue.Render(fmt.Sprintf("\"%s\"", mostRecentTask.TaskIdentifier)),
+			output.StyleMuted.Render(fmt.Sprintf("(%s, %s)", mostRecentTask.Status, mostRecentProject)))
+	}
+
+	fmt.Println()
+	fmt.Printf(" %s\n", output.StyleBold.Render("Projects with memory:"))
+	fmt.Println()
+
+	// Sort summaries by task count descending
+	sort.Slice(summaries, func(i, j int) bool {
+		return summaries[i].taskCount > summaries[j].taskCount
+	})
+
+	for _, summary := range summaries {
+		taskPlural := "task"
+		if summary.taskCount != 1 {
+			taskPlural = "tasks"
+		}
+		blockerPlural := "blocker"
+		if summary.blockerCount != 1 {
+			blockerPlural = "blockers"
+		}
+
+		fmt.Printf("   %s  %d %s, %d %s\n",
+			output.StyleBold.Render(summary.name),
+			summary.taskCount,
+			taskPlural,
+			summary.blockerCount,
+			blockerPlural)
+	}
+
+	fmt.Println()
+	fmt.Printf(" %s\n", output.StyleMuted.Render("Run 'claudewatch memory show --project <name>' for details"))
+
+	return nil
+}
+
+// formatTimeSince returns a human-readable "X ago" string from a timestamp.
+func formatTimeSince(t time.Time) string {
+	if t.IsZero() {
+		return "never"
+	}
+
+	duration := time.Since(t)
+
+	if duration < time.Minute {
+		return "just now"
+	}
+	if duration < time.Hour {
+		minutes := int(duration.Minutes())
+		if minutes == 1 {
+			return "1 minute ago"
+		}
+		return fmt.Sprintf("%d minutes ago", minutes)
+	}
+	if duration < 24*time.Hour {
+		hours := int(duration.Hours())
+		if hours == 1 {
+			return "1 hour ago"
+		}
+		return fmt.Sprintf("%d hours ago", hours)
+	}
+
+	days := int(duration.Hours() / 24)
+	if days == 1 {
+		return "1 day ago"
+	}
+	return fmt.Sprintf("%d days ago", days)
 }
