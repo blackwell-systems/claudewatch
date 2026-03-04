@@ -7,37 +7,36 @@
 
 Observability and memory for Claude Code : Claude monitors its own friction, queries past attempts, and checkpoints progress across sessions.
 
-## The loop (60 seconds)
+## What it does
 
-```bash
-claudewatch scan                  # Baseline every project (readiness score 0-100)
-claudewatch gaps                  # What's missing: context, hooks, chronic friction
-claudewatch suggest --limit 5     # Ranked fixes by impact
-claudewatch fix myproject         # Apply CLAUDE.md improvements interactively
-claudewatch track                 # Prove it worked (before/after metrics)
+**Claude monitors itself.** Real-time alerts on error loops, context pressure, cost spikes, and drift—inside the session where decisions are made. No dashboards to check later, no manual debugging loops.
+
+**Claude remembers.** Task Memory tracks what was attempted, what failed, and why—across sessions. Mid-session, Claude queries:
+- `get_task_history("authentication")` → "We tried JWT last week, hit rate limits, pivoted to sessions"
+- `get_blockers()` → "File X consistently breaks the linter, solution: run gofmt pre-commit"
+- `get_drift_signal()` → "You're reading without writing—stuck exploring or avoiding implementation?"
+
+**You measure and improve.** Friction rates, cost-per-commit, agent success rates. Data-driven CLAUDE.md patches generated from your actual friction patterns, not templates.
+
+**Enable:** `claudewatch install` (hooks + MCP) + restart Claude Code.
+
+## Quick demo
+
+**Claude's view (during a session):**
+```
+⚠ Drift detected: 8 consecutive reads, 0 writes in last 15 tools
+→ Claude calls get_drift_signal() → "stuck exploring"
+→ Claude calls get_blockers() → finds known linting issue
+→ Applies documented solution instead of rediscovering it
 ```
 
-Enable self-monitoring: `claudewatch install` (hooks + MCP) + restart Claude Code.
-
-## What you get
-
-**Measure where you are:**
-- Friction rate, cost-per-commit, agent success rates : track what's costing you time
-- CLAUDE.md effectiveness scoring : before/after comparison (-100..+100)
-- Model usage analysis : overspend detection, cost attribution by tool type
-- Project confidence scoring : where Claude acts vs stuck reading
-
-**Give Claude a mirror:**
-- **Task Memory** : Claude queries "what did we try before?" and "what blockers did we hit?"
-- **Live self-monitoring** : alerts on error loops, context pressure, cost spikes, drift
-- **Project health briefings** : injected at session start with friction history
-- **Behavioral protocols** : explicit WHEN→DO triggers for memory tools
-
-**Fix what's broken:**
-- Data-driven CLAUDE.md patches : generated from actual friction patterns, not templates
-- Ranked suggestions by impact : see what to fix first
-- Track changes over time : prove edits reduced friction or cost
-- Automatic memory extraction : no manual logging required
+**Your view (between sessions):**
+```bash
+claudewatch metrics --days 30    # Friction rate: 45% → 32%
+claudewatch gaps                 # Missing: testing section in CLAUDE.md
+claudewatch suggest --limit 3    # Top fix: add post-edit lint hook (impact: 6.3)
+claudewatch fix myproject        # Apply patches interactively
+```
 
 **All local.** Reads `~/.claude/` files on disk. No network calls. No telemetry.
 
