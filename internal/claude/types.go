@@ -61,30 +61,30 @@ type LongestSession struct {
 
 // SessionMeta represents per-session metadata from ~/.claude/usage-data/session-meta/*.json.
 type SessionMeta struct {
-	SessionID             string         `json:"session_id"`
-	ProjectPath           string         `json:"project_path"`
-	StartTime             string         `json:"start_time"`
-	DurationMinutes       int            `json:"duration_minutes"`
-	UserMessageCount      int            `json:"user_message_count"`
-	AssistantMessageCount int            `json:"assistant_message_count"`
-	ToolCounts            map[string]int `json:"tool_counts"`
-	Languages             map[string]int `json:"languages"`
-	GitCommits            int            `json:"git_commits"`
-	GitPushes             int            `json:"git_pushes"`
-	InputTokens           int            `json:"input_tokens"`
-	OutputTokens          int            `json:"output_tokens"`
-	FirstPrompt           string         `json:"first_prompt"`
-	UserInterruptions     int            `json:"user_interruptions"`
-	UserResponseTimes     []float64      `json:"user_response_times"`
-	ToolErrors            int            `json:"tool_errors"`
-	ToolErrorCategories   map[string]int `json:"tool_error_categories"`
-	UsesTaskAgent         bool           `json:"uses_task_agent"`
-	UsesMCP               bool           `json:"uses_mcp"`
-	UsesWebSearch         bool           `json:"uses_web_search"`
-	UsesWebFetch          bool           `json:"uses_web_fetch"`
-	LinesAdded            int            `json:"lines_added"`
-	LinesRemoved          int            `json:"lines_removed"`
-	FilesModified         int            `json:"files_modified"`
+	SessionID             string                `json:"session_id"`
+	ProjectPath           string                `json:"project_path"`
+	StartTime             string                `json:"start_time"`
+	DurationMinutes       int                   `json:"duration_minutes"`
+	UserMessageCount      int                   `json:"user_message_count"`
+	AssistantMessageCount int                   `json:"assistant_message_count"`
+	ToolCounts            map[string]int        `json:"tool_counts"`
+	Languages             map[string]int        `json:"languages"`
+	GitCommits            int                   `json:"git_commits"`
+	GitPushes             int                   `json:"git_pushes"`
+	InputTokens           int                   `json:"input_tokens"`
+	OutputTokens          int                   `json:"output_tokens"`
+	FirstPrompt           string                `json:"first_prompt"`
+	UserInterruptions     int                   `json:"user_interruptions"`
+	UserResponseTimes     []float64             `json:"user_response_times"`
+	ToolErrors            int                   `json:"tool_errors"`
+	ToolErrorCategories   map[string]int        `json:"tool_error_categories"`
+	UsesTaskAgent         bool                  `json:"uses_task_agent"`
+	UsesMCP               bool                  `json:"uses_mcp"`
+	UsesWebSearch         bool                  `json:"uses_web_search"`
+	UsesWebFetch          bool                  `json:"uses_web_fetch"`
+	LinesAdded            int                   `json:"lines_added"`
+	LinesRemoved          int                   `json:"lines_removed"`
+	FilesModified         int                   `json:"files_modified"`
 	MessageHours          []int                 `json:"message_hours"`
 	UserMessageTimestamps []string              `json:"user_message_timestamps"`
 	ModelUsage            map[string]ModelStats `json:"model_usage,omitempty"`
