@@ -603,3 +603,53 @@ After each wave completes, work through the Orchestrator Post-Merge Checklist be
 | 2 | D | Attribute command integration | TO-DO |
 | 2 | E | Test coverage for session discovery and menu UI | TO-DO |
 | — | Orch | Post-merge integration + binary install | TO-DO |
+
+---
+
+### Agent A - Completion Report
+
+```yaml
+status: complete
+worktree: .claude/worktrees/wave1-agent-A
+commit: 8aad0787b392385a7f1d106bb1ca46eb282a36d0
+files_changed:
+  - internal/store/sessions.go
+files_created:
+  - internal/store/sessions_test.go
+interface_deviations: []
+out_of_scope_deps: []
+tests_added:
+  - TestFindActiveSessions_MultipleActive
+  - TestFindActiveSessions_SingleActive
+  - TestFindActiveSessions_NoneActive
+  - TestFindActiveSessions_NoProjectsDir
+  - TestFindActiveSessions_EmptyProjectsDir
+  - TestFindActiveSessions_SortOrder
+  - TestFindActiveSessions_IgnoresNonJsonlFiles
+  - TestFindActiveSessions_NestedProjectStructure
+verification: PASS (go test ./internal/store -run TestFindActiveSessions - 8/8 tests)
+```
+
+**Implementation Notes:**
+
+The `FindActiveSessions` function was implemented following the pattern established by `findTranscriptFile` in `internal/store/attribution.go`. Key implementation details:
+
+1. **Directory traversal**: Uses `filepath.WalkDir` to scan `claudeHome/projects/` for .jsonl files
+2. **Time filtering**: Compares file modification time against `time.Now().Add(-activeThreshold)` to identify active sessions
+3. **Error handling**: Follows existing pattern of silently skipping files with errors (using `return nil //nolint:nilerr`)
+4. **Sorting**: Results are sorted by `LastModified` descending (most recent first) using `sort.Slice`
+5. **Edge cases**: Returns `(nil, nil)` when no active sessions found or projects directory doesn't exist
+
+**Test Coverage:**
+
+Eight test cases cover all edge cases and requirements:
+- Multiple active sessions with proper sorting
+- Single active session
+- No active sessions (all files beyond threshold)
+- Missing projects directory
+- Empty projects directory
+- Sort order verification
+- Filtering non-.jsonl files
+- Nested project directory structure
+
+All tests pass with no errors. Build and vet complete successfully.
