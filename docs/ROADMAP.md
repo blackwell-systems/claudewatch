@@ -16,7 +16,7 @@ A progression from monitoring tool to AI Ops platform. Items are ordered within 
 - Per-project anomaly baselines (z-score detection)
 - Doctor command with baseline coverage check
 - PostToolUse and SessionStart hooks
-- MCP server (26 tools across 6 categories)
+- MCP server (28 tools across 7 categories)
 - Per-turn cost attribution (`claudewatch attribute`, `get_cost_attribution` MCP)
 - Session replay timeline (`claudewatch replay`)
 - CLAUDE.md A/B testing (`claudewatch experiment start|stop|tag|report`)
@@ -25,6 +25,7 @@ A progression from monitoring tool to AI Ops platform. Items are ordered within 
 - Automated regression detection (`get_regression_status` MCP) — shipped v0.7.9
 - Multi-project attribution (weighted repo tracking, `get_session_projects` MCP) — shipped v0.8.0
 - Drift detection (`get_drift_signal` MCP) — shipped v0.8.0
+- Cross-session memory (`memory show|clear` CLI, `get_task_history`/`get_blockers` MCP, SessionStart lazy extraction) — shipped v0.9.0
 
 ---
 
@@ -104,52 +105,46 @@ New analytical capabilities building on existing observability layer.
 
 These require architectural additions beyond analysis of local session data.
 
-### Cross-Session Memory
+~~### Cross-Session Memory~~
 
-**What:** Persistent working memory that accumulates across sessions, tracking task history, blockers, partial progress, and learnings. Turns claudewatch from a mirror into a journal.
+~~**Shipped in v0.9.0.** SessionStart lazy extraction, `memory show|clear` CLI, `get_task_history`/`get_blockers` MCP tools.~~
 
-**Why:** Claude currently has no memory of what failed yesterday. Each session starts fresh, repeating mistakes and re-discovering blockers.
+---
 
-**Examples:**
-- "You attempted this refactor 2 sessions ago, got blocked on circular imports at src/core/auth.go, abandoned after 45 minutes."
-- "This is your 4th session on ticket #847. Previous attempts: 1) stuck on tests (zero commits), 2) partial implementation (reverted), 3) wrong approach (abandoned). Common blocker: missing IUserRepository interface."
-- "Last 5 sessions on this codebase all needed file X for context. Auto-injecting."
+### Memory-Commit Integration (commitmux enrichment)
 
-**Approach:**
-- `.claude/projects/<project>/working-memory.json` — task history, blockers, partial progress
-- SessionStart hook reads and injects relevant context: "Resuming work on <task>. Previous attempt blocked by: <issue>."
-- SessionEnd hook (new) updates memory with outcomes, blockers, learnings
-- MCP tool: `get_task_history` — query previous attempts on similar work
+**What:** Enrich cross-session memory with commit details from commitmux. Connect the "why" (task goals, blockers) with the "what" (actual code changes).
 
-**Data model:**
-```json
-{
-  "tasks": {
-    "implement-multi-project-attribution": {
-      "sessions": ["abc123", "def456"],
-      "status": "completed",
-      "blockers_hit": ["import cycle between store and claude"],
-      "solution": "mirrored types in both packages",
-      "commits": ["10ac134", "b77db73"]
-    }
-  },
-  "blockers": [
-    {
-      "file": "internal/store/project_weights.go",
-      "issue": "import cycle if importing claude package",
-      "solution": "mirror types locally",
-      "encountered": ["2026-03-03"]
-    }
-  ],
-  "context_hints": [
-    "internal/claude/active.go is always needed for live session work"
-  ]
+**Why:** Memory currently stores commit SHAs as strings. Claude has to manually query commitmux to see what changed. Automatic enrichment creates a complete narrative: "We attempted X, hit blocker Y in file Z, solved it with commit ABC: [diff summary]."
+
+**Approach (phased):**
+
+**Phase 1 (passive):** Already shipped. Memory stores commit SHAs, Claude queries both tools manually.
+
+**Phase 2 (auto-enrichment):** Enhance `ExtractTaskMemory` to populate Solution field automatically:
+```go
+if status == "completed" && len(commits) > 0 {
+    // Query: commitmux get-patch <repo> <sha>
+    solution = extractSolutionFromCommit(commits[0])
+    // Returns: "Modified auth.go: added token refresh logic"
 }
 ```
+Guard: only runs if commitmux binary exists and repo is indexed.
 
-**New hooks:** `SessionEnd` (write memory)
-**New MCP:** `get_task_history`, `get_blockers`
-**New CLI:** `claudewatch memory show|clear [--project <name>]`
+**Phase 3 (MCP enrichment):** Add `enrich_commits` parameter to `get_task_history`:
+```json
+{
+  "query": "auth",
+  "enrich_commits": true  // Fetch full commit details from commitmux
+}
+```
+Returns task history WITH commit messages and diff summaries on-demand.
+
+**Phase 4 (solution mining):** Extract patterns from diffs ("added retry logic", "fixed race condition"), store pattern taxonomy, enable pattern-based search: "How did we solve retry logic before?"
+
+**Decision criteria:** Measure memory query usage for 10-20 sessions. If Claude uses `get_task_history` ≥3x per session, Phase 2 ROI is clear.
+
+**Depends on:** Cross-session memory (shipped), commitmux indexing
 
 ---
 
@@ -245,7 +240,8 @@ These require inference or generative capabilities beyond pattern aggregation.
 | ~~Drift detection~~ | ~~2~~ | ~~✓ v0.8.0~~ | ~~—~~ | ~~`get_drift_signal`~~ |
 | Predictive Intelligence | 2.5 | Proposed | — | `get_trajectory_prediction` |
 | Cost forecasting | 2.5 | Proposed | — | `get_cost_forecast` |
-| Cross-Session Memory | 3 | Proposed | `memory` | `get_task_history`, `get_blockers` |
+| ~~Cross-Session Memory~~ | ~~3~~ | ~~✓ v0.9.0~~ | ~~`memory`~~ | ~~`get_task_history`, `get_blockers`~~ |
+| Memory-Commit Integration | 3 | Proposed | — | `get_task_history` (enriched) |
 | Closed-Loop Adaptation | 3 | Proposed | — | — |
 | Metrics export | 3 | Proposed | `export` | — |
 | Policy/rule engine | 3 | Proposed | — | — |
