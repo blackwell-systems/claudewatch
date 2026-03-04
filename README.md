@@ -301,6 +301,7 @@ Then add the MCP server to `~/.claude.json`:
 | `track` | Snapshot metrics to SQLite, diff against previous |
 | `log` | Inject custom metrics (scale, boolean, counter, duration) |
 | `watch` | Background daemon with desktop alerts on friction spikes |
+| `export` | Export aggregated metrics to external observability platforms (Prometheus, Grafana, Datadog) |
 | `mcp` | Run an MCP stdio server : gives Claude real-time access to its own session metrics |
 | `hook` | PostToolUse shell hook : checks for error loops, context pressure, cost spikes, and drift (read-heavy loops); exits 2 with a self-contained alert if action is needed |
 | `startup` | SessionStart shell hook : prints a compact briefing into Claude's context: project health, session count, friction level, MCP tool manifest |
@@ -332,6 +333,38 @@ claudewatch watch --stop              # stop background daemon
 ```
 
 Notifies on: friction spikes, new stale patterns, agent kill rate increases, zero-commit streaks.
+
+### `claudewatch export`
+
+Export aggregated metrics to external observability platforms for team-wide dashboards and monitoring.
+
+```bash
+# Export to stdout (Prometheus format)
+claudewatch export --format prometheus
+
+# Filter to specific project
+claudewatch export --format prometheus --project myapp --days 7
+
+# Write to file
+claudewatch export --format prometheus --output /tmp/metrics.prom
+
+# Integrate with Prometheus Pushgateway
+claudewatch export --format prometheus | \
+  curl --data-binary @- http://pushgateway:9091/metrics/job/claudewatch
+```
+
+**Privacy:** Only safe aggregates are exported (session counts, friction rates, cost totals). No transcript content, file paths, or credentials are ever included. See [docs/EXPORT.md](docs/EXPORT.md) for complete documentation.
+
+**Supported formats:**
+- **prometheus**: Prometheus text format (default)
+
+**Integrations:**
+- Prometheus Pushgateway (push-based collection)
+- Prometheus Node Exporter (textfile collector)
+- Grafana dashboards (visualization and alerting)
+- Datadog, CloudWatch (via exporter bridges)
+
+See [examples/](examples/) directory for integration scripts.
 
 ### `claudewatch mcp`
 
