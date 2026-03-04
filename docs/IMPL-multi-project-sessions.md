@@ -242,7 +242,7 @@ func resolveProjectWeights(sessionID, projectPath string, tags map[string]string
 | File | Contents | Import path | Status |
 |------|----------|-------------|--------|
 | `internal/claude/repo_extract.go` | `ProjectWeight` struct (stub only) | `github.com/blackwell-systems/claudewatch/internal/claude` | committed (ad7457b) |
-| `internal/mcp/project_filter.go` | `sessionMatchesProject` + `sessionPrimaryProject` (stub only) | `github.com/blackwell-systems/claudewatch/internal/mcp` | committed (ad7457b — partial: uses local projectWeightRef, store.ProjectWeight pending Wave 1B) |
+| `internal/mcp/project_filter.go` | `sessionMatchesProject` + `sessionPrimaryProject` (stub only) | `github.com/blackwell-systems/claudewatch/internal/mcp` | committed (e5ebb98 — final: uses store.ProjectWeight signatures) |
 
 **Scaffold 1 (`claude/repo_extract.go`):** Installed before Wave 1. Wave 1 Agent A replaces it with the full implementation. Required so all agents can import `claude.ProjectWeight`.
 
@@ -1040,9 +1040,11 @@ After all waves are merged, the orchestrator performs these integration steps:
 
 | Wave | Agent | Description | Status |
 |------|-------|-------------|--------|
-| 1 | A | Repo extraction parser (`claude/repo_extract.go`) | DONE |
-| 1 | B | Project weights store (`store/project_weights.go`) | DONE |
-| 2 | A | Multi-project MCP tool (`mcp/multiproject_tools.go`) | TO-DO |
+| — | Scaffold | `claude/repo_extract.go` stub + `mcp/project_filter.go` stub | DONE (ad7457b) |
+| 1 | A | Repo extraction parser (`claude/repo_extract.go`) | DONE (734df33) |
+| 1 | B | Project weights store (`store/project_weights.go`) | DONE (8dcc9e2) |
+| 2 | A | Multi-project MCP tool (`mcp/multiproject_tools.go`) | DONE (b6443bf) |
+| — | Scaffold | `mcp/project_filter.go` final (store.ProjectWeight signatures) | DONE (e5ebb98) |
 | 3 | A | Filter tool integration (health, anomaly, regression) | TO-DO |
 | 3 | B | Group tool integration (comparison, cost) | TO-DO |
 | — | Orch | Post-merge integration + binary install | TO-DO |
@@ -1097,3 +1099,25 @@ tests_added:
   - TestComputeProjectWeights_Fallback
   - TestResolveRepoRoot_Cache
 verification: PASS
+
+### Wave 2 Agent A - Completion Report
+status: complete
+worktree: .claude/worktrees/wave2-agent-A
+commit: b6443bf
+files_created:
+  - internal/mcp/multiproject_tools.go
+  - internal/mcp/multiproject_tools_test.go
+interface_deviations:
+  - []
+tests_added:
+  - TestHandleGetSessionProjects_NoFilePaths
+  - TestHandleGetSessionProjects_CachedWeights
+  - TestHandleGetSessionProjects_NoSession
+tests_passed: 3
+verification: PASS
+notes: |
+  Renamed test helper to writeMultiProjectJSONL to avoid conflict with
+  existing writeTranscriptJSONL in saw_tools_test.go. Test for NoFilePaths
+  required care with directory sort order: the hash dir must sort after
+  the session-id dir so ParseAllSessionMeta finds the stub with correct
+  cwd first. Used "z-hash-abc" to ensure correct ordering.
