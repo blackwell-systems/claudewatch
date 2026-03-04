@@ -287,7 +287,7 @@ claudewatch watch --stop              # stop background daemon
 
 ### hook
 
-PostToolUse shell hook subcommand. Checks the active session for three warning conditions in priority order: (1) ≥3 consecutive tool errors, (2) context window at "pressure" or "critical", (3) cost velocity "burning". Exits 0 silently if all clear; exits 2 with a self-contained stderr message naming `get_session_dashboard` and what it returns when a threshold is crossed. Rate-limited to one alert per 30 seconds via a timestamp file at `~/.cache/claudewatch-hook.ts`.
+PostToolUse shell hook subcommand. Checks the active session for four warning conditions in priority order: (1) ≥3 consecutive tool errors, (2) context window at "pressure" or "critical", (3) cost velocity "burning", (4) drift (read-heavy loop: ≥60% reads, 0 writes in last 15 tools). Exits 0 silently if all clear; exits 2 with a self-contained stderr message naming the relevant MCP tool to call when a threshold is crossed. Rate-limited to one alert per 30 seconds via a timestamp file at `~/.cache/claudewatch-hook.ts`.
 
 When the consecutive error condition fires, the alert includes chronic pattern context if a friction type appears in more than 30% of the project's last 10 sessions and CLAUDE.md has not been updated in the past 14 days. In that case the alert reads:
 

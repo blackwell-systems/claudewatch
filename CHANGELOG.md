@@ -7,6 +7,7 @@ All notable changes to claudewatch are documented here.
 ### Added
 
 - **`claudewatch memory status`** — new command shows cross-project memory summary: total tasks and blockers across all projects, last extraction timestamp, most recent task with status, and per-project breakdown sorted by task count. Provides immediate feedback that the memory system is working and visibility into what Claude can query via `get_task_history` and `get_blockers`.
+- **Drift detection in PostToolUse hook** — hook now fires on read-heavy loops: when you've made at least one edit in the session but the last 15 tool calls are ≥60% reads with zero writes, the hook exits 2 with a specific alert suggesting `get_drift_signal` or `get_blockers()`. Catches stuck exploration patterns early (after 8-10 consecutive reads) instead of waiting for harder thresholds like consecutive errors.
 
 ## [0.9.0] - 2026-03-04
 

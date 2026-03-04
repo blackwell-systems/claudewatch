@@ -28,9 +28,10 @@ var hookCmd = &cobra.Command{
   1. Consecutive tool errors >= 3
   2. Context pressure at "pressure" or "critical"
   3. Cost velocity "burning"
+  4. Drift: read-heavy loop (>=60% reads, 0 writes in last 15 tools)
 
 Exit 0 if all clear (silent). Exit 2 if a threshold is exceeded, with one
-actionable line printed to stderr naming the get_session_dashboard MCP tool.
+actionable line printed to stderr naming the relevant MCP tool to call.
 
 Rate-limited to one check per 30 seconds to minimize overhead.
 
@@ -96,6 +97,13 @@ func runHook(cmd *cobra.Command, args []string) {
 	}
 	if cost, err := claude.ParseLiveCostVelocity(activePath, 10, pricing); err == nil && cost.Status == "burning" {
 		fmt.Fprintf(os.Stderr, "⚠ Cost velocity burning ($%.3f/min over last 10 min). Call get_session_dashboard (claudewatch MCP) to identify the source before continuing.\n", cost.CostPerMinute)
+		os.Exit(2)
+	}
+
+	// Priority 4: drift detection (stuck in read loop).
+	if drift, err := claude.ParseLiveDriftSignal(activePath, 15); err == nil && drift.Status == "drifting" {
+		fmt.Fprintf(os.Stderr, "⚠ Drift detected: %d consecutive reads, 0 writes in last %d tools (%.0f%% read-heavy). Call get_drift_signal (claudewatch MCP) for analysis or get_blockers() if investigating an error.\n",
+			drift.ReadCalls, drift.WindowN, float64(drift.ReadCalls)*100/float64(drift.WindowN))
 		os.Exit(2)
 	}
 }

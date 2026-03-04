@@ -286,7 +286,7 @@ Then add the MCP server to `~/.claude.json`:
 | `log` | Inject custom metrics (scale, boolean, counter, duration) |
 | `watch` | Background daemon with desktop alerts on friction spikes |
 | `mcp` | Run an MCP stdio server — gives Claude real-time access to its own session metrics |
-| `hook` | PostToolUse shell hook — checks for error loops, context pressure, and cost spikes; exits 2 with a self-contained alert if action is needed |
+| `hook` | PostToolUse shell hook — checks for error loops, context pressure, cost spikes, and drift (read-heavy loops); exits 2 with a self-contained alert if action is needed |
 | `startup` | SessionStart shell hook — prints a compact briefing into Claude's context: project health, session count, friction level, MCP tool manifest |
 | `install` | Write the claudewatch behavioral contract into `~/.claude/CLAUDE.md`, delimited by markers; idempotent |
 
