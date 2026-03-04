@@ -176,6 +176,52 @@ func runStartup(cmd *cobra.Command, args []string) {
 	if regressionWarning != "" {
 		fmt.Print(regressionWarning)
 	}
+
+	// Contextual memory surfacing: auto-query task history based on first user message.
+	// This only runs if there's an active session with a user message available.
+	activePath, _ := claude.FindActiveSessionPath(cfg.ClaudeHome)
+	if activePath != "" {
+		activeSession, parseErr := claude.ParseActiveSession(activePath)
+		if parseErr == nil && activeSession != nil && activeSession.FirstPrompt != "" {
+			memoryPath := filepath.Join(config.ConfigDir(), "working-memory.json")
+			memStore := store.NewWorkingMemoryStore(memoryPath)
+			surfaceResult, surfaceErr := memory.SurfaceRelevantMemory(activeSession.FirstPrompt, projectName, memStore)
+
+			if surfaceErr == nil && len(surfaceResult.MatchedTasks) > 0 {
+				fmt.Printf("║\n")
+				fmt.Printf("║ 📋 TASK HISTORY MATCH (keywords: %s)\n", strings.Join(surfaceResult.Keywords, ", "))
+				fmt.Printf("║ Found %d prior attempt(s) on this project:\n", len(surfaceResult.MatchedTasks))
+
+				maxDisplay := 3
+				if len(surfaceResult.MatchedTasks) < maxDisplay {
+					maxDisplay = len(surfaceResult.MatchedTasks)
+				}
+
+				for i := 0; i < maxDisplay; i++ {
+					task := surfaceResult.MatchedTasks[i]
+					statusIcon := "✓"
+					if task.Status == "abandoned" || task.Status == "in_progress" {
+						statusIcon = "✗"
+					}
+
+					timeAgo := formatTimeAgo(task.LastUpdated)
+					fmt.Printf("║   %s %s (%s, %s)\n", statusIcon, task.TaskIdentifier, task.Status, timeAgo)
+
+					if len(task.BlockersHit) > 0 {
+						fmt.Printf("║      Blockers: %s\n", strings.Join(task.BlockersHit, ", "))
+					}
+					if task.Solution != "" {
+						fmt.Printf("║      Solution: %s\n", truncateString(task.Solution, 60))
+					}
+				}
+
+				if len(surfaceResult.Keywords) > 0 {
+					fmt.Printf("║   → Call get_task_history(\"%s\") for full details\n", surfaceResult.Keywords[0])
+				}
+			}
+		}
+	}
+
 	fmt.Printf("║ tools: get_session_dashboard · get_project_health · get_task_history · get_blockers · extract_current_session_memory · get_live_friction · get_context_pressure · get_cost_velocity · get_suggestions\n")
 	fmt.Printf("╚ PostToolUse hook active → fires on errors/context/cost → call get_session_dashboard\n")
 }
@@ -317,4 +363,12 @@ func updateWorkingMemoryIfNeeded(cfg *config.Config, projectName string, session
 	}
 
 	return nil
+}
+
+// truncateString truncates a string to maxLen with ellipsis.
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }
