@@ -4,6 +4,10 @@ All notable changes to claudewatch are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Metrics export to observability platforms** — `claudewatch export` exports aggregated metrics in Prometheus text format for integration with external monitoring systems. Privacy-first design: exports only safe aggregates (session counts, friction rates, cost totals), never transcript content, file paths, session IDs, or credentials. Supports project filtering (`--project`), time windows (`--days`), file output (`--output`), and stdout streaming. Includes comprehensive documentation (`docs/EXPORT.md`), integration examples for Prometheus Pushgateway and Node Exporter textfile collector, and example scripts with atomic file writes and error handling. 32 tests including end-to-end integration validation and privacy rule enforcement. Implemented via SAW protocol (Scout + 2 waves, 3 agents, disjoint file ownership).
+
 ## [0.11.0] - 2026-03-04
 
 ### Added
