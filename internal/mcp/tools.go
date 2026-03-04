@@ -159,6 +159,7 @@ func addTools(s *Server) {
 	addCorrelateTools(s)
 	addAttributionTools(s)
 	addMultiProjectTools(s)
+	addMemoryTools(s)
 	s.registerTool(toolDef{
 		Name:        "get_project_comparison",
 		Description: "All projects compared side by side in a single call. Returns a ranked list of all projects with health score, friction rate, has_claude_md, agent success rate, and session count.",
