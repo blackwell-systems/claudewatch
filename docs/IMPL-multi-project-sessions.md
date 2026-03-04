@@ -1040,9 +1040,60 @@ After all waves are merged, the orchestrator performs these integration steps:
 
 | Wave | Agent | Description | Status |
 |------|-------|-------------|--------|
-| 1 | A | Repo extraction parser (`claude/repo_extract.go`) | TO-DO |
-| 1 | B | Project weights store (`store/project_weights.go`) | TO-DO |
+| 1 | A | Repo extraction parser (`claude/repo_extract.go`) | DONE |
+| 1 | B | Project weights store (`store/project_weights.go`) | DONE |
 | 2 | A | Multi-project MCP tool (`mcp/multiproject_tools.go`) | TO-DO |
 | 3 | A | Filter tool integration (health, anomaly, regression) | TO-DO |
 | 3 | B | Group tool integration (comparison, cost) | TO-DO |
 | — | Orch | Post-merge integration + binary install | TO-DO |
+
+---
+
+### Agent B - Completion Report
+status: complete
+worktree: .claude/worktrees/wave1-agent-B
+commit: 8dcc9e2
+files_changed: []
+files_created:
+  - internal/store/project_weights.go
+  - internal/store/project_weights_test.go
+interface_deviations:
+  - []
+out_of_scope_deps:
+  - []
+tests_added:
+  - TestSessionProjectWeightsStore_LoadEmpty
+  - TestSessionProjectWeightsStore_SetAndLoad
+  - TestSessionProjectWeightsStore_SetMultipleSessions
+  - TestSessionProjectWeightsStore_SetOverwrite
+  - TestSessionProjectWeightsStore_GetWeights
+  - TestSessionProjectWeightsStore_GetWeightsNotFound
+  - TestSessionProjectWeightsStore_AtomicWrite
+  - TestSessionProjectWeightsStore_CreatesParentDirs
+verification: PASS
+
+### Agent A - Completion Report
+status: complete
+worktree: .claude/worktrees/wave1-agent-A
+commit: 734df33
+files_changed:
+  - internal/claude/repo_extract.go
+files_created:
+  - internal/claude/repo_extract_test.go
+interface_deviations:
+  - "ProjectWeight struct is defined in repo_extract.go (the scaffold stub only had the type, replaced entirely). No behavioral deviations."
+out_of_scope_deps:
+  - []
+tests_added:
+  - TestExtractFilePaths_ReadTool
+  - TestExtractFilePaths_EditTool
+  - TestExtractFilePaths_WriteTool
+  - TestExtractFilePaths_BashTool
+  - TestExtractFilePaths_NonAssistant
+  - TestExtractFilePaths_NoToolUse
+  - TestExtractFilePaths_Deduplication
+  - TestComputeProjectWeights_MultiRepo
+  - TestComputeProjectWeights_SingleRepo
+  - TestComputeProjectWeights_Fallback
+  - TestResolveRepoRoot_Cache
+verification: PASS
