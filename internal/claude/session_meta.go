@@ -250,6 +250,15 @@ func parseJSONLToSessionMeta(jsonlPath string) (*SessionMeta, error) {
 		meta.GitCommits = countGitCommitsSince(meta.ProjectPath, meta.StartTime)
 	}
 
+	// Filter out bootstrap/ephemeral sessions: these are created momentarily
+	// when resuming a session to run hooks and load context, then immediately
+	// hand off to the real resumed session. They pollute metrics because they
+	// have zero actual work but count as sessions. Heuristic: no conversation
+	// turns (assistant or user messages) indicates a bootstrap session.
+	if meta.AssistantMessageCount == 0 && meta.UserMessageCount == 0 {
+		return nil, nil
+	}
+
 	return &meta, nil
 }
 

@@ -8,6 +8,10 @@ All notable changes to claudewatch are documented here.
 
 - **Strengthened CLAUDE.md protocol language to mandatory directives** — Rewrote `install` command's generated CLAUDE.md section with explicit non-optional language. Session start protocol now begins with "**CRITICAL: SESSION START PROTOCOL — MANDATORY, NOT OPTIONAL**" and uses "**REQUIRED:**", "This is NOT optional", "Do not skip this step", "you MUST stop immediately" framing instead of passive "you should" suggestions. Added consequences for skipping steps ("Proceeding without it means repeating known failures"). PostToolUse hook changed from "stop what you are doing" to "**BLOCKING REQUIREMENT:** you MUST stop immediately". Goal: increase agent compliance with `get_project_health` baseline checks and memory tool usage at session start.
 
+### Fixed
+
+- **Filter out bootstrap/ephemeral sessions from metrics** — Claude Code creates momentary "bootstrap" sessions when resuming to run hooks and load context, then hands off to the real resumed session. These got persisted to disk and polluted metrics (inflated "sessions per day", skewed averages with 0 commits/cost). Heuristic: sessions with zero conversation turns (no assistant or user messages) are now filtered during `parseJSONLToSessionMeta()`. Testing on commitmux project: reduced session count from 38 to 5 (33 bootstrap sessions filtered out). Sessions under 2KB containing only hook progress events no longer count as real sessions.
+
 ## [0.12.0] - 2026-03-04
 
 ### Added
