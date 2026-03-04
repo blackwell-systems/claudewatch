@@ -323,6 +323,545 @@ func hashProjectName(name string) string {
 	return fmt.Sprintf("%x", h[:8]) // First 8 bytes (16 hex chars)
 }
 
+// CollectMetricsPerProject returns one MetricSnapshot per project.
+func CollectMetricsPerProject(cfg *config.Config, days int) ([]MetricSnapshot, error) {
+	// Load all session metadata
+	sessions, err := claude.ParseAllSessionMeta(cfg.ClaudeHome)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load sessions: %w", err)
+	}
+
+	// Filter by time window
+	if days > 0 {
+		sessions = analyzer.FilterSessionsByDays(sessions, days)
+	}
+
+	// Group sessions by project
+	projectSessions := make(map[string][]claude.SessionMeta)
+	for _, s := range sessions {
+		projectName := filepath.Base(s.ProjectPath)
+		projectSessions[projectName] = append(projectSessions[projectName], s)
+	}
+
+	// Collect metrics for each project
+	var snapshots []MetricSnapshot
+	for projectName, projSessions := range projectSessions {
+		if len(projSessions) == 0 {
+			continue
+		}
+		// Collect metrics for this project by calling CollectMetrics with project filter
+		snapshot, err := CollectMetrics(cfg, projectName, days)
+		if err != nil {
+			return nil, fmt.Errorf("failed to collect metrics for project %s: %w", projectName, err)
+		}
+		snapshots = append(snapshots, snapshot)
+	}
+
+	// Sort by project name for stable output
+	sort.Slice(snapshots, func(i, j int) bool {
+		return snapshots[i].ProjectName < snapshots[j].ProjectName
+	})
+
+	return snapshots, nil
+}
+
+// CollectMetricsPerDay returns one MetricSnapshot per day over the time window.
+func CollectMetricsPerDay(cfg *config.Config, projectFilter string, days int) ([]MetricSnapshot, error) {
+	if days <= 0 {
+		days = 30 // Default to 30 days if not specified
+	}
+
+	// Load all session metadata
+	sessions, err := claude.ParseAllSessionMeta(cfg.ClaudeHome)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load sessions: %w", err)
+	}
+
+	// Filter by project if specified
+	if projectFilter != "" {
+		sessions = filterSessionsByProject(sessions, projectFilter)
+	}
+
+	// Filter by time window
+	sessions = analyzer.FilterSessionsByDays(sessions, days)
+
+	// Group sessions by day
+	daySessions := make(map[string][]claude.SessionMeta)
+	for _, s := range sessions {
+		t := claude.ParseTimestamp(s.SessionID)
+		if t.IsZero() {
+			continue
+		}
+		dayKey := t.Format("2006-01-02")
+		daySessions[dayKey] = append(daySessions[dayKey], s)
+	}
+
+	// Collect metrics for each day
+	var snapshots []MetricSnapshot
+	cutoff := time.Now().AddDate(0, 0, -days)
+	for i := 0; i < days; i++ {
+		day := cutoff.AddDate(0, 0, i)
+		dayKey := day.Format("2006-01-02")
+
+		snapshot := MetricSnapshot{
+			Timestamp:      day,
+			FrictionByType: make(map[string]int),
+			ModelUsagePct:  make(map[string]float64),
+		}
+
+		if projectFilter != "" {
+			snapshot.ProjectName = projectFilter
+			snapshot.ProjectHash = hashProjectName(projectFilter)
+		} else {
+			snapshot.ProjectName = "all"
+			snapshot.ProjectHash = "aggregate"
+		}
+
+		daySess := daySessions[dayKey]
+		if len(daySess) == 0 {
+			snapshots = append(snapshots, snapshot)
+			continue
+		}
+
+		// Compute metrics for this day's sessions
+		snapshot.SessionCount = len(daySess)
+		snapshot.TotalDurationMin = 0
+		for _, s := range daySess {
+			snapshot.TotalDurationMin += float64(s.DurationMinutes)
+			snapshot.TotalCommits += s.GitCommits
+		}
+		if snapshot.SessionCount > 0 {
+			snapshot.AvgDurationMin = snapshot.TotalDurationMin / float64(snapshot.SessionCount)
+		}
+
+		// Compute friction metrics
+		facets, err := claude.ParseAllFacets(cfg.ClaudeHome)
+		if err == nil {
+			facets = filterFacetsBySessionIDs(facets, daySess)
+			frictionThreshold := 0.30
+			if cfg.Friction.RecurringThreshold > 0 {
+				frictionThreshold = cfg.Friction.RecurringThreshold
+			}
+			frictionSummary := analyzer.AnalyzeFriction(facets, frictionThreshold)
+			if frictionSummary.TotalSessions > 0 {
+				snapshot.FrictionRate = float64(frictionSummary.SessionsWithFriction) / float64(frictionSummary.TotalSessions)
+			}
+			for fType, count := range frictionSummary.FrictionByType {
+				snapshot.FrictionByType[fType] = count
+			}
+		}
+
+		// Compute tool error metrics
+		efficiencyMetrics := analyzer.AnalyzeEfficiency(daySess)
+		snapshot.AvgToolErrors = efficiencyMetrics.AvgToolErrorsPerSession
+
+		// Compute cost metrics
+		pricing := analyzer.DefaultPricing["sonnet"]
+		cacheRatio := analyzer.NoCacheRatio()
+		outcomeAnalysis := analyzer.AnalyzeOutcomes(daySess, nil, pricing, cacheRatio)
+		snapshot.TotalCostUSD = outcomeAnalysis.TotalCost
+		snapshot.AvgCostPerSession = outcomeAnalysis.AvgCostPerSession
+		if snapshot.TotalCommits > 0 {
+			snapshot.CostPerCommit = snapshot.TotalCostUSD / float64(snapshot.TotalCommits)
+		}
+
+		snapshots = append(snapshots, snapshot)
+	}
+
+	// Sort by timestamp
+	sort.Slice(snapshots, func(i, j int) bool {
+		return snapshots[i].Timestamp.Before(snapshots[j].Timestamp)
+	})
+
+	return snapshots, nil
+}
+
+// CollectMetricsPerModel returns metrics split by model type.
+func CollectMetricsPerModel(cfg *config.Config, projectFilter string, days int) (map[string]MetricSnapshot, error) {
+	// Load all session metadata
+	sessions, err := claude.ParseAllSessionMeta(cfg.ClaudeHome)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load sessions: %w", err)
+	}
+
+	// Filter by project if specified
+	if projectFilter != "" {
+		sessions = filterSessionsByProject(sessions, projectFilter)
+	}
+
+	// Filter by time window
+	if days > 0 {
+		sessions = analyzer.FilterSessionsByDays(sessions, days)
+	}
+
+	// Group sessions by primary model
+	modelSessions := make(map[string][]claude.SessionMeta)
+	for _, s := range sessions {
+		// Determine primary model (model with most tokens)
+		var primaryModel string
+		var maxTokens int
+		for modelName, stats := range s.ModelUsage {
+			totalTokens := stats.InputTokens + stats.OutputTokens
+			if totalTokens > maxTokens {
+				maxTokens = totalTokens
+				primaryModel = modelName
+			}
+		}
+		if primaryModel == "" {
+			primaryModel = "unknown"
+		}
+		// Normalize model name
+		primaryModel = normalizeModelNameForGrouping(primaryModel)
+		modelSessions[primaryModel] = append(modelSessions[primaryModel], s)
+	}
+
+	// Collect metrics for each model
+	result := make(map[string]MetricSnapshot)
+	for modelName, modelSess := range modelSessions {
+		if len(modelSess) == 0 {
+			continue
+		}
+
+		snapshot := MetricSnapshot{
+			Timestamp:      time.Now(),
+			FrictionByType: make(map[string]int),
+			ModelUsagePct:  make(map[string]float64),
+			ProjectName:    projectFilter,
+		}
+		if projectFilter == "" {
+			snapshot.ProjectName = "all"
+		}
+		snapshot.ProjectHash = hashProjectName(snapshot.ProjectName)
+
+		// Compute session metrics
+		snapshot.SessionCount = len(modelSess)
+		snapshot.TotalDurationMin = 0
+		for _, s := range modelSess {
+			snapshot.TotalDurationMin += float64(s.DurationMinutes)
+			snapshot.TotalCommits += s.GitCommits
+		}
+		if snapshot.SessionCount > 0 {
+			snapshot.AvgDurationMin = snapshot.TotalDurationMin / float64(snapshot.SessionCount)
+		}
+
+		// Compute friction metrics
+		facets, err := claude.ParseAllFacets(cfg.ClaudeHome)
+		if err == nil {
+			facets = filterFacetsBySessionIDs(facets, modelSess)
+			frictionThreshold := 0.30
+			if cfg.Friction.RecurringThreshold > 0 {
+				frictionThreshold = cfg.Friction.RecurringThreshold
+			}
+			frictionSummary := analyzer.AnalyzeFriction(facets, frictionThreshold)
+			if frictionSummary.TotalSessions > 0 {
+				snapshot.FrictionRate = float64(frictionSummary.SessionsWithFriction) / float64(frictionSummary.TotalSessions)
+			}
+			for fType, count := range frictionSummary.FrictionByType {
+				snapshot.FrictionByType[fType] = count
+			}
+		}
+
+		// Compute tool error metrics
+		efficiencyMetrics := analyzer.AnalyzeEfficiency(modelSess)
+		snapshot.AvgToolErrors = efficiencyMetrics.AvgToolErrorsPerSession
+
+		// Compute cost metrics
+		pricing := analyzer.DefaultPricing["sonnet"]
+		cacheRatio := analyzer.NoCacheRatio()
+		outcomeAnalysis := analyzer.AnalyzeOutcomes(modelSess, nil, pricing, cacheRatio)
+		snapshot.TotalCostUSD = outcomeAnalysis.TotalCost
+		snapshot.AvgCostPerSession = outcomeAnalysis.AvgCostPerSession
+		if snapshot.TotalCommits > 0 {
+			snapshot.CostPerCommit = snapshot.TotalCostUSD / float64(snapshot.TotalCommits)
+		}
+
+		result[modelName] = snapshot
+	}
+
+	return result, nil
+}
+
+// normalizeModelNameForGrouping simplifies model names for grouping.
+func normalizeModelNameForGrouping(modelName string) string {
+	if len(modelName) == 0 {
+		return "unknown"
+	}
+
+	lower := modelName
+	// Simple substring matching
+	// Claude 4.6 series
+	if containsSubstr(lower, "opus-4-6") || containsSubstr(lower, "opus-4.6") {
+		return "opus-4.6"
+	}
+	if containsSubstr(lower, "sonnet-4-6") || containsSubstr(lower, "sonnet-4.6") {
+		return "sonnet-4.6"
+	}
+	if containsSubstr(lower, "haiku-4-6") || containsSubstr(lower, "haiku-4.6") {
+		return "haiku-4.6"
+	}
+
+	// Claude 4.5 series
+	if containsSubstr(lower, "sonnet-4-5") || containsSubstr(lower, "sonnet-4.5") {
+		return "sonnet-4.5"
+	}
+	if containsSubstr(lower, "haiku-4-5") || containsSubstr(lower, "haiku-4.5") {
+		return "haiku-4.5"
+	}
+
+	return "other"
+}
+
+// containsSubstr checks if a string contains a substring.
+func containsSubstr(s, substr string) bool {
+	// Simple implementation without importing strings package again
+	if len(substr) > len(s) {
+		return false
+	}
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+// CollectSAWComparison returns two snapshots: one for SAW sessions, one for non-SAW.
+func CollectSAWComparison(cfg *config.Config, days int) (saw MetricSnapshot, nonSAW MetricSnapshot, err error) {
+	// Load all session metadata
+	sessions, err := claude.ParseAllSessionMeta(cfg.ClaudeHome)
+	if err != nil {
+		return saw, nonSAW, fmt.Errorf("failed to load sessions: %w", err)
+	}
+
+	// Filter by time window
+	if days > 0 {
+		sessions = analyzer.FilterSessionsByDays(sessions, days)
+	}
+
+	// Split sessions into SAW and non-SAW
+	var sawSessions, nonSAWSessions []claude.SessionMeta
+	for _, s := range sessions {
+		if isSAWSession(s) {
+			sawSessions = append(sawSessions, s)
+		} else {
+			nonSAWSessions = append(nonSAWSessions, s)
+		}
+	}
+
+	// Collect metrics for SAW sessions
+	if len(sawSessions) > 0 {
+		saw, err = collectMetricsForSessions(cfg, sawSessions, "saw", days)
+		if err != nil {
+			return saw, nonSAW, fmt.Errorf("failed to collect SAW metrics: %w", err)
+		}
+	} else {
+		saw = MetricSnapshot{
+			Timestamp:      time.Now(),
+			ProjectName:    "saw",
+			ProjectHash:    "saw",
+			FrictionByType: make(map[string]int),
+			ModelUsagePct:  make(map[string]float64),
+		}
+	}
+
+	// Collect metrics for non-SAW sessions
+	if len(nonSAWSessions) > 0 {
+		nonSAW, err = collectMetricsForSessions(cfg, nonSAWSessions, "non-saw", days)
+		if err != nil {
+			return saw, nonSAW, fmt.Errorf("failed to collect non-SAW metrics: %w", err)
+		}
+	} else {
+		nonSAW = MetricSnapshot{
+			Timestamp:      time.Now(),
+			ProjectName:    "non-saw",
+			ProjectHash:    "non-saw",
+			FrictionByType: make(map[string]int),
+			ModelUsagePct:  make(map[string]float64),
+		}
+	}
+
+	return saw, nonSAW, nil
+}
+
+// isSAWSession determines if a session used Scout-and-Wave.
+func isSAWSession(s claude.SessionMeta) bool {
+	// Check if any agent tasks were spawned (SAW uses agents)
+	// This is a heuristic - may need refinement based on actual usage patterns
+	return s.UsesTaskAgent
+}
+
+// collectMetricsForSessions is a helper to collect metrics for a specific set of sessions.
+func collectMetricsForSessions(cfg *config.Config, sessions []claude.SessionMeta, name string, days int) (MetricSnapshot, error) {
+	snapshot := MetricSnapshot{
+		Timestamp:      time.Now(),
+		ProjectName:    name,
+		ProjectHash:    hashProjectName(name),
+		FrictionByType: make(map[string]int),
+		ModelUsagePct:  make(map[string]float64),
+	}
+
+	snapshot.SessionCount = len(sessions)
+	snapshot.TotalDurationMin = 0
+	for _, s := range sessions {
+		snapshot.TotalDurationMin += float64(s.DurationMinutes)
+		snapshot.TotalCommits += s.GitCommits
+	}
+	if snapshot.SessionCount > 0 {
+		snapshot.AvgDurationMin = snapshot.TotalDurationMin / float64(snapshot.SessionCount)
+	}
+
+	// Load facets for friction analysis
+	facets, err := claude.ParseAllFacets(cfg.ClaudeHome)
+	if err == nil {
+		facets = filterFacetsBySessionIDs(facets, sessions)
+		frictionThreshold := 0.30
+		if cfg.Friction.RecurringThreshold > 0 {
+			frictionThreshold = cfg.Friction.RecurringThreshold
+		}
+		frictionSummary := analyzer.AnalyzeFriction(facets, frictionThreshold)
+		if frictionSummary.TotalSessions > 0 {
+			snapshot.FrictionRate = float64(frictionSummary.SessionsWithFriction) / float64(frictionSummary.TotalSessions)
+		}
+		for fType, count := range frictionSummary.FrictionByType {
+			snapshot.FrictionByType[fType] = count
+		}
+	}
+
+	// Compute tool error metrics
+	efficiencyMetrics := analyzer.AnalyzeEfficiency(sessions)
+	snapshot.AvgToolErrors = efficiencyMetrics.AvgToolErrorsPerSession
+
+	// Compute cost metrics
+	pricing := analyzer.DefaultPricing["sonnet"]
+	cacheRatio := analyzer.NoCacheRatio()
+	outcomeAnalysis := analyzer.AnalyzeOutcomes(sessions, facets, pricing, cacheRatio)
+	snapshot.TotalCostUSD = outcomeAnalysis.TotalCost
+	snapshot.AvgCostPerSession = outcomeAnalysis.AvgCostPerSession
+	if snapshot.TotalCommits > 0 {
+		snapshot.CostPerCommit = snapshot.TotalCostUSD / float64(snapshot.TotalCommits)
+	}
+
+	return snapshot, nil
+}
+
+// filterFacetsBySessionIDs keeps only facets matching the given sessions.
+func filterFacetsBySessionIDs(facets []claude.SessionFacet, sessions []claude.SessionMeta) []claude.SessionFacet {
+	if len(sessions) == 0 {
+		return nil
+	}
+	sessionIDs := make(map[string]bool)
+	for _, s := range sessions {
+		sessionIDs[s.SessionID] = true
+	}
+	var filtered []claude.SessionFacet
+	for _, f := range facets {
+		if sessionIDs[f.SessionID] {
+			filtered = append(filtered, f)
+		}
+	}
+	return filtered
+}
+
+// SessionDetail represents per-session data for detailed export.
+type SessionDetail struct {
+	SessionID       string    `json:"session_id"`
+	ProjectName     string    `json:"project_name"`
+	Timestamp       time.Time `json:"timestamp"`
+	DurationMin     float64   `json:"duration_min"`
+	Commits         int       `json:"commits"`
+	ToolErrors      int       `json:"tool_errors"`
+	CostUSD         float64   `json:"cost_usd"`
+	Model           string    `json:"model"`
+	IsSAW           bool      `json:"is_saw"`
+	FrictionEvents  int       `json:"friction_events"`
+	InputTokens     int       `json:"input_tokens"`
+	OutputTokens    int       `json:"output_tokens"`
+}
+
+// CollectDetailedMetrics returns per-session details.
+func CollectDetailedMetrics(cfg *config.Config, projectFilter string, days int) ([]SessionDetail, error) {
+	// Load all session metadata
+	sessions, err := claude.ParseAllSessionMeta(cfg.ClaudeHome)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load sessions: %w", err)
+	}
+
+	// Filter by project if specified
+	if projectFilter != "" {
+		sessions = filterSessionsByProject(sessions, projectFilter)
+	}
+
+	// Filter by time window
+	if days > 0 {
+		sessions = analyzer.FilterSessionsByDays(sessions, days)
+	}
+
+	// Load facets for friction counts
+	facets, err := claude.ParseAllFacets(cfg.ClaudeHome)
+	if err != nil {
+		facets = nil // Non-fatal
+	}
+	frictionBySession := make(map[string]int)
+	if facets != nil {
+		for _, f := range facets {
+			count := 0
+			for _, c := range f.FrictionCounts {
+				count += c
+			}
+			frictionBySession[f.SessionID] = count
+		}
+	}
+
+	// Build detailed records
+	var details []SessionDetail
+	for _, s := range sessions {
+		timestamp := claude.ParseTimestamp(s.SessionID)
+
+		// Determine primary model
+		var primaryModel string
+		var maxTokens int
+		for modelName, stats := range s.ModelUsage {
+			totalTokens := stats.InputTokens + stats.OutputTokens
+			if totalTokens > maxTokens {
+				maxTokens = totalTokens
+				primaryModel = modelName
+			}
+		}
+		if primaryModel == "" {
+			primaryModel = "unknown"
+		}
+		primaryModel = normalizeModelNameForGrouping(primaryModel)
+
+		// Estimate cost
+		pricing := analyzer.DefaultPricing["sonnet"]
+		cacheRatio := analyzer.NoCacheRatio()
+		cost := analyzer.EstimateSessionCost(s, pricing, cacheRatio)
+
+		detail := SessionDetail{
+			SessionID:      s.SessionID,
+			ProjectName:    filepath.Base(s.ProjectPath),
+			Timestamp:      timestamp,
+			DurationMin:    float64(s.DurationMinutes),
+			Commits:        s.GitCommits,
+			ToolErrors:     s.ToolErrors,
+			CostUSD:        cost,
+			Model:          primaryModel,
+			IsSAW:          isSAWSession(s),
+			FrictionEvents: frictionBySession[s.SessionID],
+			InputTokens:    s.InputTokens,
+			OutputTokens:   s.OutputTokens,
+		}
+		details = append(details, detail)
+	}
+
+	// Sort by timestamp descending (most recent first)
+	sort.Slice(details, func(i, j int) bool {
+		return details[i].Timestamp.After(details[j].Timestamp)
+	})
+
+	return details, nil
+}
+
 // AnalyzeEfficiency computes tool usage efficiency indicators.
 // This is a convenience wrapper for the analyzer package function.
 func AnalyzeEfficiency(sessions []claude.SessionMeta) analyzer.EfficiencyMetrics {

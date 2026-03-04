@@ -84,5 +84,5 @@ func TrendArrowPercent(delta float64, higherIsBetter bool) string {
 func Section(title string) string {
 	header := StyleHeader.Render(title)
 	rule := StyleMuted.Render(strings.Repeat("─", 66))
-	return fmt.Sprintf("\n %s\n %s", header, rule)
+	return fmt.Sprintf("\n%s\n%s", header, rule)
 }

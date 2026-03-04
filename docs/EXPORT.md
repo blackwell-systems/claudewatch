@@ -22,10 +22,49 @@ The `claudewatch export` command outputs aggregated metrics in formats consumabl
 
 ### Basic Export
 
-Export metrics to stdout in Prometheus format:
+Export metrics to stdout in JSON format (default):
+
+```bash
+claudewatch export --format json
+```
+
+Export in Prometheus format:
 
 ```bash
 claudewatch export --format prometheus
+```
+
+### JSON Export Examples
+
+Pipe to jq for analysis:
+
+```bash
+# View all metrics
+claudewatch export --format json | jq '.'
+
+# Extract specific fields
+claudewatch export --format json | jq '.SessionCount, .TotalCommits'
+
+# Calculate commit rate
+claudewatch export --format json | jq '.TotalCommits / .SessionCount'
+```
+
+Export to file:
+
+```bash
+claudewatch export --format json --output metrics.json
+```
+
+### CSV Export Examples
+
+Export as CSV for spreadsheet import:
+
+```bash
+# Export to stdout
+claudewatch export --format csv
+
+# Export to file
+claudewatch export --format csv --output metrics.csv
 ```
 
 ### Filter to Specific Project
@@ -33,7 +72,7 @@ claudewatch export --format prometheus
 Export metrics for a single project:
 
 ```bash
-claudewatch export --format prometheus --project myapp
+claudewatch export --format json --project myapp
 ```
 
 ### Time Window
@@ -41,15 +80,166 @@ claudewatch export --format prometheus --project myapp
 Export metrics from the last 7 days:
 
 ```bash
-claudewatch export --format prometheus --days 7
+claudewatch export --format json --days 7
 ```
 
-### Output to File
+## Granular Reporting Options
 
-Write metrics to a file instead of stdout:
+The export command supports several flags for breaking down metrics by different dimensions:
+
+### Per-Project Export
+
+Output one row/object per project instead of aggregate:
 
 ```bash
-claudewatch export --format prometheus --output /tmp/metrics.prom
+# JSON: array of project snapshots
+claudewatch export --per-project --format json
+
+# CSV: multiple rows, one per project
+claudewatch export --per-project --format csv --output projects.csv
+
+# Prometheus: metrics with project labels
+claudewatch export --per-project --format prometheus
+```
+
+**Use cases:**
+- Compare productivity across projects
+- Identify high-friction or high-cost projects
+- Track project-specific trends
+- Generate per-project reports for stakeholders
+
+### Per-Day Export
+
+Output daily time series over the time window:
+
+```bash
+# JSON: array of daily snapshots
+claudewatch export --per-day --days 30 --format json
+
+# CSV: daily rows for trend analysis
+claudewatch export --per-day --days 14 --format csv --output daily-trends.csv
+```
+
+**Use cases:**
+- Track daily productivity trends
+- Monitor friction rate changes over time
+- Analyze cost trends and budget burn rate
+- Identify patterns by day of week
+
+### Per-Model Export
+
+Split metrics by model (Sonnet vs Opus sessions separately):
+
+```bash
+# JSON: separate snapshots for each model
+claudewatch export --per-model --days 7 --format json
+
+# CSV: compare model costs and productivity
+claudewatch export --per-model --format csv --output model-comparison.csv
+```
+
+**Use cases:**
+- Compare cost efficiency between models
+- Analyze friction rates by model
+- Optimize model selection for cost or quality
+- Track model adoption across team
+
+**Models identified:**
+- `opus-4.6` - Claude Opus 4.6 (highest quality)
+- `sonnet-4.6` - Claude Sonnet 4.6 (balanced)
+- `sonnet-4.5` - Claude Sonnet 4.5 (legacy)
+- `haiku-4.6` - Claude Haiku 4.6 (fastest)
+- `other` - Unknown or mixed models
+
+### SAW Comparison
+
+Compare Scout-and-Wave sessions vs non-SAW sessions side-by-side:
+
+```bash
+# JSON: two snapshots (saw, non-saw)
+claudewatch export --saw-comparison --format json
+
+# CSV: two rows for direct comparison
+claudewatch export --saw-comparison --format csv --output saw-vs-regular.csv
+```
+
+**Use cases:**
+- Measure Scout-and-Wave effectiveness
+- Compare SAW vs regular session costs
+- Analyze SAW friction patterns
+- Justify SAW adoption based on data
+
+**Output structure:**
+- First snapshot: sessions using Scout-and-Wave (task agents)
+- Second snapshot: regular sessions without agents
+
+### Detailed Session Export
+
+Output session-level rows (all sessions, not aggregated):
+
+```bash
+# JSON: array of session details
+claudewatch export --detailed --format json --days 7
+
+# CSV: one row per session
+claudewatch export --detailed --format csv --output sessions.csv
+
+# Prometheus: session-level metrics with session_id label
+claudewatch export --detailed --format prometheus
+```
+
+**Use cases:**
+- Session-level analysis in Excel or data science tools
+- Identify outlier sessions (high cost, many errors)
+- Build custom aggregations or filters
+- Debug specific session issues
+
+**Fields included:**
+- `session_id` - Unique session identifier
+- `project_name` - Project directory name
+- `timestamp` - Session start time
+- `duration_min` - Session duration in minutes
+- `commits` - Number of git commits
+- `tool_errors` - Number of tool errors
+- `cost_usd` - Estimated cost in USD
+- `model` - Primary model used
+- `is_saw` - Whether Scout-and-Wave was used
+- `friction_events` - Total friction events
+- `input_tokens` - Input tokens consumed
+- `output_tokens` - Output tokens generated
+
+### Flag Combinations
+
+**Valid standalone flags:**
+- `--per-project` alone
+- `--per-day` alone
+- `--per-model` alone
+- `--saw-comparison` alone
+- `--detailed` alone
+
+**Mutually exclusive:**
+- `--detailed` cannot combine with other grouping flags
+- `--saw-comparison` cannot combine with other grouping flags
+- Combinations like `--per-project --per-day` not yet implemented
+
+**Can combine with:**
+- All flags work with `--format`, `--days`, `--output`
+- `--per-day`, `--per-model` work with `--project` filter
+
+**Examples:**
+
+```bash
+# Daily trends for a specific project
+claudewatch export --per-day --project myapp --days 30 --format csv
+
+# Model comparison for last week
+claudewatch export --per-model --days 7 --format json
+
+# Detailed export with time filter
+claudewatch export --detailed --days 1 --format csv --output today-sessions.csv
+
+# Per-project metrics in Prometheus format
+claudewatch export --per-project --format prometheus > /tmp/projects.prom
 ```
 
 ## Privacy & Safety
@@ -85,7 +275,7 @@ The following data types are **explicitly excluded** to protect privacy:
 
 ### Privacy Validation
 
-Every export is validated by comprehensive integration tests that check for:
+Every export format (JSON, CSV, Prometheus) is validated by comprehensive integration tests that check for:
 - No absolute file paths (Unix or Windows)
 - No session ID patterns (UUIDs, timestamps)
 - No API key patterns
@@ -104,32 +294,215 @@ Export aggregated metrics to external observability platforms.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--format` | string | `prometheus` | Export format (currently only `prometheus` supported) |
+| `--format` | string | `json` | Export format: `json`, `csv`, or `prometheus` |
 | `--project` | string | `""` (all) | Filter to specific project name |
 | `--days` | int | `30` | Time window in days (0 = all time) |
 | `--output` | string | `""` (stdout) | Output file path |
+| `--per-project` | bool | `false` | Output one row/object per project |
+| `--per-day` | bool | `false` | Output daily time series |
+| `--per-model` | bool | `false` | Split metrics by model |
+| `--saw-comparison` | bool | `false` | Compare SAW vs non-SAW sessions |
+| `--detailed` | bool | `false` | Output session-level rows (not aggregated) |
 
 **Examples:**
 
 ```bash
-# Export all projects, last 30 days, to stdout
+# Export all projects, last 30 days, to stdout (JSON default)
+claudewatch export
+
+# Export as CSV
+claudewatch export --format csv --output metrics.csv
+
+# Export as Prometheus
 claudewatch export --format prometheus
 
 # Export single project, last 7 days, to file
-claudewatch export --format prometheus \
+claudewatch export --format json \
   --project myapp \
   --days 7 \
-  --output /var/lib/node_exporter/claudewatch.prom
+  --output metrics.json
 
 # Export all-time data for all projects
-claudewatch export --format prometheus --days 0
+claudewatch export --format json --days 0
 
-# Pipe to Prometheus Pushgateway
-claudewatch export --format prometheus --project api-server | \
-  curl --data-binary @- http://localhost:9091/metrics/job/claudewatch
+# Pipe to jq for analysis
+claudewatch export --format json --project api-server | \
+  jq '.SessionCount, .TotalCommits, .TotalCostUSD'
 ```
 
+## Format Reference
+
+### JSON Format
+
+**Use cases:**
+- Piping to jq for analysis
+- Sending to HTTP APIs
+- Custom processing scripts
+- Notebook analysis
+
+**Output structure:**
+
+```json
+{
+  "Timestamp": "2026-03-04T15:30:00Z",
+  "ProjectName": "all",
+  "SessionCount": 157,
+  "TotalCommits": 1774,
+  "TotalCostUSD": 58.23,
+  "TotalDurationMin": 12450.5,
+  "AvgDurationMin": 79.3,
+  "ActiveMinutes": 8900.2,
+  "FrictionRate": 0.2547,
+  "FrictionByType": {
+    "retry:Bash": 25,
+    "buggy_code": 18,
+    "excessive_analysis": 12
+  },
+  "AvgToolErrors": 1.8,
+  "AvgCommitsPerSession": 11.3,
+  "CommitAttemptRatio": 0.82,
+  "ZeroCommitRate": 0.15,
+  "AvgCostPerSession": 0.37,
+  "CostPerCommit": 0.033,
+  "ModelUsagePct": {
+    "sonnet": 85.5,
+    "opus": 12.1,
+    "haiku": 2.4
+  },
+  "AgentSuccessRate": 0.78,
+  "AgentUsageRate": 0.42,
+  "AvgContextPressure": 0.45
+}
+```
+
+**Examples:**
+
+```bash
+# Pretty-print
+claudewatch export --format json | jq '.'
+
+# Extract specific fields
+claudewatch export --format json | jq '{sessions: .SessionCount, commits: .TotalCommits}'
+
+# Filter by cost threshold
+claudewatch export --format json | jq 'select(.TotalCostUSD > 50)'
+
+# Get commit rate
+claudewatch export --format json | jq '.TotalCommits / .SessionCount'
+
+# Top friction types
+claudewatch export --format json | jq '.FrictionByType | to_entries | sort_by(.value) | reverse | .[0:3]'
+
+# Calculate cost per active minute
+claudewatch export --format json | jq '.TotalCostUSD / .ActiveMinutes'
+```
+
+### CSV Format
+
+**Use cases:**
+- Excel/Google Sheets import
+- SQL database import
+- CSV analysis tools
+- Reporting
+
+**Output structure:**
+- 21 columns with descriptive headers
+- One data row per export
+- Map fields serialized as `key1:val1;key2:val2`
+- Float values formatted to 4 decimal places
+
+**Columns:**
+
+`timestamp`, `project_name`, `project_hash`, `session_count`, `total_duration_min`, `avg_duration_min`, `active_minutes`, `friction_rate`, `friction_by_type`, `avg_tool_errors`, `total_commits`, `avg_commits_per_session`, `commit_attempt_ratio`, `zero_commit_rate`, `total_cost_usd`, `avg_cost_per_session`, `cost_per_commit`, `model_usage_pct`, `agent_success_rate`, `agent_usage_rate`, `avg_context_pressure`
+
+**Example output:**
+
+```csv
+timestamp,project_name,project_hash,session_count,total_duration_min,avg_duration_min,active_minutes,friction_rate,friction_by_type,avg_tool_errors,total_commits,avg_commits_per_session,commit_attempt_ratio,zero_commit_rate,total_cost_usd,avg_cost_per_session,cost_per_commit,model_usage_pct,agent_success_rate,agent_usage_rate,avg_context_pressure
+2026-03-04T15:30:00Z,all,,157,12450.5000,79.3000,8900.2000,0.2547,"retry:Bash:25;buggy_code:18;excessive_analysis:12",1.8000,1774,11.3000,0.8200,0.1500,58.2300,0.3710,0.0328,"sonnet:85.5;opus:12.1;haiku:2.4",0.7800,0.4200,0.4500
+```
+
+**Import Examples:**
+
+```bash
+# Export to file
+claudewatch export --format csv --output metrics.csv
+
+# Import to Excel
+# File → Import → CSV → metrics.csv
+
+# Import to Google Sheets
+# File → Import → Upload → metrics.csv
+
+# Import to PostgreSQL
+psql -d mydb -c "COPY metrics FROM '/path/to/metrics.csv' CSV HEADER;"
+
+# Import to SQLite
+sqlite3 mydb.db ".mode csv" ".import metrics.csv metrics"
+
+# Load into pandas (Python)
+import pandas as pd
+df = pd.read_csv('metrics.csv')
+print(df.describe())
+```
+
+### Prometheus Format
+
+**Use cases:**
+- Prometheus/Grafana monitoring
+- Time-series analysis
+- Alerting on thresholds
+- Team dashboards
+
+**Output structure:**
+
+Standard Prometheus exposition format with help text and type metadata:
+
+```
+# HELP claudewatch_sessions_total Total number of Claude Code sessions
+# TYPE claudewatch_sessions_total counter
+claudewatch_sessions_total{project="myapp"} 157
+
+# HELP claudewatch_friction_rate Fraction of sessions with friction events
+# TYPE claudewatch_friction_rate gauge
+claudewatch_friction_rate{project="myapp"} 0.2547
+```
+
+See [Metrics Reference](#metrics-reference) below for complete list of Prometheus metrics.
+
 ## Integrations
+
+### HTTP Endpoints (JSON)
+
+Send JSON metrics to custom HTTP endpoints:
+
+```bash
+#!/bin/bash
+# push-json-metrics.sh
+set -euo pipefail
+
+ENDPOINT="${METRICS_ENDPOINT:-https://metrics.example.com/api/ingest}"
+
+claudewatch export --format json | \
+  curl -X POST \
+       -H "Content-Type: application/json" \
+       -H "Authorization: Bearer $API_TOKEN" \
+       --data-binary @- \
+       --fail \
+       --silent \
+       --show-error \
+       "$ENDPOINT"
+
+echo "Metrics pushed to $ENDPOINT"
+```
+
+Configure with environment variables:
+
+```bash
+export METRICS_ENDPOINT="https://your-api.com/metrics"
+export API_TOKEN="your-token-here"
+./push-json-metrics.sh
+```
 
 ### Prometheus Pushgateway
 
@@ -389,20 +762,6 @@ cloudwatch_exporter --config.file=/etc/cloudwatch-config.yml
    claudewatch export --format prometheus --days 0
    ```
 
-### "Unsupported format" error
-
-**Problem:** `Error: unsupported format: json`
-
-**Solution:** Currently only Prometheus format is supported. JSON and other formats are planned for future releases.
-
-```bash
-# Use this:
-claudewatch export --format prometheus
-
-# Not this:
-claudewatch export --format json  # Not implemented yet
-```
-
 ### High cardinality warnings
 
 **Problem:** Too many unique label values in Prometheus, causing memory issues.
@@ -579,8 +938,6 @@ The following features are planned for future releases:
 
 ### Phase 2: Additional Formats
 
-- **JSON export**: For generic HTTP endpoints and custom integrations
-- **CSV export**: For spreadsheet analysis and reporting
 - **StatsD export**: Native Datadog and CloudWatch integration
 
 ### Phase 3: Daemon Mode

@@ -187,7 +187,8 @@ func TestGetExporter(t *testing.T) {
 		wantErr bool
 	}{
 		{"prometheus", false},
-		{"json", true},
+		{"json", false},
+		{"csv", false},
 		{"invalid", true},
 	}
 

@@ -52,7 +52,7 @@ func runAttribute(cmd *cobra.Command, args []string) error {
 
 	sessionID := attrFlagSession
 
-	rows, err := store.ComputeAttribution(sessionID, cfg.ClaudeHome, pricing)
+	rows, err, selectedSessionID := store.ComputeAttribution(sessionID, cfg.ClaudeHome, pricing)
 	if err != nil {
 		return fmt.Errorf("computing attribution: %w", err)
 	}
@@ -62,6 +62,10 @@ func runAttribute(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println(output.Section("Cost Attribution"))
+	if sessionID == "" {
+		// Show which session was selected when using default (most recent)
+		fmt.Printf(" Session: %s (most recent)\n", output.StyleMuted.Render(selectedSessionID[:12]+"..."))
+	}
 	fmt.Println()
 
 	tbl := output.NewTable("Tool Type", "Calls", "Input Tokens", "Output Tokens", "Est. Cost")
@@ -80,7 +84,7 @@ func runAttribute(cmd *cobra.Command, args []string) error {
 
 	tbl.Print()
 	fmt.Println()
-	fmt.Printf(" Total: $%.4f\n", total)
+	fmt.Printf("Total: $%.4f\n", total)
 	fmt.Println()
 
 	return nil

@@ -106,17 +106,21 @@ func findTranscriptFile(sessionID, claudeHome string) (string, error) {
 
 // ComputeAttribution reads the JSONL transcript for sessionID under claudeHome/projects/
 // and groups token usage by tool type across all assistant turns.
-// Returns rows sorted by EstCostUSD descending.
+// Returns rows sorted by EstCostUSD descending, error, and the selected session ID.
 // If sessionID is empty, uses the most recently modified .jsonl file.
-func ComputeAttribution(sessionID, claudeHome string, pricing ModelPricing) ([]TurnAttribution, error) {
+func ComputeAttribution(sessionID, claudeHome string, pricing ModelPricing) ([]TurnAttribution, error, string) {
 	filePath, err := findTranscriptFile(sessionID, claudeHome)
 	if err != nil {
-		return nil, err
+		return nil, err, ""
 	}
+
+	// Extract session ID from file path
+	selectedSessionID := filepath.Base(filePath)
+	selectedSessionID = strings.TrimSuffix(selectedSessionID, ".jsonl")
 
 	f, err := os.Open(filePath)
 	if err != nil {
-		return nil, err
+		return nil, err, selectedSessionID
 	}
 	defer func() { _ = f.Close() }()
 
@@ -190,11 +194,11 @@ func ComputeAttribution(sessionID, claudeHome string, pricing ModelPricing) ([]T
 	}
 
 	if err := scanner.Err(); err != nil {
-		return nil, err
+		return nil, err, selectedSessionID
 	}
 
 	if len(byTool) == 0 {
-		return []TurnAttribution{}, nil
+		return []TurnAttribution{}, nil, selectedSessionID
 	}
 
 	// Build result slice.
@@ -216,5 +220,5 @@ func ComputeAttribution(sessionID, claudeHome string, pricing ModelPricing) ([]T
 		return result[i].EstCostUSD > result[j].EstCostUSD
 	})
 
-	return result, nil
+	return result, nil, selectedSessionID
 }

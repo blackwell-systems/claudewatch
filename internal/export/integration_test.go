@@ -274,9 +274,9 @@ func TestExportPrometheus_AllProjects(t *testing.T) {
 
 // TestGetExporter_InvalidFormat validates error handling for unsupported formats.
 func TestGetExporter_InvalidFormat(t *testing.T) {
-	_, err := GetExporter("json")
+	_, err := GetExporter("yaml")
 	require.Error(t, err, "Should error on unsupported format")
-	assert.Contains(t, err.Error(), "unsupported format: json")
+	assert.Contains(t, err.Error(), "unsupported format")
 }
 
 // TestExportPrivacyRules is a comprehensive privacy validation test.

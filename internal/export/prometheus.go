@@ -259,3 +259,126 @@ func (p *PrometheusExporter) Export(snapshot MetricSnapshot) ([]byte, error) {
 
 	return buf.Bytes(), nil
 }
+
+// ExportMultiple renders multiple MetricSnapshots in Prometheus format.
+// Each snapshot's metrics include project/date labels to distinguish them.
+func (p *PrometheusExporter) ExportMultiple(snapshots []MetricSnapshot) ([]byte, error) {
+	var buf bytes.Buffer
+
+	for _, snapshot := range snapshots {
+		// Export each snapshot - they will have different label combinations
+		snapshotBytes, err := p.Export(snapshot)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(snapshotBytes)
+	}
+
+	return buf.Bytes(), nil
+}
+
+// ExportDetailed renders per-session details in Prometheus format.
+func (p *PrometheusExporter) ExportDetailed(details []SessionDetail) ([]byte, error) {
+	var buf bytes.Buffer
+
+	// Helper function to write metric with labels
+	writeMetric := func(name, metricType, help string, value interface{}, labels map[string]string) {
+		fmt.Fprintf(&buf, "# HELP %s %s\n", name, help)
+		fmt.Fprintf(&buf, "# TYPE %s %s\n", name, metricType)
+
+		labelStr := ""
+		if len(labels) > 0 {
+			var pairs []string
+			for k, v := range labels {
+				// Escape label values according to Prometheus spec
+				escapedValue := strings.ReplaceAll(v, "\\", "\\\\")
+				escapedValue = strings.ReplaceAll(escapedValue, "\"", "\\\"")
+				escapedValue = strings.ReplaceAll(escapedValue, "\n", "\\n")
+				pairs = append(pairs, fmt.Sprintf("%s=\"%s\"", k, escapedValue))
+			}
+			sort.Strings(pairs) // Stable output
+			labelStr = "{" + strings.Join(pairs, ",") + "}"
+		}
+
+		fmt.Fprintf(&buf, "%s%s %v\n\n", name, labelStr, value)
+	}
+
+	// Write session-level metrics
+	for _, detail := range details {
+		labels := map[string]string{
+			"session_id":   detail.SessionID,
+			"project_name": detail.ProjectName,
+			"model":        detail.Model,
+		}
+
+		writeMetric(
+			"claudewatch_session_duration_minutes",
+			"gauge",
+			"Session duration in minutes",
+			detail.DurationMin,
+			labels,
+		)
+
+		writeMetric(
+			"claudewatch_session_commits",
+			"gauge",
+			"Number of commits in session",
+			detail.Commits,
+			labels,
+		)
+
+		writeMetric(
+			"claudewatch_session_tool_errors",
+			"gauge",
+			"Number of tool errors in session",
+			detail.ToolErrors,
+			labels,
+		)
+
+		writeMetric(
+			"claudewatch_session_cost_usd",
+			"gauge",
+			"Session cost in USD",
+			detail.CostUSD,
+			labels,
+		)
+
+		writeMetric(
+			"claudewatch_session_friction_events",
+			"gauge",
+			"Number of friction events in session",
+			detail.FrictionEvents,
+			labels,
+		)
+
+		writeMetric(
+			"claudewatch_session_input_tokens",
+			"gauge",
+			"Input tokens consumed in session",
+			detail.InputTokens,
+			labels,
+		)
+
+		writeMetric(
+			"claudewatch_session_output_tokens",
+			"gauge",
+			"Output tokens generated in session",
+			detail.OutputTokens,
+			labels,
+		)
+
+		sawValue := 0
+		if detail.IsSAW {
+			sawValue = 1
+		}
+		writeMetric(
+			"claudewatch_session_is_saw",
+			"gauge",
+			"Whether session used Scout-and-Wave (1=yes, 0=no)",
+			sawValue,
+			labels,
+		)
+	}
+
+	return buf.Bytes(), nil
+}
