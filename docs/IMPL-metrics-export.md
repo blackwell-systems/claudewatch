@@ -710,3 +710,31 @@ claudewatch_context_pressure_avg{project="<name>"}         # gauge (0.0-1.0)
 **IMPL Status:** READY FOR WAVE EXECUTION
 **Last Updated:** 2026-03-04
 **Author:** Scout (Sonnet 4.5)
+
+---
+
+## Agent B - Completion Report
+
+**Status:** complete
+**Files Changed:**
+- `internal/export/metrics.go` (created, 475 lines)
+- `internal/export/metrics_test.go` (created, 284 lines)
+- `go.mod` (updated dependencies)
+
+**Commits:**
+- `5927bfc` - feat(export): add metrics collector with privacy-safe aggregation
+
+**Interface Deviations:** none
+
+**Downstream Action Required:** false
+
+**Notes:**
+- All 17 unit tests passing
+- Privacy validation tests confirm no sensitive data in MetricSnapshot
+- Successfully integrates with existing analyzer package functions
+- Uses `analyzer.NoCacheRatio()` as default (can be enhanced to load stats-cache later)
+- Uses `claude.ParseAgentTasks()` (not ParseAllAgentTasks - correct function name)
+- Uses `analyzer.DefaultPricing["sonnet"]` as default model pricing
+- `LimitFrictionTypes()` utility provided for Prometheus label cardinality control
+- Ready for Agent A to consume via `CollectMetrics()` function
+- No modifications to existing analyzer or claude packages (read-only as specified)
