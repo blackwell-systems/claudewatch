@@ -13,27 +13,30 @@ import (
 )
 
 var (
-	replayFlagFrom int
-	replayFlagTo   int
+	replayFlagFrom    int
+	replayFlagTo      int
+	replayFlagSession string
 )
 
 var replayCmd = &cobra.Command{
-	Use:   "replay <session-id>",
+	Use:   "replay [session-id]",
 	Short: "Walk through a session as a structured timeline",
 	Long: `Show every turn in a session with role, tool, token usage, cost, and
 friction markers. Useful for post-mortems on expensive or high-friction sessions.
 
 Examples:
-  claudewatch replay abc123def456
-  claudewatch replay abc123 --from 10 --to 20
-  claudewatch replay abc123 --json`,
-	Args: cobra.ExactArgs(1),
+  claudewatch replay                           # select from active sessions
+  claudewatch replay abc123def456              # specific session
+  claudewatch replay abc123 --from 10 --to 20  # range of turns
+  claudewatch replay --json                    # JSON output`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: runReplay,
 }
 
 func init() {
 	replayCmd.Flags().IntVar(&replayFlagFrom, "from", 0, "First turn to show (1-indexed, default: all)")
 	replayCmd.Flags().IntVar(&replayFlagTo, "to", 0, "Last turn to show (1-indexed, default: all)")
+	replayCmd.Flags().StringVar(&replayFlagSession, "session", "", "Session ID to replay (default: select from active)")
 	rootCmd.AddCommand(replayCmd)
 }
 
@@ -55,7 +58,17 @@ func runReplay(cmd *cobra.Command, args []string) error {
 		CacheWritePerMillion: ap.CacheWritePerMillion,
 	}
 
-	sessionID := args[0]
+	// Session ID can come from positional arg or --session flag
+	flagOrArg := replayFlagSession
+	if len(args) > 0 {
+		flagOrArg = args[0]
+	}
+
+	// Select session: use flag/arg if provided, otherwise prompt for active sessions
+	sessionID, err := SelectSession(cfg, flagOrArg, WithMostRecentFallback())
+	if err != nil {
+		return err
+	}
 
 	replay, err := store.BuildReplay(sessionID, cfg.ClaudeHome, replayFlagFrom, replayFlagTo, pricing)
 	if err != nil {

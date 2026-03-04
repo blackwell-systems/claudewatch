@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"sort"
 
 	"github.com/blackwell-systems/claudewatch/internal/analyzer"
 	"github.com/blackwell-systems/claudewatch/internal/claude"
@@ -156,19 +155,10 @@ func runExperimentTag(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no active experiment for project %q", experimentTagFlagProject)
 	}
 
-	sessionID := experimentTagFlagSession
-	if sessionID == "" {
-		sessions, parseErr := claude.ParseAllSessionMeta(cfg.ClaudeHome)
-		if parseErr != nil {
-			return fmt.Errorf("parsing session meta: %w", parseErr)
-		}
-		if len(sessions) == 0 {
-			return fmt.Errorf("no sessions found")
-		}
-		sort.Slice(sessions, func(i, j int) bool {
-			return sessions[i].StartTime > sessions[j].StartTime
-		})
-		sessionID = sessions[0].SessionID
+	// Select session: use flag if provided, otherwise prompt for active sessions
+	sessionID, err := SelectSession(cfg, experimentTagFlagSession, WithMostRecentFallback())
+	if err != nil {
+		return err
 	}
 
 	if experimentTagFlagVariant != "a" && experimentTagFlagVariant != "b" {

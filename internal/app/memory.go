@@ -260,21 +260,10 @@ func runMemoryExtract(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Determine target session ID
-	var targetSessionID string
-	if memoryFlagSessionID != "" {
-		targetSessionID = memoryFlagSessionID
-	} else {
-		// Find active session
-		activePath, err := claude.FindActiveSessionPath(cfg.ClaudeHome)
-		if err != nil {
-			return fmt.Errorf("finding active session: %w", err)
-		}
-		if activePath == "" {
-			return fmt.Errorf("no active session found")
-		}
-		// Extract session ID from path: ~/.claude/projects/<hash>/<sessionID>.jsonl
-		targetSessionID = strings.TrimSuffix(filepath.Base(activePath), ".jsonl")
+	// Select session: require active session (no fallback to historical)
+	targetSessionID, err := SelectSession(cfg, memoryFlagSessionID, RequireActiveSession())
+	if err != nil {
+		return err
 	}
 
 	// Load all sessions for this project
