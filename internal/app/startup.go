@@ -176,7 +176,7 @@ func runStartup(cmd *cobra.Command, args []string) {
 	if regressionWarning != "" {
 		fmt.Print(regressionWarning)
 	}
-	fmt.Printf("║ tools: get_session_dashboard · get_project_health · get_live_friction · get_context_pressure · get_cost_velocity · get_suggestions\n")
+	fmt.Printf("║ tools: get_session_dashboard · get_project_health · get_task_history · get_blockers · extract_current_session_memory · get_live_friction · get_context_pressure · get_cost_velocity · get_suggestions\n")
 	fmt.Printf("╚ PostToolUse hook active → fires on errors/context/cost → call get_session_dashboard\n")
 }
 
