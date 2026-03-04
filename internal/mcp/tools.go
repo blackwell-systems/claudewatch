@@ -184,17 +184,6 @@ func (s *Server) loadTags() map[string]string {
 	return tags
 }
 
-// loadProjectWeights loads the session project weights store.
-// Returns an empty map on any error (non-fatal: missing weights file is normal).
-func (s *Server) loadProjectWeights() map[string][]store.ProjectWeight {
-	ws := store.NewSessionProjectWeightsStore(s.weightsStorePath)
-	weights, err := ws.Load()
-	if err != nil || weights == nil {
-		return map[string][]store.ProjectWeight{}
-	}
-	return weights
-}
-
 // resolveProjectName returns tags[sessionID] if an override exists,
 // falling back to filepath.Base(projectPath).
 func resolveProjectName(sessionID, projectPath string, tags map[string]string) string {
