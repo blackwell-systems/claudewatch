@@ -5,9 +5,29 @@
 [![Release](https://img.shields.io/github/v/release/blackwell-systems/claudewatch)](https://github.com/blackwell-systems/claudewatch/releases/latest)
 [![Go Report Card](https://goreportcard.com/badge/github.com/blackwell-systems/claudewatch)](https://goreportcard.com/report/github.com/blackwell-systems/claudewatch)
 
-A dual observability layer for Claude Code — for developers, and for Claude itself.
+Observability and memory for Claude Code — Claude monitors its own friction, queries past attempts, and checkpoints progress across sessions.
 
-claudewatch runs two layers at once. For developers: friction patterns, cost-per-outcome, agent success rates, and before/after CLAUDE.md effectiveness scoring — reads local files under `~/.claude/`, finds what's costing you time and money, fixes it, and measures the result. For Claude: a self-monitoring system that orients it at session start, alerts it mid-session when error loops or cost spikes are detected, and gives it queryable access to its own project history and live session health. Both layers run from the same local data, with no network calls and no telemetry.
+## What you get
+
+**Measure where you are:**
+- Friction rate, cost-per-commit, agent success rates across all projects
+- CLAUDE.md effectiveness scoring: before/after comparison shows what actually worked
+- Model usage analysis with overspend detection and cost attribution by tool type
+- Project confidence scoring: see where Claude acts vs where it's stuck reading
+
+**Give Claude a mirror:**
+- **Cross-session memory**: Claude queries "what did we try before?" and "what blockers did we hit?"
+- **Live self-monitoring**: alerts on error loops, context pressure, cost spikes mid-session
+- **Project health briefings**: injected at session start so Claude knows the friction history
+- **Behavioral protocols**: explicit WHEN→DO triggers that tell Claude when to use memory tools
+
+**Fix what's broken:**
+- Data-driven CLAUDE.md patches generated from your actual friction patterns, not templates
+- Ranked improvement suggestions by impact: see what to fix first
+- Track changes over time: prove whether your CLAUDE.md edits reduced friction or increased cost
+- Automatic memory extraction from completed sessions: no manual logging required
+
+**All local.** Reads `~/.claude/` files on disk. No network calls. No telemetry.
 
 ## Why
 
@@ -19,9 +39,9 @@ This is the layer nobody else occupies. LLM observability tools (LangSmith, Lang
 
 But queryable tools only help if Claude thinks to call them. claudewatch also runs a push layer: a SessionStart hook that injects a project health briefing before the first message, a PostToolUse hook that fires on error loops, context pressure, and cost spikes, and a behavioral contract in `~/.claude/CLAUDE.md` that tells Claude exactly what to do when those signals arrive. The result is a system that orients Claude at session start, alerts it mid-session when things go wrong, and gives it the vocabulary to respond — without requiring Claude to remember any of this from a previous conversation.
 
-## What claudewatch does
+## How it works
 
-Claude Code already records rich session data locally -- tool usage, friction events, satisfaction signals, agent lifecycles, commit patterns. claudewatch reads that data and turns it into actionable insights for both parties.
+claudewatch reads local session data from `~/.claude/` and turns it into actionable insights for both you and Claude.
 
 **Give Claude a mirror.** `claudewatch install` writes a behavioral contract into `~/.claude/CLAUDE.md`. Two shell hooks — `claudewatch startup` (SessionStart) and `claudewatch hook` (PostToolUse) — orient Claude at session start and alert it mid-session when thresholds are crossed. The MCP server gives Claude queryable access to its own project health, agent history, and live session metrics. Together these form a self-monitoring layer that runs inside every Claude Code session: Claude knows what project it's on, what friction it generated last time, and when to stop and reassess — without requiring you to prompt it explicitly.
 
