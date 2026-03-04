@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/blackwell-systems/claudewatch/internal/claude"
+	"github.com/blackwell-systems/claudewatch/internal/store"
 )
 
 // DashboardResult is the composite response for get_session_dashboard.
@@ -73,6 +74,17 @@ type DashboardFriction struct {
 	Patterns      []claude.FrictionPattern `json:"patterns,omitempty"`
 }
 
+// loadAllWeightsDashboard loads the full session-project-weights map from disk.
+// Returns an empty map on any error (non-fatal: missing file is normal).
+func (s *Server) loadAllWeightsDashboard() map[string][]store.ProjectWeight {
+	ws := store.NewSessionProjectWeightsStore(s.weightsStorePath)
+	m, err := ws.Load()
+	if err != nil || m == nil {
+		return map[string][]store.ProjectWeight{}
+	}
+	return m
+}
+
 // addDashboardTools registers the composite dashboard tool.
 func addDashboardTools(s *Server) {
 	s.registerTool(toolDef{
@@ -97,9 +109,10 @@ func (s *Server) handleGetSessionDashboard(args json.RawMessage) (any, error) {
 	}
 
 	tags := s.loadTags()
+	allWeights := s.loadAllWeightsDashboard()
 	result := DashboardResult{
 		SessionID:   meta.SessionID,
-		ProjectName: resolveProjectName(meta.SessionID, meta.ProjectPath, tags),
+		ProjectName: sessionPrimaryProject(meta.SessionID, meta.ProjectPath, tags, allWeights[meta.SessionID]),
 		Live:        true,
 	}
 
