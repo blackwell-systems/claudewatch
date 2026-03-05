@@ -594,6 +594,49 @@ After wave 2 completes:
 | Wave | Agent | Description | Status |
 |------|-------|-------------|--------|
 | 1 | A | Core `EstimateSessionCost` per-model pricing + analyzer tests | TO-DO |
-| 2 | B | MCP tool integration tests for per-model pricing | TO-DO |
+| 2 | B | MCP tool integration tests for per-model pricing | COMPLETE |
 | 2 | C | App/export/watcher integration tests for per-model pricing | TO-DO |
 | — | Orch | Post-merge verification + binary install | TO-DO |
+
+## Wave 2 Agent B — Completion Report
+
+```yaml
+agent: wave2-agent-b
+status: complete
+branch: wave2-agent-b
+
+files_changed:
+  - internal/mcp/tools_test.go
+  - internal/mcp/cost_tools_test.go
+  - internal/mcp/correlate_tools_test.go
+  - internal/mcp/anomaly_tools_test.go
+  - internal/mcp/regression_tools_test.go
+
+tests_added:
+  - TestHandleGetSessionStats_PerModelCost (tools_test.go)
+  - TestHandleGetRecentSessions_PerModelCost (tools_test.go)
+  - TestHandleGetSessionStats_MixedModels (tools_test.go)
+  - TestGetCostSummary_PerModelCost (cost_tools_test.go)
+  - TestHandleGetCausalInsights_PerModelCost (correlate_tools_test.go)
+  - TestGetProjectAnomalies_PerModelCost (anomaly_tools_test.go)
+  - TestGetRegressionStatus_PerModelCost (regression_tools_test.go)
+
+tests_passing: 7/7
+
+interface_deviations: []
+
+out_of_scope_deps: []
+
+notes: |
+  Added writeSessionMetaWithModels helper to tools_test.go that creates
+  session meta cache JSON with model_usage populated, triggering the
+  per-model pricing path in EstimateSessionCost. All MCP tool handlers
+  correctly propagate ModelUsage from parsed session data through to
+  EstimateSessionCost. No handler source changes needed. The helper is
+  accessible to all test files in the mcp package.
+
+  Key verification pattern: each test creates sessions with specific model
+  tiers (Opus, Sonnet, Haiku) and asserts that the resulting cost matches
+  per-model pricing rather than the single-tier Sonnet fallback. The
+  mixed-model test (Opus + Haiku) verifies weighted-sum cost calculation.
+```

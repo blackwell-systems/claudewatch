@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/blackwell-systems/claudewatch/internal/analyzer"
 )
 
 // newCostTestServer creates a Server with the cost summary tool registered.
@@ -316,5 +318,59 @@ func TestGetCostSummary_LiveSessionByProject(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("ByProject does not contain \"liveproject\"; got: %v", r.ByProject)
+	}
+}
+
+// TestGetCostSummary_PerModelCost verifies that cost summary aggregates use
+// per-model pricing when sessions have ModelUsage populated. An Opus session
+// should contribute a higher cost than the same tokens at Sonnet rates.
+func TestGetCostSummary_PerModelCost(t *testing.T) {
+	dir := t.TempDir()
+	today := time.Now().UTC().Format("2006-01-02") + "T12:00:00Z"
+
+	// Write one Opus session and one Haiku session, both today.
+	writeSessionMetaWithModels(t, dir, "opus-cost-sess", today, "/home/user/costproject",
+		map[string][2]int{
+			"claude-3-opus-20240229": {1_000_000, 100_000},
+		})
+	writeSessionMetaWithModels(t, dir, "haiku-cost-sess", today, "/home/user/costproject",
+		map[string][2]int{
+			"claude-3-haiku-20240307": {1_000_000, 100_000},
+		})
+
+	s := newCostTestServer(dir)
+	result, err := callTool(s, "get_cost_summary", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	r, ok := result.(CostSummaryResult)
+	if !ok {
+		t.Fatalf("expected CostSummaryResult, got %T", result)
+	}
+
+	// Compute expected costs per model.
+	opusPricing := analyzer.DefaultPricing["opus"]
+	haikuPricing := analyzer.DefaultPricing["haiku"]
+	expectedOpus := float64(1_000_000)/1_000_000.0*opusPricing.InputPerMillion +
+		float64(100_000)/1_000_000.0*opusPricing.OutputPerMillion
+	expectedHaiku := float64(1_000_000)/1_000_000.0*haikuPricing.InputPerMillion +
+		float64(100_000)/1_000_000.0*haikuPricing.OutputPerMillion
+	expectedTotal := expectedOpus + expectedHaiku
+
+	// AllTimeUSD should reflect per-model pricing, not uniform Sonnet.
+	epsilon := 0.01
+	if r.AllTimeUSD < expectedTotal-epsilon || r.AllTimeUSD > expectedTotal+epsilon {
+		t.Errorf("AllTimeUSD = %f, want ~%f (per-model: Opus %f + Haiku %f)",
+			r.AllTimeUSD, expectedTotal, expectedOpus, expectedHaiku)
+	}
+
+	// Verify it's significantly higher than if both sessions were priced at Sonnet.
+	sonnetPricing := analyzer.DefaultPricing["sonnet"]
+	allSonnetCost := 2 * (float64(1_000_000)/1_000_000.0*sonnetPricing.InputPerMillion +
+		float64(100_000)/1_000_000.0*sonnetPricing.OutputPerMillion)
+	if r.AllTimeUSD <= allSonnetCost {
+		t.Errorf("AllTimeUSD (%f) <= all-Sonnet cost (%f); per-model pricing not applied",
+			r.AllTimeUSD, allSonnetCost)
 	}
 }
