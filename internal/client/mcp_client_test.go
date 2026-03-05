@@ -41,8 +41,8 @@ func TestCallTool_MissingBinary(t *testing.T) {
 	// Error message varies by OS, but should indicate missing binary or command failure
 	assert.True(t,
 		strings.Contains(err.Error(), "not found") ||
-		strings.Contains(err.Error(), "no such file") ||
-		strings.Contains(err.Error(), "command failed"),
+			strings.Contains(err.Error(), "no such file") ||
+			strings.Contains(err.Error(), "command failed"),
 		"error should indicate missing binary or command failure, got: %s", err.Error())
 }
 

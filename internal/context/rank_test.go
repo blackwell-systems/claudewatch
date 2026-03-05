@@ -7,7 +7,7 @@ import (
 
 func TestRankAndSort_RecencyBoost(t *testing.T) {
 	now := time.Now()
-	oldTime := now.AddDate(-1, 0, 0) // 1 year ago
+	oldTime := now.AddDate(-1, 0, 0)    // 1 year ago
 	recentTime := now.AddDate(0, 0, -1) // 1 day ago
 
 	items := []ContextItem{
