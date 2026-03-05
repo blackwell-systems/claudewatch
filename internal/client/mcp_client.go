@@ -149,14 +149,16 @@ func FetchAllSources(ctx context.Context, client MCPClient, query string, projec
 	resultChan := make(chan SourceResult, 4)
 
 	// Launch 4 parallel queries
+	// Use full path for commitmux binary (not in PATH when MCP server spawns)
+	commitmuxBinary := "/Users/dayna.blackwell/.cargo/bin/commitmux"
 	sources := []struct {
 		name       string
 		binary     string
 		toolName   string
 		isExternal bool
 	}{
-		{"memory", "commitmux", "commitmux_search_memory", true},
-		{"commit", "commitmux", "commitmux_search_semantic", true},
+		{"memory", commitmuxBinary, "commitmux_search_memory", true},
+		{"commit", commitmuxBinary, "commitmux_search_semantic", true},
 		{"task_history", "", "get_task_history", false},
 		{"transcript", "", "search_transcripts", false},
 	}

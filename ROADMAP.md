@@ -382,12 +382,14 @@ Meanwhile, commitmux already has exactly the infrastructure we'd need to build:
 
 **Priority:** BACKLOG
 
-### 3.5.5 Unified context surface (commitmux + claudewatch MCP bridge)
+### 3.5.5 Unified context surface (commitmux + claudewatch MCP bridge) ✅ COMPLETE
 **Impact:** 🔥🔥🔥 High - Single query answers "what do I need to know?"
 **Effort:** 🛠🛠 Medium - MCP tool composition + result ranking
 **Dependencies:** 3.5.2 (semantic memory search), commitmux MCP tools (exists)
 
-**Current state:** Agents must query two separate MCP servers to get full context: claudewatch for session history/blockers/friction and commitmux for commit history/code changes. They rarely query both, missing connections like "this blocker was resolved in commit abc123" or "the approach that worked in session X produced commits Y and Z."
+**Status:** Implemented in v0.15.0 via SAW protocol (2 waves, 4 agents). Single `get_context` MCP tool and CLI command queries 4 sources in parallel (commits, memory, task history, transcripts), deduplicates by SHA-256 hash with source priority, ranks by relevance + recency, returns unified results. Built with `internal/client` (MCP-to-MCP via stdio), `internal/context` (types/dedup/rank), `internal/app/context.go` (CLI), and `internal/mcp/unified_context_tools.go` (MCP handler).
+
+**Previous state:** Agents must query two separate MCP servers to get full context: claudewatch for session history/blockers/friction and commitmux for commit history/code changes. They rarely query both, missing connections like "this blocker was resolved in commit abc123" or "the approach that worked in session X produced commits Y and Z."
 
 **Implementation:**
 - New claudewatch MCP tool: `get_context(query, project?, limit?) → UnifiedContext`
