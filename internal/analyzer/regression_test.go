@@ -351,6 +351,60 @@ func TestComputeRegressionStatus_ExactlyAtThreshold(t *testing.T) {
 	}
 }
 
+func TestComputeRegressionStatus_PerModelCost(t *testing.T) {
+	// Verify regression detection uses per-model pricing when ModelUsage is populated.
+	// Sessions with Opus ModelUsage: cost should be much higher than Sonnet baseline.
+	// Opus: 100K input * $15/M = $1.50, 50K output * $75/M = $3.75 → total $5.25 per session
+	// Baseline avg cost = $1.00, threshold = 1.5 → threshold*baseline = $1.50
+	// $5.25 > $1.50 → cost regressed
+	sessions := []claude.SessionMeta{
+		{
+			SessionID:    "s1",
+			StartTime:    "2026-01-01T10:00:00Z",
+			InputTokens:  100_000,
+			OutputTokens: 50_000,
+			GitCommits:   3,
+			ModelUsage: map[string]claude.ModelStats{
+				"claude-3-opus-20240229": {InputTokens: 100_000, OutputTokens: 50_000},
+			},
+		},
+		{
+			SessionID:    "s2",
+			StartTime:    "2026-01-02T10:00:00Z",
+			InputTokens:  100_000,
+			OutputTokens: 50_000,
+			GitCommits:   3,
+			ModelUsage: map[string]claude.ModelStats{
+				"claude-3-opus-20240229": {InputTokens: 100_000, OutputTokens: 50_000},
+			},
+		},
+		{
+			SessionID:    "s3",
+			StartTime:    "2026-01-03T10:00:00Z",
+			InputTokens:  100_000,
+			OutputTokens: 50_000,
+			GitCommits:   3,
+			ModelUsage: map[string]claude.ModelStats{
+				"claude-3-opus-20240229": {InputTokens: 100_000, OutputTokens: 50_000},
+			},
+		},
+	}
+	baseline := makeBaseline(1.0, 0.3)
+	input := makeRegressionInput(sessions, nil, baseline, 1.5)
+	status := ComputeRegressionStatus(input)
+
+	if !status.CostRegressed {
+		t.Errorf("CostRegressed should be true with Opus per-model pricing (currentAvgCost=%.4f vs threshold=%.4f)",
+			status.CurrentAvgCostUSD, 1.5*baseline.AvgCostUSD)
+	}
+	// Verify cost is Opus-priced, not Sonnet-priced.
+	// Sonnet would give: 100K*3/M + 50K*15/M = 0.30 + 0.75 = 1.05
+	// Opus gives: 100K*15/M + 50K*75/M = 1.50 + 3.75 = 5.25
+	if status.CurrentAvgCostUSD < 5.0 {
+		t.Errorf("CurrentAvgCostUSD = %.4f, expected ~5.25 (Opus pricing), not ~1.05 (Sonnet)", status.CurrentAvgCostUSD)
+	}
+}
+
 func TestComputeRegressionStatus_FacetsUsed(t *testing.T) {
 	// Verify that facets are used to compute friction (overriding ToolErrors).
 	// s1 has ToolErrors=0 but facet with friction=5 → friction>0

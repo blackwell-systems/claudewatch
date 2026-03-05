@@ -280,6 +280,48 @@ func TestDetectAnomalies_ZeroStddev(t *testing.T) {
 	}
 }
 
+func TestDetectAnomalies_PerModelCost(t *testing.T) {
+	// Session with Opus ModelUsage should be costed at Opus rates.
+	// Opus: 1.5M input * $15/M = $22.50, 50K output * $75/M = $3.75 → total $26.25
+	// Baseline avg cost = $1.00, stddev = $0.10
+	// z = (26.25 - 1.0) / 0.1 = 252.5 → critical anomaly
+	sessions := []claude.SessionMeta{
+		{
+			SessionID:    "opus-session",
+			StartTime:    "2026-01-10T10:00:00Z",
+			InputTokens:  1_500_000,
+			OutputTokens: 50_000,
+			GitCommits:   3,
+			ToolErrors:   2,
+			ModelUsage: map[string]claude.ModelStats{
+				"claude-3-opus-20240229": {InputTokens: 1_500_000, OutputTokens: 50_000},
+			},
+		},
+	}
+	facets := []claude.SessionFacet{
+		makeFacet("opus-session", map[string]int{"retry": 2}),
+	}
+
+	baseline := buildTestBaseline()
+	results := DetectAnomalies(sessions, facets, baseline, testPricingAnomaly, NoCacheRatio(), 2.0)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 anomaly, got %d", len(results))
+	}
+	if results[0].SessionID != "opus-session" {
+		t.Errorf("SessionID = %q, want %q", results[0].SessionID, "opus-session")
+	}
+	if results[0].Severity != "critical" {
+		t.Errorf("Severity = %q, want %q", results[0].Severity, "critical")
+	}
+	// Verify the cost reflects Opus pricing, not Sonnet.
+	// Sonnet would give: 1.5M*3/M + 50K*15/M = 4.50 + 0.75 = 5.25
+	// Opus gives: 1.5M*15/M + 50K*75/M = 22.50 + 3.75 = 26.25
+	if results[0].CostUSD < 20.0 {
+		t.Errorf("CostUSD = %.4f, expected ~26.25 (Opus pricing), got Sonnet-level cost", results[0].CostUSD)
+	}
+}
+
 func TestDetectAnomalies_EmptySessions(t *testing.T) {
 	baseline := buildTestBaseline()
 	results := DetectAnomalies(nil, nil, baseline, testPricingAnomaly, NoCacheRatio(), 2.0)

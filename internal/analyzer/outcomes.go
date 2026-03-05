@@ -158,16 +158,40 @@ func AnalyzeOutcomes(sessions []claude.SessionMeta, facets []claude.SessionFacet
 	return result
 }
 
-// EstimateSessionCost computes the dollar cost of a single session from its
-// token counts. Input tokens are treated as uncached; estimated cache-read and
-// cache-write volumes are derived from the aggregate CacheRatio.
+// EstimateSessionCost computes the dollar cost of a single session.
+// When s.ModelUsage is populated, each model's tokens are priced at the
+// correct tier rate (opus/sonnet/haiku) using analyzer.DefaultPricing.
+// When s.ModelUsage is empty (older sessions), falls back to single-tier
+// pricing using the provided pricing and ratio parameters.
 func EstimateSessionCost(s claude.SessionMeta, pricing ModelPricing, ratio CacheRatio) float64 {
+	if len(s.ModelUsage) > 0 {
+		return estimateFromModelUsage(s.ModelUsage)
+	}
+
+	// Fallback: single-tier pricing for older sessions without ModelUsage.
 	inputTokens := float64(s.InputTokens)
 	uncachedCost := inputTokens / 1_000_000.0 * pricing.InputPerMillion
 	cacheReadCost := (inputTokens * ratio.CacheReadMultiplier) / 1_000_000.0 * pricing.CacheReadPerMillion
 	cacheWriteCost := (inputTokens * ratio.CacheWriteMultiplier) / 1_000_000.0 * pricing.CacheWritePerMillion
 	outputCost := float64(s.OutputTokens) / 1_000_000.0 * pricing.OutputPerMillion
 	return uncachedCost + cacheReadCost + cacheWriteCost + outputCost
+}
+
+// estimateFromModelUsage computes cost by summing per-model costs from
+// SessionMeta.ModelUsage. Each model is classified via ClassifyModelTier
+// and priced via getPricingForTier (both already exist in models.go).
+// Returns the total cost in USD.
+func estimateFromModelUsage(usage map[string]claude.ModelStats) float64 {
+	var total float64
+	for modelName, stats := range usage {
+		tier := ClassifyModelTier(modelName)
+		pricing := getPricingForTier(tier)
+		total += tokensToCost(int64(stats.InputTokens), pricing.InputPerMillion) +
+			tokensToCost(int64(stats.OutputTokens), pricing.OutputPerMillion) +
+			tokensToCost(int64(stats.CacheReadInputTokens), pricing.CacheReadPerMillion) +
+			tokensToCost(int64(stats.CacheCreationInputTokens), pricing.CacheWritePerMillion)
+	}
+	return total
 }
 
 // computeOutcomeTrend splits sessions in half by time and compares the average
