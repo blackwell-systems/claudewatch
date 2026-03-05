@@ -389,11 +389,11 @@ func TestExportJSON_PerModelCost(t *testing.T) {
 	// Build sessions with Opus ModelUsage
 	sessions := []claude.SessionMeta{
 		{
-			SessionID:   "opus-session-1",
-			ProjectPath: "/code/myproject",
-			InputTokens: 1_000_000,
+			SessionID:    "opus-session-1",
+			ProjectPath:  "/code/myproject",
+			InputTokens:  1_000_000,
 			OutputTokens: 500_000,
-			GitCommits:  1,
+			GitCommits:   1,
 			ModelUsage: map[string]claude.ModelStats{
 				"claude-opus-4": {
 					InputTokens:  1_000_000,

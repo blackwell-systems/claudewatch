@@ -122,8 +122,8 @@ func TestCompareSAWVsSequential_PerModelCost(t *testing.T) {
 		},
 	}
 
-	sawSessionIDs := map[string]int{"opus-saw-session": 2}   // 2 waves
-	sawAgentCounts := map[string]int{"opus-saw-session": 4}  // 4 agents
+	sawSessionIDs := map[string]int{"opus-saw-session": 2}  // 2 waves
+	sawAgentCounts := map[string]int{"opus-saw-session": 4} // 4 agents
 
 	// Pass Sonnet pricing as fallback — but per-model path should override.
 	pricing := analyzer.DefaultPricing["sonnet"]
