@@ -243,7 +243,7 @@ claudewatch track --compare
 **Enable Claude's self-monitoring layer** (run once):
 
 ```bash
-# Configure behavioral protocols (CLAUDE.md) + MCP server (real-time tools)
+# Configure behavioral rules (~/.claude/rules/) + MCP server (real-time tools)
 claudewatch install
 
 # Restart Claude Code to load the MCP server
@@ -304,7 +304,7 @@ Then add the MCP server to `~/.claude.json`:
 | `mcp` | Run an MCP stdio server : gives Claude real-time access to its own session metrics |
 | `hook` | PostToolUse shell hook : checks for error loops, context pressure, cost spikes, and drift (read-heavy loops); exits 2 with a self-contained alert if action is needed |
 | `startup` | SessionStart shell hook : prints a compact briefing into Claude's context: project health, session count, friction level, MCP tool manifest |
-| `install` | Write the claudewatch behavioral contract into `~/.claude/CLAUDE.md`, delimited by markers; idempotent |
+| `install` | Write claudewatch behavioral rules to `~/.claude/rules/claudewatch-*.md`; configures MCP server; idempotent |
 
 ### `claudewatch fix`
 
@@ -486,22 +486,22 @@ Fires at session start and prints a compact briefing directly into Claude's cont
 
 Two elements of the briefing are dynamic. First, an optional regression warning line appears between the tip line and the tools line when the project's friction rate or avg cost has exceeded 1.5× its stored baseline : it is omitted entirely when the project is within baseline. Second, the tip is friction-based by default but is replaced with a SAW-correlation insight (`tip: SAW reduces zero-commit rate (X% vs Y% without)`) when there are ≥10 SAW sessions and ≥10 non-SAW sessions and the data shows a meaningful difference in zero-commit rate.
 
-**2. Behavioral contract** (`claudewatch install` → `~/.claude/CLAUDE.md`)
+**2. Behavioral rules** (`claudewatch install` → `~/.claude/rules/claudewatch-*.md`)
 
-`claudewatch install` writes a block of instructions into `~/.claude/CLAUDE.md`, delimited by `<!-- claudewatch:start -->` / `<!-- claudewatch:end -->` markers. The block tells Claude what to do when it sees the startup briefing (call `get_project_health` to calibrate) and what to do when the PostToolUse hook fires (stop, call `get_session_dashboard`). Without this, Claude sees the briefing but has no standing instruction to act on it. CLAUDE.md is loaded by Claude Code at session start and remains in context for the full session : it's where behavioral rules belong. Re-running `claudewatch install` updates the section in place; it's idempotent.
+`claudewatch install` writes modular rule files into `~/.claude/rules/`, split by concern: session start protocol, during-session protocol, and tool reference. The rules tell Claude what to do when it sees the startup briefing (call `get_project_health` to calibrate) and what to do when the PostToolUse hook fires (stop, call `get_session_dashboard`). Without these, Claude sees the briefing but has no standing instruction to act on it. Rules files are loaded by Claude Code at session start with the same priority as CLAUDE.md and remain in context for the full session. Splitting by concern means each rule gets focused attention instead of competing with unrelated instructions in a monolithic block. Re-running `claudewatch install` overwrites the files in place; it's idempotent.
 
 **3. Reactive alerts** (`claudewatch hook` as a PostToolUse hook)
 
 Fires after every tool use, rate-limited to once per 30 seconds via `~/.cache/claudewatch-hook.ts`. Checks three conditions in priority order: (1) three or more consecutive tool errors, (2) context pressure at "pressure" or "critical", (3) cost velocity "burning". Exits 0 silently if all clear. If a condition is met, exits 2 with a self-contained stderr message that names the MCP server, the tool to call (`get_session_dashboard`), and what that tool returns : so Claude with zero prior context about claudewatch knows exactly what to do. When a consecutive error alert fires, the message also names the chronic friction pattern if one is detected (a friction type appearing in >30% of the project's last 10 sessions with no recent CLAUDE.md update), surfacing it as `(chronic: {type} in N% of recent sessions)` so Claude knows whether this is a systemic issue or an isolated event.
 
-**Why CLAUDE.md persistence matters**
+**Why rules persistence matters**
 
-Injected context from the startup hook erodes as the conversation grows. By turn 50 it's buried under newer content. CLAUDE.md is loaded by Claude Code at the start of every session and remains in context regardless of depth. The behavioral rules : "when the hook fires, stop and call get_session_dashboard" : need to persist for the full session. The dynamic project data only needs to be fresh at session start.
+Injected context from the startup hook erodes as the conversation grows. By turn 50 it's buried under newer content. Rules files (like CLAUDE.md) are loaded by Claude Code at the start of every session and remain in context regardless of depth. The behavioral rules : "when the hook fires, stop and call get_session_dashboard" : need to persist for the full session. The dynamic project data only needs to be fresh at session start. Using `~/.claude/rules/` instead of a monolithic CLAUDE.md block gives each concern focused priority rather than forcing all instructions to compete for attention in a single file.
 
 **Setup**
 
 ```bash
-# Install behavioral contract into ~/.claude/CLAUDE.md
+# Install behavioral rules to ~/.claude/rules/ + configure MCP server
 claudewatch install
 ```
 

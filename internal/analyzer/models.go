@@ -275,7 +275,9 @@ func AnalyzeModelsFromSessions(sessions []claude.SessionMeta) ModelAnalysis {
 
 		inputCost := tokensToCost(int64(stats.InputTokens), pricing.InputPerMillion)
 		outputCost := tokensToCost(int64(stats.OutputTokens), pricing.OutputPerMillion)
-		totalCost := inputCost + outputCost
+		cacheReadCost := tokensToCost(int64(stats.CacheReadInputTokens), pricing.CacheReadPerMillion)
+		cacheWriteCost := tokensToCost(int64(stats.CacheCreationInputTokens), pricing.CacheWritePerMillion)
+		totalCost := inputCost + outputCost + cacheReadCost + cacheWriteCost
 		totalTokens := int64(stats.InputTokens + stats.OutputTokens)
 
 		mb := ModelBreakdown{

@@ -166,12 +166,16 @@ func ParseJSONLToSessionMeta(jsonlPath string) (*SessionMeta, error) {
 				if err := json.Unmarshal(entry.Message, &msg); err == nil {
 					meta.InputTokens += msg.Usage.InputTokens
 					meta.OutputTokens += msg.Usage.OutputTokens
+					meta.CacheReadInputTokens += msg.Usage.CacheReadInputTokens
+					meta.CacheCreationInputTokens += msg.Usage.CacheCreationInputTokens
 
 					// Track per-model token usage.
 					if msg.Model != "" {
 						stats := meta.ModelUsage[msg.Model]
 						stats.InputTokens += msg.Usage.InputTokens
 						stats.OutputTokens += msg.Usage.OutputTokens
+						stats.CacheReadInputTokens += msg.Usage.CacheReadInputTokens
+						stats.CacheCreationInputTokens += msg.Usage.CacheCreationInputTokens
 						meta.ModelUsage[msg.Model] = stats
 					}
 
@@ -269,8 +273,10 @@ type assistantMsgWithContent struct {
 	Model   string         `json:"model"`
 	Content []ContentBlock `json:"content"`
 	Usage   struct {
-		InputTokens  int `json:"input_tokens"`
-		OutputTokens int `json:"output_tokens"`
+		InputTokens              int `json:"input_tokens"`
+		OutputTokens             int `json:"output_tokens"`
+		CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 	} `json:"usage"`
 }
 

@@ -30,7 +30,9 @@ type DashboardStats struct {
 }
 
 // ComputeSessionDashboard reads the active session at activePath and computes
-// a session efficiency dashboard using the provided pricing model.
+// a session efficiency dashboard using per-model pricing. Each model's tokens
+// are priced at the correct tier rate (opus/sonnet/haiku). The pricing parameter
+// is used as a fallback when per-model data is unavailable.
 // Returns an error only on I/O failure or parse errors.
 func ComputeSessionDashboard(activePath string, pricing claude.CostPricing) (*DashboardStats, error) {
 	// Parse the active session metadata (full parse for tool counts, commits, errors).
@@ -39,9 +41,23 @@ func ComputeSessionDashboard(activePath string, pricing claude.CostPricing) (*Da
 		return nil, fmt.Errorf("parse active session: %w", err)
 	}
 
-	// Compute cost.
-	costUSD := (float64(meta.InputTokens)/1_000_000)*pricing.InputPerMillion +
-		(float64(meta.OutputTokens)/1_000_000)*pricing.OutputPerMillion
+	// Compute cost using per-model pricing when available.
+	var costUSD float64
+	if len(meta.ModelUsage) > 0 {
+		for modelName, stats := range meta.ModelUsage {
+			p := claude.PricingForModel(modelName)
+			costUSD += (float64(stats.InputTokens)/1_000_000)*p.InputPerMillion +
+				(float64(stats.OutputTokens)/1_000_000)*p.OutputPerMillion +
+				(float64(stats.CacheReadInputTokens)/1_000_000)*p.CacheReadPerMillion +
+				(float64(stats.CacheCreationInputTokens)/1_000_000)*p.CacheWritePerMillion
+		}
+	} else {
+		// Fallback: no per-model data, use provided pricing for aggregate tokens.
+		costUSD = (float64(meta.InputTokens)/1_000_000)*pricing.InputPerMillion +
+			(float64(meta.OutputTokens)/1_000_000)*pricing.OutputPerMillion +
+			(float64(meta.CacheReadInputTokens)/1_000_000)*pricing.CacheReadPerMillion +
+			(float64(meta.CacheCreationInputTokens)/1_000_000)*pricing.CacheWritePerMillion
+	}
 
 	// Parse duration from start time.
 	var durationMinutes float64

@@ -187,12 +187,8 @@ func (s *Server) handleGetSessionDashboard(args json.RawMessage) (any, error) {
 		}
 	}
 
-	// Cost velocity.
-	pricing := claude.CostPricing{
-		InputPerMillion:  sonnetInputPerMillion,
-		OutputPerMillion: sonnetOutputPerMillion,
-	}
-	if costStats, err := claude.ParseLiveCostVelocity(activePath, 10, pricing); err == nil {
+	// Cost velocity (per-model pricing used internally by ParseLiveCostVelocity).
+	if costStats, err := claude.ParseLiveCostVelocity(activePath, 10, fallbackPricing); err == nil {
 		result.CostVelocity = &DashboardCost{
 			WindowCostUSD: costStats.WindowCostUSD,
 			CostPerMinute: costStats.CostPerMinute,

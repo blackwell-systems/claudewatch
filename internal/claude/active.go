@@ -22,9 +22,12 @@ type ActiveSessionInfo struct {
 // assistantMsgUsage is an internal type used to extract token usage from
 // assistant message entries in a JSONL transcript.
 type assistantMsgUsage struct {
+	Model string `json:"model"`
 	Usage struct {
-		InputTokens  int `json:"input_tokens"`
-		OutputTokens int `json:"output_tokens"`
+		InputTokens              int `json:"input_tokens"`
+		OutputTokens             int `json:"output_tokens"`
+		CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 	} `json:"usage"`
 }
 
@@ -222,6 +225,8 @@ func ParseActiveSession(path string) (*SessionMeta, error) {
 				if err := json.Unmarshal(entry.Message, &msg); err == nil {
 					meta.InputTokens += msg.Usage.InputTokens
 					meta.OutputTokens += msg.Usage.OutputTokens
+					meta.CacheReadInputTokens += msg.Usage.CacheReadInputTokens
+					meta.CacheCreationInputTokens += msg.Usage.CacheCreationInputTokens
 				}
 			}
 		}

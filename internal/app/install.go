@@ -13,21 +13,31 @@ import (
 const (
 	claudeMDMarkerStart = "<!-- claudewatch:start -->"
 	claudeMDMarkerEnd   = "<!-- claudewatch:end -->"
+
+	// All rule files are prefixed to make ownership clear and cleanup easy.
+	ruleFilePrefix = "claudewatch-"
 )
+
+// ruleFile describes a single rule file to install.
+type ruleFile struct {
+	Name    string // e.g. "claudewatch-session-start.md"
+	Content string
+}
 
 var installCmd = &cobra.Command{
 	Use:   "install",
-	Short: "Install claudewatch: behavioral instructions (CLAUDE.md) + MCP server config",
+	Short: "Install claudewatch: behavioral rules + MCP server config",
 	Long: `Sets up claudewatch for use with Claude Code:
 
-1. Writes behavioral protocols to ~/.claude/CLAUDE.md (enables Claude to self-reflect)
+1. Writes behavioral rules to ~/.claude/rules/claudewatch-*.md
 2. Configures MCP server in ~/.claude.json (enables real-time observability tools)
+3. Migrates legacy CLAUDE.md block if present (removes it)
 
-Both operations are idempotent. Re-run after upgrading to pick up changes.
+All operations are idempotent. Re-run after upgrading to pick up changes.
 
 Flags:
-  --skip-mcp     Skip MCP server configuration (only update CLAUDE.md)
-  --mcp-only     Only configure MCP server (skip CLAUDE.md)
+  --skip-mcp     Skip MCP server configuration (only update rules)
+  --mcp-only     Only configure MCP server (skip rules)
 
 Run this once after installing claudewatch.`,
 	SilenceUsage:  true,
@@ -48,12 +58,19 @@ func runInstall(cmd *cobra.Command, args []string) {
 	var success []string
 	var failed []string
 
-	// Install CLAUDE.md behavioral protocols
+	// Install rules files
 	if !mcpOnly {
-		if err := installCLAUDEMD(); err != nil {
-			failed = append(failed, fmt.Sprintf("CLAUDE.md: %v", err))
+		if err := installRules(); err != nil {
+			failed = append(failed, fmt.Sprintf("rules: %v", err))
 		} else {
-			success = append(success, "CLAUDE.md: behavioral protocols installed")
+			success = append(success, "rules: installed to ~/.claude/rules/claudewatch-*.md")
+		}
+
+		// Migrate legacy CLAUDE.md block (best-effort, don't fail install)
+		if migrated, err := migrateCLAUDEMD(); err != nil {
+			fmt.Fprintf(os.Stderr, "  ⚠ CLAUDE.md migration: %v\n", err)
+		} else if migrated {
+			success = append(success, "CLAUDE.md: removed legacy claudewatch block")
 		}
 	}
 
@@ -81,51 +98,201 @@ func runInstall(cmd *cobra.Command, args []string) {
 	}
 }
 
-// installCLAUDEMD installs behavioral protocols to ~/.claude/CLAUDE.md
-func installCLAUDEMD() error {
+// installRules writes behavioral protocol files to ~/.claude/rules/.
+// Each file is overwritten on every install (idempotent by design).
+func installRules() error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("finding home directory: %w", err)
 	}
 
-	claudeMDPath := filepath.Join(home, ".claude", "CLAUDE.md")
-
-	// Read existing content; treat missing file as empty.
-	existing := ""
-	if data, err := os.ReadFile(claudeMDPath); err == nil {
-		existing = string(data)
+	rulesDir := filepath.Join(home, ".claude", "rules")
+	if err := os.MkdirAll(rulesDir, 0o755); err != nil {
+		return fmt.Errorf("creating rules directory: %w", err)
 	}
 
-	section := buildClaudeMDSection()
-	var updated string
-
-	startIdx := strings.Index(existing, claudeMDMarkerStart)
-	endIdx := strings.Index(existing, claudeMDMarkerEnd)
-
-	if startIdx >= 0 && endIdx > startIdx {
-		// Markers present — replace the existing section.
-		updated = existing[:startIdx] + section + existing[endIdx+len(claudeMDMarkerEnd):]
-	} else {
-		// No markers — append. Ensure a blank line separator if file has content.
-		if existing != "" {
-			if !strings.HasSuffix(existing, "\n") {
-				existing += "\n"
-			}
-			existing += "\n"
+	for _, rf := range buildRuleFiles() {
+		path := filepath.Join(rulesDir, rf.Name)
+		if err := os.WriteFile(path, []byte(rf.Content), 0o644); err != nil {
+			return fmt.Errorf("writing %s: %w", rf.Name, err)
 		}
-		updated = existing + section + "\n"
-	}
-
-	// Ensure .claude directory exists
-	if err := os.MkdirAll(filepath.Dir(claudeMDPath), 0o755); err != nil {
-		return fmt.Errorf("creating .claude directory: %w", err)
-	}
-
-	if err := os.WriteFile(claudeMDPath, []byte(updated), 0o644); err != nil {
-		return fmt.Errorf("writing file: %w", err)
 	}
 
 	return nil
+}
+
+// migrateCLAUDEMD removes the legacy <!-- claudewatch:start/end --> block
+// from ~/.claude/CLAUDE.md if present. Returns true if migration occurred.
+func migrateCLAUDEMD() (bool, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false, fmt.Errorf("finding home directory: %w", err)
+	}
+
+	claudeMDPath := filepath.Join(home, ".claude", "CLAUDE.md")
+
+	data, err := os.ReadFile(claudeMDPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil // Nothing to migrate
+		}
+		return false, fmt.Errorf("reading CLAUDE.md: %w", err)
+	}
+
+	existing := string(data)
+	startIdx := strings.Index(existing, claudeMDMarkerStart)
+	endIdx := strings.Index(existing, claudeMDMarkerEnd)
+
+	if startIdx < 0 || endIdx <= startIdx {
+		return false, nil // No legacy block present
+	}
+
+	// Remove the block and any surrounding blank lines
+	before := existing[:startIdx]
+	after := existing[endIdx+len(claudeMDMarkerEnd):]
+
+	// Trim trailing whitespace from before, leading whitespace from after,
+	// then rejoin with a double newline if both sides have content.
+	before = strings.TrimRight(before, " \t\n")
+	after = strings.TrimLeft(after, " \t\n")
+
+	var updated string
+	switch {
+	case before == "" && after == "":
+		// CLAUDE.md was entirely the claudewatch block — remove the file
+		if err := os.Remove(claudeMDPath); err != nil {
+			return false, fmt.Errorf("removing empty CLAUDE.md: %w", err)
+		}
+		return true, nil
+	case before == "":
+		updated = after + "\n"
+	case after == "":
+		updated = before + "\n"
+	default:
+		updated = before + "\n\n" + after + "\n"
+	}
+
+	if err := os.WriteFile(claudeMDPath, []byte(updated), 0o644); err != nil {
+		return false, fmt.Errorf("writing CLAUDE.md: %w", err)
+	}
+
+	return true, nil
+}
+
+// buildRuleFiles returns the set of rule files that claudewatch installs.
+// Split by concern so each file receives focused attention from the model.
+func buildRuleFiles() []ruleFile {
+	return []ruleFile{
+		{
+			Name:    ruleFilePrefix + "session-start.md",
+			Content: buildSessionStartRule(),
+		},
+		{
+			Name:    ruleFilePrefix + "session-protocol.md",
+			Content: buildSessionProtocolRule(),
+		},
+		{
+			Name:    ruleFilePrefix + "tools.md",
+			Content: buildToolsRule(),
+		},
+	}
+}
+
+func buildSessionStartRule() string {
+	return `# claudewatch — Session Start Protocol
+
+At the start of EVERY session (new or resumed), execute this protocol
+BEFORE responding to the user's request:
+
+1. Call ` + "`get_project_health`" + ` (claudewatch MCP) immediately.
+   You cannot calibrate to friction patterns, historical blockers, or agent
+   failure modes without this baseline. Proceeding without it means repeating
+   known failures.
+
+2. Read and internalize the friction metrics returned. If friction
+   rate > 30%, you are operating in a high-error environment. If specific agent
+   types show 0% success rate, DO NOT spawn them. If top friction type is
+   ` + "`buggy_code`" + ` or ` + "`retry:Bash`" + `, verify every command before execution.
+
+3. When resuming work: If the user says "continue", "resume", "keep
+   working on", or references previous work, call ` + "`get_task_history(query: \"<topic>\")`" + `
+   BEFORE attempting implementation. If you find a matching task with status
+   "abandoned" or "in_progress", read its blockers/solution. Do not repeat
+   failed approaches.
+`
+}
+
+func buildSessionProtocolRule() string {
+	return `# claudewatch — During-Session Protocol
+
+## Hook Response
+
+If the PostToolUse hook fires with a ` + "`⚠`" + ` warning, stop immediately and call
+` + "`get_session_dashboard`" + ` (claudewatch MCP). Do NOT continue without assessing
+the situation. This warning indicates error loops, drift, context pressure,
+or cost spikes that require immediate attention.
+
+## Context Pressure & Memory
+
+- If context pressure reaches "pressure" or "critical", consider compacting or
+  scoping down the current task. At "pressure" level, call
+  ` + "`extract_current_session_memory`" + ` before compaction to preserve work-in-progress.
+- If cost velocity is "burning", identify the source before continuing.
+- Every 30-45 minutes in long sessions, ask: "Have I learned something worth
+  preserving?" If yes, call ` + "`extract_current_session_memory`" + ` now.
+- Before destructive operations (git reset --hard, git push --force, rm -rf,
+  large refactors), ALWAYS call ` + "`extract_current_session_memory`" + ` first.
+
+## Error & Blocker Handling
+
+- When hitting errors or blockers: Before retrying or investigating extensively,
+  call ` + "`get_blockers()`" + ` to check if this is a known issue with a documented solution.
+  If found, apply the solution instead of rediscovering it.
+- On repetitive tool errors: If the same tool/operation fails 2-3 times in a row,
+  STOP and call ` + "`get_blockers()`" + `. This pattern indicates a known issue, not a
+  one-off mistake.
+
+## Task History Awareness
+
+- Before implementing large features: Query ` + "`get_task_history(query: \"<feature>\")`" + `
+  to check if this was attempted before. If status is "abandoned", read why it
+  failed and avoid the same approach.
+- When the user expresses frustration ("this isn't working", "why is this broken",
+  "we tried this before"), immediately call both ` + "`get_task_history`" + ` and
+  ` + "`get_blockers`" + ` to surface prior context.
+- When the user asks "how did we...?", call ` + "`search_transcripts(query: \"X\")`" + `
+  to find relevant sessions before ` + "`get_task_history`" + `.
+
+## Progress Tracking
+
+- After completing major work (feature, complex bug fix, multi-step task),
+  call ` + "`extract_current_session_memory`" + ` to save context while it's fresh.
+- Before major commits, check ` + "`get_session_dashboard`" + ` for the
+  commit-to-attempt ratio. Low ratio (<0.3) suggests guessing — investigate
+  before committing potentially broken code.
+- If stuck exploring (reading files repeatedly without making progress),
+  call ` + "`get_drift_signal`" + `. If status is "drifting", scope down or ask
+  the user for clarification.
+`
+}
+
+func buildToolsRule() string {
+	return `# claudewatch — Available MCP Tools
+
+- ` + "`get_session_dashboard`" + ` — all live metrics in one call (drift, commit ratio, cost, errors)
+- ` + "`get_project_health`" + ` — session count, friction rate, CLAUDE.md status, agent success rate
+- ` + "`get_task_history`" + ` — query previous task attempts by description
+- ` + "`get_blockers`" + ` — list known blockers with solutions
+- ` + "`extract_current_session_memory`" + ` — checkpoint task state (before risky ops, after milestones)
+- ` + "`search_transcripts`" + ` — full-text search across all session transcripts
+- ` + "`get_drift_signal`" + ` — detect when you're stuck reading without implementing
+- ` + "`get_live_friction`" + ` — real-time friction event stream
+- ` + "`get_context_pressure`" + ` — context window utilization
+- ` + "`get_cost_velocity`" + ` — cost burn rate (last 10 min)
+- ` + "`get_suggestions`" + ` — improvement suggestions ranked by impact
+
+Full documentation: https://github.com/blackwell-systems/claudewatch#readme
+`
 }
 
 // installMCPServer configures the claudewatch MCP server in ~/.claude.json
@@ -192,93 +359,4 @@ func installMCPServer() error {
 	}
 
 	return nil
-}
-
-// buildClaudeMDSection returns the full delimited claudewatch CLAUDE.md section.
-// The content instructs Claude to use claudewatch MCP tools at session start
-// and in response to PostToolUse hook alerts.
-func buildClaudeMDSection() string {
-	b := "`"
-	return claudeMDMarkerStart + `
-## claudewatch
-
-**CRITICAL: SESSION START PROTOCOL — MANDATORY, NOT OPTIONAL**
-
-At the start of EVERY session (new or resumed), you MUST execute this protocol
-BEFORE responding to the user's request:
-
-1. **REQUIRED:** Call ` + b + `get_project_health` + b + ` (claudewatch MCP) immediately.
-   This is NOT optional. This is NOT a suggestion. Do not skip this step.
-   You cannot calibrate to friction patterns, historical blockers, or agent
-   failure modes without this baseline. Proceeding without it means repeating
-   known failures.
-
-2. **REQUIRED:** Read and internalize the friction metrics returned. If friction
-   rate > 30%, you are operating in a high-error environment. If specific agent
-   types show 0% success rate, DO NOT spawn them. If top friction type is
-   ` + b + `buggy_code` + b + ` or ` + b + `retry:Bash` + b + `, verify every command before execution.
-
-3. **REQUIRED when resuming work:** If the user says "continue", "resume", "keep
-   working on", or references previous work, call ` + b + `get_task_history(query: "<topic>")` + b + `
-   BEFORE attempting implementation. If you find a matching task with status
-   "abandoned" or "in_progress", read its blockers/solution. Do not repeat
-   failed approaches.
-
-During the session:
-- **BLOCKING REQUIREMENT:** If the PostToolUse hook fires with a ` + b + `⚠` + b + ` warning,
-  you MUST stop immediately and call ` + b + `get_session_dashboard` + b + ` (claudewatch MCP).
-  Do NOT continue without assessing the situation. This warning indicates error loops,
-  drift, context pressure, or cost spikes that require immediate attention.
-- If context pressure reaches "pressure" or "critical", consider compacting or
-  scoping down the current task. **At "pressure" level, call ` + b + `extract_current_session_memory` + b + `
-  before compaction to preserve work-in-progress.**
-- If cost velocity is "burning", identify the source before continuing.
-- **When hitting errors or blockers:** Before retrying or investigating extensively,
-  call ` + b + `get_blockers()` + b + ` to check if this is a known issue with a documented solution.
-  If found, apply the solution instead of rediscovering it.
-- **On repetitive tool errors:** If the same tool/operation fails 2-3 times in a row,
-  STOP and call ` + b + `get_blockers()` + b + `. This pattern indicates a known issue, not a one-off mistake.
-- **Before implementing large features:** Query ` + b + `get_task_history(query: "<feature>")` + b + `
-  to check if this was attempted before. If status is "abandoned", read why it failed
-  and avoid the same approach.
-- **When user expresses frustration:** If user says "this isn't working", "why is this broken",
-  or "we tried this before", immediately call both ` + b + `get_task_history` + b + ` and ` + b + `get_blockers` + b + ` to
-  surface prior context. Don't make them repeat history.
-- **After completing major work:** When you finish implementing a feature, fixing a complex bug,
-  or completing a multi-step task, call ` + b + `extract_current_session_memory` + b + ` to save context while
-  it's fresh. Future sessions can query this via ` + b + `get_task_history` + b + ` and ` + b + `get_blockers` + b + `.
-- **Before destructive operations:** ALWAYS call ` + b + `extract_current_session_memory` + b + ` before:
-  git reset --hard, git push --force, rm -rf, large refactors, or any operation that could
-  lose work if it fails.
-- **When stuck exploring:** If you find yourself reading files repeatedly without making
-  progress, call ` + b + `get_drift_signal` + b + `. If status is "drifting" (reads dominate recent
-  window but session has edits), you may be avoiding implementation. Consider scoping down
-  or asking the user for clarification.
-- **When user asks "how did we...?":** If the user references prior work ("how did we solve X?",
-  "what approach did we use for Y?"), call ` + b + `search_transcripts(query: "X")` + b + ` to find
-  relevant sessions before ` + b + `get_task_history` + b + `. Transcripts include tool calls and
-  conversation context that task history summaries might miss.
-- **Before major commits:** After making many edits, check ` + b + `get_session_dashboard` + b + ` for
-  the commit-to-attempt ratio. High ratio (commits/edits close to 1.0) means steady progress.
-  Low ratio (<0.3) suggests guessing — investigate before committing potentially broken code.
-- **Mid-session memory check:** Every 30-45 minutes in long sessions, ask yourself: "Have I
-  learned something worth preserving?" If you've diagnosed a tricky bug, discovered an
-  architectural pattern, or identified a blocker, call ` + b + `extract_current_session_memory` + b + `
-  now. Don't wait until end-of-session when context might be lost to compaction.
-
-Available claudewatch MCP tools:
-- ` + b + `get_session_dashboard` + b + ` — all live metrics in one call (includes drift signal, commit ratio, and all other live data)
-- ` + b + `get_project_health` + b + ` — session count, friction rate, CLAUDE.md status, agent success rate
-- ` + b + `get_task_history` + b + ` — query previous task attempts by description
-- ` + b + `get_blockers` + b + ` — list known blockers with solutions
-- ` + b + `extract_current_session_memory` + b + ` — checkpoint task state immediately (before risky ops, after milestones, in long sessions)
-- ` + b + `search_transcripts` + b + ` — full-text search across all session transcripts (use when user asks "how did we...?")
-- ` + b + `get_drift_signal` + b + ` — detect when you're stuck reading without implementing
-- ` + b + `get_live_friction` + b + ` — real-time friction event stream
-- ` + b + `get_context_pressure` + b + ` — context window utilization
-- ` + b + `get_cost_velocity` + b + ` — cost burn rate (last 10 min)
-- ` + b + `get_suggestions` + b + ` — improvement suggestions ranked by impact
-
-Full documentation: https://github.com/blackwell-systems/claudewatch#readme
-` + claudeMDMarkerEnd
 }

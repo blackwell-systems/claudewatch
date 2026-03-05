@@ -27,12 +27,12 @@
 
 **Goal:** Eliminate the need to query - inject baseline awareness by default
 
-### 1.1 Auto-inject project health into session start briefing
+### 1.1 Auto-inject project health into session start briefing ✅ COMPLETE
 **Impact:** 🔥🔥🔥 High - Fixes the core adoption problem
 **Effort:** 🛠 Low - Hook already exists in `internal/app/startup.go`, extend it
 **Dependencies:** None
 
-**Current state:** SessionStart hook shows friction label (HIGH/moderate/low), top friction type, CLAUDE.md presence, agent success rate, and tips. Missing: detailed metrics, agent-specific failures, blocker counts.
+**Status:** Implemented in `internal/app/startup.go`. SessionStart hook now shows: friction rate with label, top friction type, CLAUDE.md presence, agent success rate, per-type agent failures with "DO NOT SPAWN", new blocker count since last session, regression warnings, SAW correlation tips, and working memory auto-update.
 
 **Implementation:**
 - Extend `internal/app/startup.go` to show expanded metrics
@@ -53,10 +53,12 @@
 
 **Priority:** ⭐⭐⭐ DO FIRST
 
-### 1.2 Contextual memory surfacing
+### 1.2 Contextual memory surfacing ✅ COMPLETE
 **Impact:** 🔥🔥🔥 High - Reduces repeated failures
 **Effort:** 🛠🛠 Medium - Pattern matching + injection
 **Dependencies:** Task history extraction (exists)
+
+**Status:** Implemented in `internal/memory/surface.go` (`SurfaceRelevantMemory`) and integrated into `startup.go` lines 271-313. Keyword extraction uses stop-word filtering + substring matching against `TaskIdentifier`. Displays matched tasks with status icons, blockers, solutions, and call-to-action.
 
 **Implementation:**
 - Hook into user message parsing at session start
@@ -83,10 +85,12 @@
 
 **Priority:** ⭐⭐ DO NEXT
 
-### 1.3 Real-time friction dashboard in briefing
+### 1.3 Real-time friction dashboard in briefing ✅ COMPLETE
 **Impact:** 🔥🔥 Medium - Increases awareness during session
 **Effort:** 🛠 Low - Use existing session stats
 **Dependencies:** Live session reading (exists)
+
+**Status:** Implemented in `internal/analyzer/dashboard.go` (`ComputeSessionDashboard`, `FormatDashboard`) and `internal/app/hook.go` (every 50 tool calls via `shouldDisplayDashboard`). Shows cost, commits, cost/commit, errors, duration, drift%, and traffic-light status (efficient/adequate/struggling).
 
 **Implementation:**
 - Add live metrics to PostToolUse hook output (every 50 tool calls or on ⚠ trigger)
@@ -110,6 +114,26 @@
 **Priority:** DO FIRST
 
 **Deliverable:** v0.13.0 - "Active Awareness Release"
+
+### 1.4 Per-model cost accuracy ✅ COMPLETE
+**Impact:** 🔥🔥 Medium - Eliminates cost estimation error for multi-model sessions
+**Effort:** 🛠 Low - Model names already in transcript, pricing table exists
+**Dependencies:** Cache token fix (done), ModelStats per-model tracking (done)
+
+**Status:** Implemented. Live session cost calculations (dashboard, cost velocity, hook) now use per-model pricing. Each assistant turn is priced at its actual model tier (opus/sonnet/haiku) via the `model` field in the JSONL transcript. Sonnet pricing used as fallback only when model field is absent. Changes: `claude/active_live_cost.go` (added `ModelPricingMap`, `PricingForModel`, per-turn costing), `analyzer/dashboard.go` (per-model via `SessionMeta.ModelUsage`), `app/hook.go` and `mcp/cost_velocity_tools.go` and `mcp/dashboard_tools.go` (removed hardcoded Sonnet constants).
+
+**Implementation:**
+- Parse `model` field from each assistant turn in JSONL (already extracted in `session_meta.go`)
+- Map model name strings (e.g. `claude-sonnet-4-6`, `claude-opus-4-6`) to pricing tier via `analyzer.ClassifyModelTier()`
+- Compute cost per-model using correct tier pricing, then sum
+- Update `ComputeAttribution`, `ComputeSessionDashboard`, `ParseLiveCostVelocity` to use per-model pricing instead of single-tier default
+- `ModelStats` already tracks per-model input/output/cache tokens — wire into cost formulas
+
+**Success metric:** Cost attribution matches `/cost` within 5% (currently ~30% off for multi-model sessions)
+
+**Priority:** BACKLOG (quick win after v0.13.0 ships)
+
+**Deliverable:** v0.13.1 - "Cost Accuracy Patch"
 
 ---
 
@@ -280,6 +304,181 @@
 
 ---
 
+## Phase 3.5: Persistent Memory - Survive Compaction (v0.15.5)
+
+**Goal:** Eliminate post-compaction amnesia and make project knowledge searchable
+
+**Problem statement:** Claude loses all working context on compaction (every ~60-90 min in long sessions). The compaction summary preserves ~2000 tokens of what was a 200k token context window. Debugging insights, architectural discoveries, and decision rationale vanish. Memory files exist but are write-only — written and rarely consulted because there's no way to know what's relevant without reading everything.
+
+**Key integration:** [commitmux](https://github.com/blackwell-systems/commitmux) already provides the embedding infrastructure (Ollama + sqlite-vec + 768-dim vectors), full-text commit search, and an MCP server. Rather than building a parallel vector store, claudewatch should extend commitmux's existing infrastructure for memory embedding and leverage its commit history as a complementary knowledge layer.
+
+### 3.5.1 Auto-extract on compaction
+**Impact:** 🔥🔥🔥 High - Solves the #1 memory loss problem
+**Effort:** 🛠 Low - Hook + context pressure detection
+**Dependencies:** `extract_current_session_memory` (exists), context pressure detection (exists)
+
+**Current state:** `extract_current_session_memory` must be called manually before compaction. Agents rarely remember to do this. The CLAUDE.md instructions say "At 'pressure' level, call `extract_current_session_memory` before compaction" but compliance is low.
+
+**Implementation:**
+- PostToolUse hook already detects context pressure via `ParseLiveContextPressure`
+- When pressure transitions from "comfortable" → "pressure", auto-call `extract_current_session_memory` before the agent's next turn
+- Store a state file (`~/.cache/claudewatch-compaction-extracted`) to prevent duplicate extraction
+- Format: inject into hook output:
+  ```
+  ⚠ Context pressure at 75% — auto-extracting session memory before compaction...
+  ✓ Saved: 3 tasks, 2 blockers, 1 architectural insight
+  ```
+- Reset state file when session ID changes
+
+**Success metric:** Memory extraction rate goes from <10% to 90%+ for sessions that hit compaction
+
+**Priority:** ⭐⭐⭐ DO FIRST
+
+### 3.5.2 Semantic memory search (via commitmux integration)
+**Impact:** 🔥🔥🔥 High - Transforms memory from write-only to searchable
+**Effort:** 🛠🛠 Medium - Leverages commitmux's existing embedding pipeline
+**Dependencies:** Memory files (exists), session transcripts (exists), commitmux (exists)
+
+**Current state:** Memory is scattered across `~/.claude/projects/*/memory/*.md` files, working memory JSON, and session transcripts. No unified search. Agent must know the exact filename to read relevant memory. `search_transcripts` does keyword matching but misses conceptual connections.
+
+Meanwhile, commitmux already has exactly the infrastructure we'd need to build:
+- Ollama embedding via `nomic-embed-text` (768-dim vectors)
+- sqlite-vec for kNN cosine similarity search
+- Async embedding pipeline with batch processing and error recovery
+- MCP server with semantic search tool (`commitmux_search_semantic`)
+
+**Implementation — extend commitmux rather than build parallel infrastructure:**
+- Add a new `memory` table to commitmux's SQLite store alongside `commits`:
+  - Schema: `memory_docs(doc_id, source, project, content, created_at)`
+  - Source types: `"session_summary"`, `"task"`, `"blocker"`, `"memory_file"`, `"decision"`
+  - Corresponding vec0 table: `memory_embeddings(embed_id, embedding FLOAT[768], +doc_id, +source, +project, +content_preview, +created_at)`
+- New commitmux ingest source: claudewatch memory files
+  - `commitmux ingest-memory --claude-home ~/.claude` — scans `projects/*/memory/*.md`, working memory JSON, session summaries
+  - Reuses existing `Embedder` and `build_embed_doc` pattern from commit embedding
+  - Incremental: tracks last-indexed mtime per file, only re-embeds changed files
+- New commitmux MCP tool: `commitmux_search_memory(query, project?, source?, limit?) → []MemoryMatch`
+  - Searches memory_embeddings via same kNN pattern as `commitmux_search_semantic`
+  - Filterable by project and source type
+- claudewatch MCP wrapper: `search_memory(query, top_k)` — calls commitmux's tool internally or queries the shared SQLite directly
+- New CLI: `claudewatch memory search "authentication approach"` → delegates to commitmux store
+- Auto-reindex: claudewatch PostToolUse hook triggers incremental re-embed when memory files change
+
+**Why extend commitmux instead of building from scratch:**
+- Eliminates duplicate Ollama dependency management (model config, endpoint config, connection error handling)
+- Eliminates duplicate sqlite-vec setup (schema, migrations, vector storage format)
+- Agents already have commitmux MCP tools available — no new MCP server to configure
+- Shared embedding model means commit search and memory search return comparable similarity scores
+- Single SQLite database simplifies backup, migration, and debugging
+
+**Success metric:** Agent finds relevant prior knowledge in 80% of cases where it exists (vs ~10% today)
+
+**Priority:** ⭐⭐ DO NEXT
+
+### 3.5.3 Codebase map generation (augmented by commitmux)
+**Impact:** 🔥🔥 Medium - Eliminates repeated codebase re-discovery
+**Effort:** 🛠🛠 Medium - Pattern analysis from edit history + commit history
+**Dependencies:** File history (exists in `~/.claude/file-history/`), session metadata (exists), commitmux commit_files table (exists)
+
+**Current state:** Every new session, Claude re-reads files to understand module boundaries, conventions, and relationships. There's no persistent "this is how the codebase works" document. Agents spend 10-20% of early session time on orientation.
+
+**Implementation — dual data source approach:**
+- **Source 1: Claude session edit co-occurrence** (claudewatch)
+  - Files edited together in the same session are functionally related
+  - Data from `~/.claude/file-history/` and session transcripts
+- **Source 2: Git commit co-occurrence** (commitmux)
+  - Files changed in the same commit are structurally related
+  - Query via `commitmux_touches` and `commit_files` table
+  - Commit messages provide semantic labels for relationships ("refactor auth", "add caching")
+  - Covers history before claudewatch was installed (git history is deeper)
+- Build a weighted relationship graph: `internal/analyzer/codemap.go`
+  - Session co-edits weighted higher (reflect active development patterns)
+  - Commit co-changes provide baseline coverage and historical depth
+- Auto-generate `memory/architecture.md` per project:
+  ```markdown
+  ## Module Map (auto-generated from 45 sessions + 1,200 commits)
+
+  ### internal/claude/ — JSONL transcript parsing
+  Core files: active.go, session_meta.go, types.go
+  Frequently co-edited with: internal/app/hook.go, internal/mcp/
+  Conventions: assistantMsg* structs for JSON parsing, Parse* public API
+  Recent commit themes: "cache token", "live session", "cost velocity"
+
+  ### internal/analyzer/ — Metric computation
+  Core files: cost.go, models.go, outcomes.go
+  Frequently co-edited with: internal/mcp/*_tools.go
+  Conventions: Compute* functions, DefaultPricing map
+  ```
+- New CLI command: `claudewatch map [project]`
+- Auto-refresh: append new discoveries after each session via PostToolUse or SessionEnd
+
+**Success metric:** Session orientation time (reads before first edit) drops 30%
+
+**Priority:** BACKLOG
+
+### 3.5.4 Memory consolidation
+**Impact:** 🔥 Low-Medium - Keeps memory clean and accurate
+**Effort:** 🛠🛠 Medium - Dedup + staleness detection
+**Dependencies:** 3.5.2 (semantic search for dedup detection)
+
+**Current state:** Memory files grow monotonically. Stale entries (resolved blockers, outdated patterns) accumulate. No mechanism to prune or merge related entries.
+
+**Implementation:**
+- Periodic consolidation pass (weekly or on `claudewatch memory consolidate`):
+  - Detect duplicate/near-duplicate entries via embedding similarity
+  - Flag blockers with matching solutions as "resolved"
+  - Merge entries about the same topic into single authoritative entry
+  - Archive (don't delete) consolidated entries
+- Staleness heuristic: blockers not referenced in 30 days → suggest archival
+- New MCP tool: `get_memory_health()` → stale count, duplicate count, total entries
+
+**Success metric:** Memory file size stays bounded; no duplicate entries across topic files
+
+**Priority:** BACKLOG
+
+### 3.5.5 Unified context surface (commitmux + claudewatch MCP bridge)
+**Impact:** 🔥🔥🔥 High - Single query answers "what do I need to know?"
+**Effort:** 🛠🛠 Medium - MCP tool composition + result ranking
+**Dependencies:** 3.5.2 (semantic memory search), commitmux MCP tools (exists)
+
+**Current state:** Agents must query two separate MCP servers to get full context: claudewatch for session history/blockers/friction and commitmux for commit history/code changes. They rarely query both, missing connections like "this blocker was resolved in commit abc123" or "the approach that worked in session X produced commits Y and Z."
+
+**Implementation:**
+- New claudewatch MCP tool: `get_context(query, project?, limit?) → UnifiedContext`
+  - Fans out to multiple sources in parallel:
+    1. `search_memory` (3.5.2) — prior task attempts, blockers, session summaries
+    2. `commitmux_search_semantic` — relevant commits by meaning
+    3. `get_task_history` — matching task records
+    4. `search_transcripts` — keyword matches in session transcripts
+  - Deduplicates and ranks results by relevance score (embedding distance + recency decay)
+  - Returns unified result with source attribution:
+    ```json
+    {
+      "query": "authentication",
+      "results": [
+        {"source": "task_history", "summary": "JWT auth attempted, switched to sessions", "session_id": "abc123", "relevance": 0.92},
+        {"source": "commit", "summary": "feat: add session-based auth middleware", "sha": "def456", "relevance": 0.88},
+        {"source": "memory", "summary": "Auth0 rate limits hit at 100 req/min", "file": "blockers.md", "relevance": 0.85},
+        {"source": "commit", "summary": "fix: handle expired session tokens", "sha": "ghi789", "relevance": 0.81}
+      ]
+    }
+    ```
+- Cross-reference linking: match commit SHAs mentioned in session transcripts to commitmux commit details
+- New CLI: `claudewatch context "authentication"` — unified search across all knowledge sources
+- Integration with 1.2 (contextual memory surfacing): session start keyword extraction queries `get_context` instead of just `get_task_history`
+
+**Why this matters:**
+- "What happened" (claudewatch sessions) + "what changed" (commitmux commits) = complete picture
+- Agents get implementation history (commits) alongside decision history (sessions) in one call
+- Reduces from 4+ MCP calls to 1, lowering tool-call overhead and context consumption
+
+**Success metric:** Agents query `get_context` instead of individual tools; relevant prior knowledge surfaced in 90%+ of cases
+
+**Priority:** ⭐ DO NEXT (after 3.5.2)
+
+**Deliverable:** v0.15.5 - "Persistent Memory Release"
+
+---
+
 ## Phase 4: Collective Intelligence (v0.16.0)
 
 **Goal:** Learn from aggregate patterns across users (opt-in)
@@ -400,17 +599,23 @@
 ### High Impact, Low Effort (DO FIRST - v0.13.0)
 - ⭐⭐⭐ 1.1 Auto-inject project health
 - 1.3 Real-time friction dashboard
+- 1.4 Per-model cost accuracy (v0.13.1)
 - 2.2 Drift intervention
 - 2.3 Repetitive error blocking
 
-### High Impact, Medium Effort (DO NEXT - v0.14.0-v0.15.0)
+### High Impact, Medium Effort (DO NEXT - v0.14.0-v0.15.5)
 - ⭐⭐ 1.2 Contextual memory surfacing
 - ⭐ 2.1 Agent spawn blocking
 - ⭐ 3.1 Reflection checkpoints
+- ⭐⭐⭐ 3.5.1 Auto-extract on compaction
+- ⭐⭐ 3.5.2 Semantic memory search (via commitmux — reduced effort)
+- ⭐ 3.5.5 Unified context surface (commitmux + claudewatch bridge)
 
 ### Medium Impact (BACKLOG - v0.15.0-v0.16.0)
 - 3.2 Success pattern learning
 - 3.3 Cost/benefit visibility
+- 3.5.3 Codebase map generation (augmented by commitmux)
+- 3.5.4 Memory consolidation
 - 5.1 Behavioral nudges
 
 ### High Effort, Long Term (RESEARCH - v0.16.0+)
@@ -473,6 +678,30 @@
 - Timer integration with PostToolUse hook
 - New pattern analyzer: `internal/analyzer/patterns.go`
 - Historical pattern correlation engine
+
+---
+
+### v0.15.5 - "Persistent Memory" (Target: 2-3 weeks after v0.15.0)
+**Deliverables:**
+- Auto-extract memory on compaction (context pressure trigger)
+- Semantic memory search via commitmux embedding infrastructure
+- Codebase map generation (edit + commit co-occurrence analysis)
+- Unified context surface bridging claudewatch + commitmux
+
+**Success metrics:**
+- 90%+ memory extraction rate for sessions hitting compaction (vs <10% today)
+- 80% relevant knowledge retrieval rate via `search_memory`
+- 30% reduction in session orientation time (reads before first edit)
+- Single `get_context` call replaces 4+ separate MCP queries
+
+**Technical approach:**
+- Context pressure transition detection in PostToolUse hook
+- Extend commitmux SQLite store with `memory_docs` + `memory_embeddings` tables (reuse existing Ollama/nomic-embed-text/sqlite-vec pipeline)
+- New commitmux ingest source: `commitmux ingest-memory --claude-home ~/.claude`
+- New commitmux MCP tool: `commitmux_search_memory(query, project?, source?, limit?)`
+- Dual-source codebase map: Claude session edits (claudewatch) + git commit co-changes (commitmux)
+- Unified `get_context` MCP tool: fan-out to memory search, commit search, task history, transcripts
+- New CLI: `claudewatch map`, `claudewatch memory search`, `claudewatch context`
 
 ---
 
@@ -551,6 +780,12 @@
 - ✅ **STOP** before repeating failures (blocked by guardrails)
 - ✅ **PAUSE** to reflect regularly (forced checkpoints every 30min)
 - ✅ **LEARN** from patterns (shown personal success rates)
+
+### By v0.15.5, add:
+- ✅ **REMEMBER** across compactions (auto-extract before context loss)
+- ✅ **SEARCH** project knowledge semantically (via commitmux embedding infrastructure)
+- ✅ **ORIENT** instantly in any codebase (persistent architecture map from edits + commits)
+- ✅ **CONNECT** session history with code history (unified context: claudewatch + commitmux)
 
 ### By v0.17.0, add:
 - ✅ Learn from the community (collective intelligence, opt-in)

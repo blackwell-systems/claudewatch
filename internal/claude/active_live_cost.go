@@ -2,13 +2,68 @@ package claude
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
-// CostPricing holds per-million-token pricing for input and output tokens.
+// CostPricing holds per-million-token pricing for input, output, and cache tokens.
 type CostPricing struct {
-	InputPerMillion  float64
-	OutputPerMillion float64
+	InputPerMillion      float64
+	OutputPerMillion     float64
+	CacheReadPerMillion  float64
+	CacheWritePerMillion float64
+}
+
+// ModelPricingMap maps model tier names (opus, sonnet, haiku) to their pricing.
+// Used by per-model cost calculations to price each turn at the correct rate.
+var ModelPricingMap = map[string]CostPricing{
+	"opus": {
+		InputPerMillion:      15.0,
+		OutputPerMillion:     75.0,
+		CacheReadPerMillion:  1.5,
+		CacheWritePerMillion: 18.75,
+	},
+	"sonnet": {
+		InputPerMillion:      3.0,
+		OutputPerMillion:     15.0,
+		CacheReadPerMillion:  0.3,
+		CacheWritePerMillion: 3.75,
+	},
+	"haiku": {
+		InputPerMillion:      0.25,
+		OutputPerMillion:     1.25,
+		CacheReadPerMillion:  0.03,
+		CacheWritePerMillion: 0.3,
+	},
+}
+
+// PricingForModel returns the CostPricing for the given model name string.
+// Classifies by checking for "opus", "sonnet", or "haiku" substrings.
+// Defaults to sonnet pricing for unknown models.
+func PricingForModel(modelName string) CostPricing {
+	lower := strings.ToLower(modelName)
+	switch {
+	case strings.Contains(lower, "opus"):
+		return ModelPricingMap["opus"]
+	case strings.Contains(lower, "haiku"):
+		return ModelPricingMap["haiku"]
+	default:
+		return ModelPricingMap["sonnet"]
+	}
+}
+
+// computeTurnCost calculates the cost of a single assistant turn given its
+// token usage and pricing.
+func computeTurnCost(usage struct {
+	InputTokens              int `json:"input_tokens"`
+	OutputTokens             int `json:"output_tokens"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+}, pricing CostPricing) float64 {
+	return (float64(usage.InputTokens)/1_000_000)*pricing.InputPerMillion +
+		(float64(usage.OutputTokens)/1_000_000)*pricing.OutputPerMillion +
+		(float64(usage.CacheReadInputTokens)/1_000_000)*pricing.CacheReadPerMillion +
+		(float64(usage.CacheCreationInputTokens)/1_000_000)*pricing.CacheWritePerMillion
 }
 
 // LiveCostVelocityStats holds cost velocity data within a rolling time window.
@@ -20,8 +75,9 @@ type LiveCostVelocityStats struct {
 }
 
 // ParseLiveCostVelocity reads the JSONL file at path and computes cost velocity
-// within the last windowMinutes. Uses assistant entry timestamps and per-turn
-// usage fields to calculate cost based on the provided pricing.
+// within the last windowMinutes. Uses per-model pricing: each assistant turn is
+// priced according to the model that produced it. The pricing parameter is used
+// as a fallback when the model field is absent from a turn.
 func ParseLiveCostVelocity(path string, windowMinutes float64, pricing CostPricing) (*LiveCostVelocityStats, error) {
 	entries, err := readLiveJSONL(path)
 	if err != nil {
@@ -30,8 +86,6 @@ func ParseLiveCostVelocity(path string, windowMinutes float64, pricing CostPrici
 
 	cutoff := time.Now().Add(-time.Duration(windowMinutes * float64(time.Minute)))
 	stats := &LiveCostVelocityStats{WindowMinutes: windowMinutes}
-
-	var inputTokens, outputTokens int
 
 	for _, entry := range entries {
 		if entry.Type != "assistant" || entry.Message == nil {
@@ -45,12 +99,14 @@ func ParseLiveCostVelocity(path string, windowMinutes float64, pricing CostPrici
 		if err := json.Unmarshal(entry.Message, &msg); err != nil {
 			continue
 		}
-		inputTokens += msg.Usage.InputTokens
-		outputTokens += msg.Usage.OutputTokens
-	}
 
-	stats.WindowCostUSD = (float64(inputTokens)/1_000_000)*pricing.InputPerMillion +
-		(float64(outputTokens)/1_000_000)*pricing.OutputPerMillion
+		// Use per-model pricing when model is available, fallback otherwise.
+		turnPricing := pricing
+		if msg.Model != "" {
+			turnPricing = PricingForModel(msg.Model)
+		}
+		stats.WindowCostUSD += computeTurnCost(msg.Usage, turnPricing)
+	}
 
 	if windowMinutes > 0 {
 		stats.CostPerMinute = stats.WindowCostUSD / windowMinutes

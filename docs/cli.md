@@ -360,19 +360,29 @@ The tip on line 2 is dynamically computed. By default it is derived from the top
 
 ### install
 
-Writes the claudewatch behavioral contract into `~/.claude/CLAUDE.md`, delimited by `<!-- claudewatch:start -->` / `<!-- claudewatch:end -->` markers. Idempotent: re-running updates the section in place rather than appending. Always writes to `$HOME/.claude/CLAUDE.md` regardless of the `claude_home` config setting.
+Writes claudewatch behavioral rules to `~/.claude/rules/claudewatch-*.md` as modular rule files. Each file covers a single concern (session start protocol, during-session protocol, tool reference). Idempotent: re-running overwrites files in place.
 
-The installed section instructs Claude to call `get_project_health` at session start, stop and call `get_session_dashboard` when the PostToolUse hook fires, and includes the full MCP tool manifest.
+On first run after upgrading from the legacy CLAUDE.md approach, automatically removes the old `<!-- claudewatch:start -->` / `<!-- claudewatch:end -->` block from `~/.claude/CLAUDE.md`.
+
+The installed rules instruct Claude to call `get_project_health` at session start, stop and call `get_session_dashboard` when the PostToolUse hook fires, and include the full MCP tool manifest.
 
 ```bash
 claudewatch install
 ```
 
-No flags.
+**Flags:**
+- `--skip-mcp` — Skip MCP server configuration (only update rules)
+- `--mcp-only` — Only configure MCP server (skip rules)
 
 **Output:**
-- `claudewatch installed: <path>` — first run
-- `claudewatch updated: <path>` — subsequent runs (section replaced in place)
+- `rules: installed to ~/.claude/rules/claudewatch-*.md`
+- `CLAUDE.md: removed legacy claudewatch block` (migration, if applicable)
+- `MCP server: configured in ~/.claude.json`
+
+**Installed files:**
+- `~/.claude/rules/claudewatch-session-start.md` — session start protocol
+- `~/.claude/rules/claudewatch-session-protocol.md` — during-session behaviors
+- `~/.claude/rules/claudewatch-tools.md` — available MCP tools
 
 ---
 

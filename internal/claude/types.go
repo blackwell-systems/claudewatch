@@ -71,8 +71,10 @@ type SessionMeta struct {
 	Languages             map[string]int        `json:"languages"`
 	GitCommits            int                   `json:"git_commits"`
 	GitPushes             int                   `json:"git_pushes"`
-	InputTokens           int                   `json:"input_tokens"`
-	OutputTokens          int                   `json:"output_tokens"`
+	InputTokens              int                   `json:"input_tokens"`
+	OutputTokens             int                   `json:"output_tokens"`
+	CacheReadInputTokens     int                   `json:"cache_read_input_tokens"`
+	CacheCreationInputTokens int                   `json:"cache_creation_input_tokens"`
 	FirstPrompt           string                `json:"first_prompt"`
 	UserInterruptions     int                   `json:"user_interruptions"`
 	UserResponseTimes     []float64             `json:"user_response_times"`
@@ -92,8 +94,10 @@ type SessionMeta struct {
 
 // ModelStats tracks token counts for a specific model.
 type ModelStats struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
+	InputTokens              int `json:"input_tokens"`
+	OutputTokens             int `json:"output_tokens"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 }
 
 // SessionFacet represents qualitative session analysis from ~/.claude/usage-data/facets/*.json.

@@ -20,11 +20,13 @@ type ModelPricing struct {
 
 // TurnAttribution holds aggregated token and cost data for one tool type.
 type TurnAttribution struct {
-	ToolType     string  `json:"tool_type"`
-	Calls        int     `json:"calls"`
-	InputTokens  int     `json:"input_tokens"`
-	OutputTokens int     `json:"output_tokens"`
-	EstCostUSD   float64 `json:"est_cost_usd"`
+	ToolType                 string  `json:"tool_type"`
+	Calls                    int     `json:"calls"`
+	InputTokens              int     `json:"input_tokens"`
+	OutputTokens             int     `json:"output_tokens"`
+	CacheReadInputTokens     int     `json:"cache_read_input_tokens"`
+	CacheCreationInputTokens int     `json:"cache_creation_input_tokens"`
+	EstCostUSD               float64 `json:"est_cost_usd"`
 }
 
 // attributionEntry is a minimal struct for parsing JSONL lines.
@@ -36,8 +38,10 @@ type attributionEntry struct {
 // attributionAssistantMsg parses the assistant message content and usage.
 type attributionAssistantMsg struct {
 	Usage struct {
-		InputTokens  int `json:"input_tokens"`
-		OutputTokens int `json:"output_tokens"`
+		InputTokens              int `json:"input_tokens"`
+		OutputTokens             int `json:"output_tokens"`
+		CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 	} `json:"usage"`
 	Content []struct {
 		Type string `json:"type"`
@@ -126,9 +130,11 @@ func ComputeAttribution(sessionID, claudeHome string, pricing ModelPricing) ([]T
 
 	// Accumulate per-tool-type stats.
 	type toolStats struct {
-		calls        int
-		inputTokens  int
-		outputTokens int
+		calls                    int
+		inputTokens              int
+		outputTokens             int
+		cacheReadInputTokens     int
+		cacheCreationInputTokens int
 	}
 	byTool := make(map[string]*toolStats)
 
@@ -191,6 +197,8 @@ func ComputeAttribution(sessionID, claudeHome string, pricing ModelPricing) ([]T
 		// Attribute tokens to the primary key (first tool_use or "text").
 		byTool[key].inputTokens += inputTokens
 		byTool[key].outputTokens += outputTokens
+		byTool[key].cacheReadInputTokens += msg.Usage.CacheReadInputTokens
+		byTool[key].cacheCreationInputTokens += msg.Usage.CacheCreationInputTokens
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -205,13 +213,17 @@ func ComputeAttribution(sessionID, claudeHome string, pricing ModelPricing) ([]T
 	result := make([]TurnAttribution, 0, len(byTool))
 	for toolType, stats := range byTool {
 		cost := (float64(stats.inputTokens)/1_000_000.0)*pricing.InputPerMillion +
-			(float64(stats.outputTokens)/1_000_000.0)*pricing.OutputPerMillion
+			(float64(stats.outputTokens)/1_000_000.0)*pricing.OutputPerMillion +
+			(float64(stats.cacheReadInputTokens)/1_000_000.0)*pricing.CacheReadPerMillion +
+			(float64(stats.cacheCreationInputTokens)/1_000_000.0)*pricing.CacheWritePerMillion
 		result = append(result, TurnAttribution{
-			ToolType:     toolType,
-			Calls:        stats.calls,
-			InputTokens:  stats.inputTokens,
-			OutputTokens: stats.outputTokens,
-			EstCostUSD:   cost,
+			ToolType:                 toolType,
+			Calls:                    stats.calls,
+			InputTokens:              stats.inputTokens,
+			OutputTokens:             stats.outputTokens,
+			CacheReadInputTokens:     stats.cacheReadInputTokens,
+			CacheCreationInputTokens: stats.cacheCreationInputTokens,
+			EstCostUSD:               cost,
 		})
 	}
 

@@ -7,11 +7,9 @@ import (
 	"github.com/blackwell-systems/claudewatch/internal/claude"
 )
 
-// Standard Claude Sonnet pricing (USD per million tokens).
-const (
-	sonnetInputPerMillion  = 3.0
-	sonnetOutputPerMillion = 15.0
-)
+// Sonnet pricing as fallback — per-model pricing is used automatically
+// by ParseLiveCostVelocity when model data is available in the transcript.
+var fallbackPricing = claude.ModelPricingMap["sonnet"]
 
 // CostVelocityResult holds cost velocity data for the active session.
 type CostVelocityResult struct {
@@ -45,12 +43,7 @@ func (s *Server) handleGetCostVelocity(args json.RawMessage) (any, error) {
 		return nil, errors.New("no active session found")
 	}
 
-	pricing := claude.CostPricing{
-		InputPerMillion:  sonnetInputPerMillion,
-		OutputPerMillion: sonnetOutputPerMillion,
-	}
-
-	costStats, err := claude.ParseLiveCostVelocity(activePath, 10, pricing)
+	costStats, err := claude.ParseLiveCostVelocity(activePath, 10, fallbackPricing)
 	if err != nil {
 		return nil, err
 	}

@@ -17,9 +17,6 @@ import (
 const (
 	hookThreshold       = 3
 	hookCooldownSeconds = 30
-	// Sonnet pricing ($/million tokens) — matches mcp/cost_velocity_tools.go
-	hookInputPerMillion  = 3.0
-	hookOutputPerMillion = 15.0
 	// Dashboard display interval (tool calls).
 	dashboardInterval = 50
 )
@@ -59,14 +56,14 @@ func runHook(cmd *cobra.Command, args []string) {
 		return
 	}
 
+	// Sonnet pricing as fallback — per-model pricing is used automatically
+	// when model data is available in the JSONL transcript.
+	fallbackPricing := claude.ModelPricingMap["sonnet"]
+
 	// Periodic dashboard display (every 50 tool calls).
 	// This runs independently of threshold checks and has its own state file.
 	if shouldDisplayDashboard(activePath) {
-		pricing := claude.CostPricing{
-			InputPerMillion:  hookInputPerMillion,
-			OutputPerMillion: hookOutputPerMillion,
-		}
-		if dashboard, err := analyzer.ComputeSessionDashboard(activePath, pricing); err == nil {
+		if dashboard, err := analyzer.ComputeSessionDashboard(activePath, fallbackPricing); err == nil {
 			fmt.Fprintln(os.Stderr, analyzer.FormatDashboard(dashboard))
 			recordDashboardDisplay(activePath, dashboard.ToolCallCount)
 		}
@@ -106,12 +103,8 @@ func runHook(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// Priority 3: cost velocity.
-	pricing := claude.CostPricing{
-		InputPerMillion:  hookInputPerMillion,
-		OutputPerMillion: hookOutputPerMillion,
-	}
-	if cost, err := claude.ParseLiveCostVelocity(activePath, 10, pricing); err == nil && cost.Status == "burning" {
+	// Priority 3: cost velocity (per-model pricing used internally by ParseLiveCostVelocity).
+	if cost, err := claude.ParseLiveCostVelocity(activePath, 10, fallbackPricing); err == nil && cost.Status == "burning" {
 		fmt.Fprintf(os.Stderr, "⚠ Cost velocity burning ($%.3f/min over last 10 min). Call get_session_dashboard (claudewatch MCP) to identify the source before continuing.\n", cost.CostPerMinute)
 		os.Exit(2)
 	}
@@ -207,7 +200,7 @@ func hookChronicPatternNote(cfg *config.Config, cwd string) string {
 func shouldDisplayDashboard(activePath string) bool {
 	// Get current tool call count using the full parser for accurate ToolCounts.
 	meta, err := claude.ParseJSONLToSessionMeta(activePath)
-	if err != nil {
+	if err != nil || meta == nil {
 		return false
 	}
 
