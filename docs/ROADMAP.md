@@ -26,6 +26,23 @@ A progression from monitoring tool to AI Ops platform. Items are ordered within 
 - Multi-project attribution (weighted repo tracking, `get_session_projects` MCP) — shipped v0.8.0
 - Drift detection (`get_drift_signal` MCP) — shipped v0.8.0
 - Cross-session memory (`memory show|clear` CLI, `get_task_history`/`get_blockers` MCP, SessionStart lazy extraction) — shipped v0.9.0
+- Feature documentation (7 files: HOOKS.md, MCP_TOOLS.md, CLI.md, MEMORY.md, CONTEXT_SEARCH.md, METRICS.md, AGENTS.md) — shipped (unreleased)
+
+---
+
+## Documentation Hub Completion
+
+**Status:** 7/21 files complete (feature docs done, 14 remaining)
+
+**Remaining work:**
+- Guides (6 files): INSTALLATION.md, QUICKSTART.md, CONFIGURATION.md, USE_CASE_FRICTION.md, USE_CASE_AGENTS.md, USE_CASE_CLAUDEMD.md
+- Technical (4 files): ARCHITECTURE.md, HOOKS_IMPL.md, MCP_INTEGRATION.md, DATA_MODEL.md
+- Comparison (3 files): VS_MEMORY_TOOLS.md, VS_OBSERVABILITY.md, VS_BUILTIN.md
+- Community (1 file): CONTRIBUTING.md
+
+**Content plan:** `docs/CONTENT_PLAN.md` has source mapping for all files
+
+**Estimated time:** ~90 minutes for remaining 14 files (sequential batched creation)
 
 ---
 
