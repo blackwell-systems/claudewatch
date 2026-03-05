@@ -4,6 +4,14 @@ All notable changes to claudewatch are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Unified context search** — Single MCP tool and CLI command that searches across all 4 context sources (commits, memory, task history, transcripts) in parallel. `get_context` MCP tool accepts `query` (required), `project` (optional), and `limit` (default 20) parameters. Returns deduplicated, relevance-ranked results with source attribution, timestamps, and metadata. `claudewatch context <query>` CLI command with same parameters plus `--json` output. Powered by new internal packages:
+  - `internal/client`: MCP-to-MCP communication via stdio JSON-RPC 2.0, parallel fanout using `golang.org/x/sync/errgroup`, graceful degradation for partial source failures
+  - `internal/context`: Shared types (`ContextItem`, `UnifiedContextResult`), SHA-256 content deduplication with source priority (commit > memory > task > transcript), relevance ranking with 20% recency decay over 1 year
+  - Queries commitmux via external MCP server for commits and memory, queries claudewatch internal tools for task history and transcripts
+  - Built using Scout-and-Wave protocol v0.6.7 (2 waves, 4 agents, with updated worktree isolation using `git -C` flag)
+
 ## [0.14.0] - 2026-03-05
 
 ### Added

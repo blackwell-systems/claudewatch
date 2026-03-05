@@ -645,11 +645,11 @@ After wave 2 completes:
 
 | Wave | Agent | Description | Status |
 |------|-------|-------------|--------|
-| 1 | A | MCP client + parallel executor | COMPLETE |
-| 1 | B | Unified types + dedup/rank | COMPLETE |
-| 1 | C | CLI context command | COMPLETE |
-| 2 | D | get_context MCP tool handler | TO-DO |
-| — | Orch | Tool registration + binary install | TO-DO |
+| 1 | A | MCP client + parallel executor | ✅ COMPLETE |
+| 1 | B | Unified types + dedup/rank | ✅ COMPLETE |
+| 1 | C | CLI context command | ✅ COMPLETE |
+| 2 | D | get_context MCP tool handler | ✅ COMPLETE |
+| — | Orch | Tool registration + binary install | ✅ COMPLETE |
 
 ---
 

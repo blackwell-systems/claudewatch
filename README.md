@@ -55,7 +55,7 @@ claudewatch reads local session data from `~/.claude/` and turns it into actiona
 **Three layers:**
 
 1. **Push (hooks)** : SessionStart briefing + PostToolUse alerts on error loops, context pressure, cost spikes, drift
-2. **Pull (MCP)** : Claude queries its own metrics mid-session: `get_project_health`, `get_task_history`, `get_blockers`, `get_drift_signal`
+2. **Pull (MCP)** : Claude queries its own metrics mid-session: `get_project_health`, `get_context`, `get_task_history`, `get_blockers`, `get_drift_signal`
 3. **Persistent (Task Memory)** : Tracks task history, blockers, solutions across sessions. Automatically extracted at session end, manually checkpointed via `claudewatch memory extract`
 
 The differentiation: other tools give humans dashboards. claudewatch gives Claude queryable access to its own performance inside the session where decisions are made.
@@ -460,9 +460,11 @@ claudewatch mcp --budget 20        # enable daily budget tracking ($20 limit)
 
 | Tool | Description |
 |------|-------------|
+| `get_context` | Unified search across all context sources (commits, memory, task history, transcripts) in parallel : returns deduplicated, relevance-ranked results with source attribution |
 | `get_task_history` | Query previous task attempts by description : returns task status, blockers encountered, solutions, and commits |
 | `get_blockers` | List known blockers for a project with date filtering : file-specific issues, solutions, and frequency of occurrence |
 | `extract_current_session_memory` | Extract and store memory from the current active session immediately : checkpoint for long sessions or before risky operations |
+| `search_transcripts` | Full-text search over indexed JSONL transcripts |
 
 *Session management:*
 
