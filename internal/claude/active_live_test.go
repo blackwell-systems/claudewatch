@@ -879,3 +879,279 @@ func TestParseLiveDriftSignal_EmptySession(t *testing.T) {
 		t.Fatalf("expected WindowN=0, got %d", got.WindowN)
 	}
 }
+
+// ---------- ParseLiveRepetitiveErrors tests ----------
+
+// mkUserToolResultWithContent builds a JSONL entry for a user message with tool_result
+// blocks that include content fields (needed for error pattern extraction).
+func mkUserToolResultWithContent(ts string, results ...map[string]any) map[string]any {
+	var content []map[string]any
+	for _, r := range results {
+		block := map[string]any{
+			"type":        "tool_result",
+			"tool_use_id": r["tool_use_id"],
+		}
+		if isErr, ok := r["is_error"]; ok {
+			block["is_error"] = isErr
+		}
+		if c, ok := r["content"]; ok {
+			block["content"] = c
+		}
+		content = append(content, block)
+	}
+	msg, _ := json.Marshal(map[string]any{
+		"role":    "user",
+		"content": content,
+	})
+	return map[string]any{
+		"type":      "user",
+		"timestamp": ts,
+		"message":   json.RawMessage(msg),
+	}
+}
+
+func TestParseLiveRepetitiveErrors_NoErrors(t *testing.T) {
+	path := writeLiveJSONL(t, []map[string]any{
+		mkAssistantToolUse("2026-03-01T10:00:00Z",
+			map[string]any{"id": "tu1", "name": "Read"},
+			map[string]any{"id": "tu2", "name": "Bash"},
+		),
+		mkUserToolResultWithContent("2026-03-01T10:00:01Z",
+			map[string]any{"tool_use_id": "tu1", "content": "file contents"},
+			map[string]any{"tool_use_id": "tu2", "content": "ok"},
+		),
+	})
+
+	results, err := ParseLiveRepetitiveErrors(path, 100, 3)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("expected nil/empty results, got %+v", results)
+	}
+}
+
+func TestParseLiveRepetitiveErrors_ThreeConsecutiveSameError(t *testing.T) {
+	// Same tool (Edit) fails 3 times with the same error content.
+	path := writeLiveJSONL(t, []map[string]any{
+		mkAssistantToolUse("2026-03-01T10:00:00Z",
+			map[string]any{"id": "tu1", "name": "Edit"},
+		),
+		mkUserToolResultWithContent("2026-03-01T10:00:01Z",
+			map[string]any{"tool_use_id": "tu1", "is_error": true, "content": "old_string not found in file"},
+		),
+		mkAssistantToolUse("2026-03-01T10:00:02Z",
+			map[string]any{"id": "tu2", "name": "Edit"},
+		),
+		mkUserToolResultWithContent("2026-03-01T10:00:03Z",
+			map[string]any{"tool_use_id": "tu2", "is_error": true, "content": "old_string not found in file"},
+		),
+		mkAssistantToolUse("2026-03-01T10:00:04Z",
+			map[string]any{"id": "tu3", "name": "Edit"},
+		),
+		mkUserToolResultWithContent("2026-03-01T10:00:05Z",
+			map[string]any{"tool_use_id": "tu3", "is_error": true, "content": "old_string not found in file"},
+		),
+	})
+
+	results, err := ParseLiveRepetitiveErrors(path, 100, 3)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d: %+v", len(results), results)
+	}
+	if results[0].Tool != "Edit" {
+		t.Errorf("Tool = %q, want Edit", results[0].Tool)
+	}
+	if results[0].Count != 3 {
+		t.Errorf("Count = %d, want 3", results[0].Count)
+	}
+	if results[0].Pattern != "old_string not found in file" {
+		t.Errorf("Pattern = %q, want %q", results[0].Pattern, "old_string not found in file")
+	}
+}
+
+func TestParseLiveRepetitiveErrors_MixedToolsOnlyOneHitsThreshold(t *testing.T) {
+	// Edit fails 3 times (hits threshold), Bash fails 2 times (below threshold).
+	path := writeLiveJSONL(t, []map[string]any{
+		mkAssistantToolUse("2026-03-01T10:00:00Z",
+			map[string]any{"id": "tu1", "name": "Edit"},
+		),
+		mkUserToolResultWithContent("2026-03-01T10:00:01Z",
+			map[string]any{"tool_use_id": "tu1", "is_error": true, "content": "not unique"},
+		),
+		mkAssistantToolUse("2026-03-01T10:00:02Z",
+			map[string]any{"id": "tu2", "name": "Bash"},
+		),
+		mkUserToolResultWithContent("2026-03-01T10:00:03Z",
+			map[string]any{"tool_use_id": "tu2", "is_error": true, "content": "exit code 1"},
+		),
+		mkAssistantToolUse("2026-03-01T10:00:04Z",
+			map[string]any{"id": "tu3", "name": "Edit"},
+		),
+		mkUserToolResultWithContent("2026-03-01T10:00:05Z",
+			map[string]any{"tool_use_id": "tu3", "is_error": true, "content": "not unique"},
+		),
+		mkAssistantToolUse("2026-03-01T10:00:06Z",
+			map[string]any{"id": "tu4", "name": "Bash"},
+		),
+		mkUserToolResultWithContent("2026-03-01T10:00:07Z",
+			map[string]any{"tool_use_id": "tu4", "is_error": true, "content": "exit code 1"},
+		),
+		mkAssistantToolUse("2026-03-01T10:00:08Z",
+			map[string]any{"id": "tu5", "name": "Edit"},
+		),
+		mkUserToolResultWithContent("2026-03-01T10:00:09Z",
+			map[string]any{"tool_use_id": "tu5", "is_error": true, "content": "not unique"},
+		),
+	})
+
+	results, err := ParseLiveRepetitiveErrors(path, 100, 3)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result (only Edit hits threshold), got %d: %+v", len(results), results)
+	}
+	if results[0].Tool != "Edit" {
+		t.Errorf("Tool = %q, want Edit", results[0].Tool)
+	}
+	if results[0].Count != 3 {
+		t.Errorf("Count = %d, want 3", results[0].Count)
+	}
+}
+
+func TestParseLiveRepetitiveErrors_SuccessResetsStreak(t *testing.T) {
+	// Edit fails 2 times, then succeeds, then fails 2 times -> never hits 3.
+	path := writeLiveJSONL(t, []map[string]any{
+		mkAssistantToolUse("2026-03-01T10:00:00Z",
+			map[string]any{"id": "tu1", "name": "Edit"},
+		),
+		mkUserToolResultWithContent("2026-03-01T10:00:01Z",
+			map[string]any{"tool_use_id": "tu1", "is_error": true, "content": "error msg"},
+		),
+		mkAssistantToolUse("2026-03-01T10:00:02Z",
+			map[string]any{"id": "tu2", "name": "Edit"},
+		),
+		mkUserToolResultWithContent("2026-03-01T10:00:03Z",
+			map[string]any{"tool_use_id": "tu2", "is_error": true, "content": "error msg"},
+		),
+		// Success resets the streak.
+		mkAssistantToolUse("2026-03-01T10:00:04Z",
+			map[string]any{"id": "tu3", "name": "Edit"},
+		),
+		mkUserToolResultWithContent("2026-03-01T10:00:05Z",
+			map[string]any{"tool_use_id": "tu3", "content": "success"},
+		),
+		// Two more errors after reset.
+		mkAssistantToolUse("2026-03-01T10:00:06Z",
+			map[string]any{"id": "tu4", "name": "Edit"},
+		),
+		mkUserToolResultWithContent("2026-03-01T10:00:07Z",
+			map[string]any{"tool_use_id": "tu4", "is_error": true, "content": "error msg"},
+		),
+		mkAssistantToolUse("2026-03-01T10:00:08Z",
+			map[string]any{"id": "tu5", "name": "Edit"},
+		),
+		mkUserToolResultWithContent("2026-03-01T10:00:09Z",
+			map[string]any{"tool_use_id": "tu5", "is_error": true, "content": "error msg"},
+		),
+	})
+
+	results, err := ParseLiveRepetitiveErrors(path, 100, 3)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("expected 0 results (success resets streak), got %d: %+v", len(results), results)
+	}
+}
+
+func TestParseLiveRepetitiveErrors_DifferentPatternsTrackedSeparately(t *testing.T) {
+	// Same tool (Bash) but two different error patterns.
+	// Pattern A appears 3 times, Pattern B appears 2 times.
+	path := writeLiveJSONL(t, []map[string]any{
+		mkAssistantToolUse("2026-03-01T10:00:00Z",
+			map[string]any{"id": "tu1", "name": "Bash"},
+		),
+		mkUserToolResultWithContent("2026-03-01T10:00:01Z",
+			map[string]any{"tool_use_id": "tu1", "is_error": true, "content": "command not found"},
+		),
+		mkAssistantToolUse("2026-03-01T10:00:02Z",
+			map[string]any{"id": "tu2", "name": "Bash"},
+		),
+		mkUserToolResultWithContent("2026-03-01T10:00:03Z",
+			map[string]any{"tool_use_id": "tu2", "is_error": true, "content": "permission denied"},
+		),
+		mkAssistantToolUse("2026-03-01T10:00:04Z",
+			map[string]any{"id": "tu3", "name": "Bash"},
+		),
+		mkUserToolResultWithContent("2026-03-01T10:00:05Z",
+			map[string]any{"tool_use_id": "tu3", "is_error": true, "content": "command not found"},
+		),
+		mkAssistantToolUse("2026-03-01T10:00:06Z",
+			map[string]any{"id": "tu4", "name": "Bash"},
+		),
+		mkUserToolResultWithContent("2026-03-01T10:00:07Z",
+			map[string]any{"tool_use_id": "tu4", "is_error": true, "content": "permission denied"},
+		),
+		mkAssistantToolUse("2026-03-01T10:00:08Z",
+			map[string]any{"id": "tu5", "name": "Bash"},
+		),
+		mkUserToolResultWithContent("2026-03-01T10:00:09Z",
+			map[string]any{"tool_use_id": "tu5", "is_error": true, "content": "command not found"},
+		),
+	})
+
+	results, err := ParseLiveRepetitiveErrors(path, 100, 3)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result (only 'command not found' hits 3), got %d: %+v", len(results), results)
+	}
+	if results[0].Pattern != "command not found" {
+		t.Errorf("Pattern = %q, want %q", results[0].Pattern, "command not found")
+	}
+	if results[0].Count != 3 {
+		t.Errorf("Count = %d, want 3", results[0].Count)
+	}
+}
+
+func TestParseLiveRepetitiveErrors_TailNLimitsWindow(t *testing.T) {
+	// Build a session with 3 Edit errors, but set tailN so small that
+	// only the last pair of entries is in the window.
+	var allEntries []map[string]any
+	for i := 0; i < 3; i++ {
+		id := fmt.Sprintf("tu%d", i+1)
+		allEntries = append(allEntries,
+			mkAssistantToolUse("2026-03-01T10:00:00Z",
+				map[string]any{"id": id, "name": "Edit"},
+			),
+			mkUserToolResultWithContent("2026-03-01T10:00:01Z",
+				map[string]any{"tool_use_id": id, "is_error": true, "content": "same error"},
+			),
+		)
+	}
+
+	path := writeLiveJSONL(t, allEntries)
+
+	// tailN=2 means only the last 2 entries (1 assistant + 1 user), so only 1 error.
+	results, err := ParseLiveRepetitiveErrors(path, 2, 3)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("expected 0 results (tailN limits window to 1 error), got %d: %+v", len(results), results)
+	}
+
+	// tailN=0 defaults to 100, which includes all entries.
+	results, err = ParseLiveRepetitiveErrors(path, 0, 3)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result with default tailN, got %d: %+v", len(results), results)
+	}
+}

@@ -551,6 +551,150 @@ func ParseLiveActiveTime(path string) (*ActiveTimeStats, error) {
 	}, nil
 }
 
+// RepetitiveError represents a (tool, error-substring) tuple that has occurred
+// consecutively in the session's recent tool results.
+type RepetitiveError struct {
+	Tool    string `json:"tool"`
+	Pattern string `json:"pattern"`
+	Count   int    `json:"count"`
+}
+
+// ParseLiveRepetitiveErrors tail-scans the last tailN entries of the JSONL
+// file at path and returns any (tool, error-pattern) tuples that have occurred
+// >= threshold times consecutively. "Consecutively" means the same tool produced
+// the same error pattern with no intervening successful result from that tool.
+//
+// Error pattern matching: extract the first 120 characters of the tool_result
+// content (stringified) as the pattern key.
+//
+// A successful tool_result resets all streaks for that tool.
+// tailN defaults to 100 if <= 0. threshold defaults to 3 if <= 0.
+// Returns nil slice if no repetitive errors found.
+func ParseLiveRepetitiveErrors(path string, tailN int, threshold int) ([]RepetitiveError, error) {
+	if tailN <= 0 {
+		tailN = 100
+	}
+	if threshold <= 0 {
+		threshold = 3
+	}
+
+	entries, err := readLiveJSONL(path)
+	if err != nil {
+		return nil, err
+	}
+	if len(entries) == 0 {
+		return nil, nil
+	}
+
+	start := len(entries) - tailN
+	if start < 0 {
+		start = 0
+	}
+	tail := entries[start:]
+
+	// Map tool_use ID -> tool name.
+	toolUseNames := make(map[string]string)
+
+	// Streaks: tool name -> error pattern -> consecutive count.
+	streaks := make(map[string]map[string]int)
+
+	for _, entry := range tail {
+		switch entry.Type {
+		case "assistant":
+			if entry.Message == nil {
+				continue
+			}
+			var msg AssistantMessage
+			if err := json.Unmarshal(entry.Message, &msg); err != nil {
+				continue
+			}
+			for _, block := range msg.Content {
+				if block.Type == "tool_use" {
+					toolUseNames[block.ID] = block.Name
+				}
+			}
+
+		case "user":
+			if entry.Message == nil {
+				continue
+			}
+			var msg UserMessage
+			if err := json.Unmarshal(entry.Message, &msg); err != nil {
+				continue
+			}
+			for _, block := range msg.Content {
+				if block.Type != "tool_result" {
+					continue
+				}
+				toolName := toolUseNames[block.ToolUseID]
+				if toolName == "" {
+					continue
+				}
+
+				if block.IsError {
+					// Extract error pattern: first 120 chars of content.
+					pattern := extractErrorPattern(block.Content)
+					if streaks[toolName] == nil {
+						streaks[toolName] = make(map[string]int)
+					}
+					streaks[toolName][pattern]++
+				} else {
+					// Successful result resets all streaks for this tool.
+					delete(streaks, toolName)
+				}
+			}
+		}
+	}
+
+	// Collect results meeting the threshold.
+	var results []RepetitiveError
+	for tool, patterns := range streaks {
+		for pattern, count := range patterns {
+			if count >= threshold {
+				results = append(results, RepetitiveError{
+					Tool:    tool,
+					Pattern: pattern,
+					Count:   count,
+				})
+			}
+		}
+	}
+
+	// Sort by Count descending.
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Count != results[j].Count {
+			return results[i].Count > results[j].Count
+		}
+		return results[i].Tool < results[j].Tool
+	})
+
+	return results, nil
+}
+
+// extractErrorPattern extracts the first 120 characters from a tool_result's
+// Content field for use as an error pattern key.
+func extractErrorPattern(content json.RawMessage) string {
+	if len(content) == 0 {
+		return ""
+	}
+
+	// Try to unmarshal as a plain string first.
+	var s string
+	if err := json.Unmarshal(content, &s); err == nil {
+		if len(s) > 120 {
+			return s[:120]
+		}
+		return s
+	}
+
+	// Fall back to raw string representation.
+	raw := string(content)
+	if len(raw) > 120 {
+		return raw[:120]
+	}
+	return raw
+}
+
 // LiveDriftStats holds tool-call mix data used to detect exploration drift.
 type LiveDriftStats struct {
 	// WindowN is the number of recent tool calls examined.
