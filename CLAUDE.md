@@ -1,14 +1,26 @@
 # Claude Code Instructions for claudewatch
 
-CLI observability and improvement tracking for AI-assisted development workflows.
+**AgentOps for Claude Code.** Real-time monitoring and behavioral intervention for AI agents + post-session analytics for developers.
 
 ## Project Overview
 
-**claudewatch** analyzes Claude Code sessions, scores project AI readiness, surfaces friction patterns, and tracks improvement over time. It reads local Claude data files (no network calls), computes metrics, and stores snapshots in a pure-Go SQLite database.
+**claudewatch** is AgentOps infrastructure for AI agent development. It monitors Claude Code sessions during execution (via hooks and MCP tools) and provides post-session analytics (via CLI). Think DevOps for software delivery, MLOps for ML models—AgentOps is operations for AI agents.
+
+**What makes this AgentOps:** Monitors agent behavior (error loops, drift, context pressure), intervenes automatically (PostToolUse hooks), provides agent self-awareness (29 MCP tools Claude queries mid-session), and offers developer analytics (friction trends, cost-per-commit, agent success rates).
+
+**Data layer:** Reads local Claude data files at `~/.claude/` (no network calls except opt-in Claude API for `fix --ai`), computes metrics, stores snapshots in a pure-Go SQLite database.
 
 **Commands**: `scan` (inventory + score projects), `metrics` (trends), `gaps` (friction), `suggest` (ranked improvements), `track` (snapshot diffing), `log` (custom metrics), `fix` (generate + apply CLAUDE.md patches), `watch` (background daemon, friction alerts).
 
 ## Architecture
+
+**Three-layer AgentOps model:**
+
+1. **Push (Hooks)** - SessionStart briefing + PostToolUse alerts (error loops, drift, context pressure) fire automatically
+2. **Pull (MCP Tools)** - 29 tools Claude queries mid-session for self-reflection (`get_project_health`, `get_drift_signal`, `get_blockers`)
+3. **Persistent (Task Memory)** - Cross-session task history and blocker tracking via `extract_current_session_memory`
+
+**Technical stack:**
 
 - **CLI framework**: Cobra with global flags (`--config`, `--no-color`, `--json`, `--verbose`)
 - **Database**: modernc.org/sqlite (pure Go, no CGO, enables CGO_ENABLED=0 cross-compilation)
@@ -84,9 +96,9 @@ Features with ≥2 independent file groups use Scout-and-Wave parallel agents:
 - Agents create new files only; `tools.go` registration is always orchestrator-owned post-merge
 - Run `/saw scout` to analyze, `/saw wave` to execute
 
-## Multi-Agent Analytics (Active Development)
+## Multi-Agent Analytics
 
-The differentiating capability of claudewatch: extracting and analyzing multi-agent workflow data from session transcripts.
+**Core AgentOps capability:** Extracting and analyzing multi-agent workflow data from session transcripts. No other tool monitors agent-to-agent coordination, success rates by agent type, or parallelization efficiency.
 
 **Data source**: `~/.claude/projects/<hash>/*.jsonl` — full session transcripts containing Task tool_use/tool_result pairs.
 
@@ -260,7 +272,7 @@ The differentiating capability of claudewatch: extracting and analyzing multi-ag
 - After completing features, call `extract_current_session_memory`
 - Track our own friction rate - target <10%
 
-**Credibility matters:** We can't evangelize CLAUDE.md best practices without having an exemplary one ourselves. We can't recommend hooks without using them. We can't sell observability without measuring ourselves.
+**Credibility matters:** We can't evangelize CLAUDE.md best practices without having an exemplary one ourselves. We can't recommend hooks without using them. We can't sell AgentOps without measuring our own agent workflows.
 
 **Self-awareness questions to ask during development:**
 - "Am I practicing what we preach?" (Using hooks, calling get_blockers, extracting memory)
