@@ -85,6 +85,56 @@ All three Tier 2 items shipped in v0.7.9 and v0.8.0.
 
 ---
 
+## Tier 2.5 — Polish & Integration UX
+
+### Graceful commitmux integration
+
+**Status:** Context search shipped but assumes commitmux installed. Need graceful degradation.
+
+**Problem:** `get_context` MCP tool and `claudewatch context` CLI fail silently or return partial results when commitmux not installed. Users don't know commitmux is required for full functionality (memory + commit search). Hard dependency on separate tool creates adoption friction.
+
+**Solution:** Graceful degradation with clear upgrade path.
+
+**Implementation:**
+
+1. **Detect commitmux availability**
+   - Check `~/.cargo/bin/commitmux` (hardcoded path)
+   - Check PATH lookup as fallback
+   - Add config option: `commitmux_binary_path`
+
+2. **Degrade gracefully when missing**
+   - Return 2/4 sources (task history + transcripts) instead of failing
+   - Include clear message in response: "2 of 4 sources available. Install commitmux for memory and commit search: brew install blackwell-systems/tap/commitmux"
+   - Log source availability: `[context_search] sources: task_history=ok, transcript=ok, memory=unavailable (commitmux not found), commit=unavailable (commitmux not found)`
+
+3. **Doctor command integration**
+   - Add feature gate check: `claudewatch doctor` shows "Context search: 2/4 sources (install commitmux for full functionality)"
+   - Test commitmux version compatibility
+   - Show indexed repo count if commitmux present
+
+4. **Documentation updates**
+   - `docs/features/CONTEXT_SEARCH.md` — clearly mark memory + commits as "requires commitmux"
+   - Add "Dependencies" section explaining optional commitmux
+   - `docs/guides/INSTALLATION.md` — recommend installing both, show standalone vs full
+   - README installation section — mention optional commitmux
+
+5. **Homebrew formula**
+   - Make commitmux `depends_on :recommended` (optional but recommended)
+   - Add caveats message explaining feature availability
+
+**Files to change:**
+- `internal/client/mcp_client.go` — detect binary, skip external sources if missing
+- `internal/mcp/unified_context_tools.go` — return availability message in response
+- `internal/app/doctor.go` — add context search feature gate check
+- `docs/features/CONTEXT_SEARCH.md` — document dependency
+- Homebrew formula — make commitmux recommended not required
+
+**Impact:** 🔥🔥 High — Removes adoption friction. Users can install claudewatch standalone, discover value, upgrade to full context search later. "Just works" experience.
+
+**Estimated effort:** ~4 hours (detection logic + error handling + docs + testing)
+
+---
+
 ## Tier 2.5 — Intelligence enhancement
 
 New analytical capabilities building on existing observability layer.
