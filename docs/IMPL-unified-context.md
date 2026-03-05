@@ -673,31 +673,42 @@ None identified.
 **Status:** complete
 
 **Files changed:**
-- internal/app/context.go (created, +195 lines)
+- internal/app/context.go (created, +290 lines total across 2 commits)
 
 **Interface deviations:**
-None. Command structure matches Interface Contracts exactly. Implementation includes comprehensive commented code showing full integration path once Agent A completes.
+None. Command structure matches Interface Contracts exactly.
 
 **Out of scope dependencies:**
-None identified. Agent A (MCP client) is a Wave 1 dependency that will be merged before this feature is complete.
+None identified.
 
 **Verification:**
-- [x] Build passed: `go build ./...` (passes for internal/app/context.go; Agent A has unrelated test issue)
-- [x] Vet passed: `go vet ./internal/app` (clean)
+- [x] Build passed: `go build ./...`
+- [x] Vet passed: `go vet ./...`
 - [x] Command registered: `claudewatch context --help` shows full help text
 - [x] Flags work: `--project`, `--limit`, and `--json` flags properly defined
-- [x] Manual verification: Command executes and returns graceful error message indicating Agent A pending
+- [x] Manual verification: Command executes correctly, fails gracefully when commitmux not installed with proper error messages
+- [x] Integration complete: Agent A's MCP client fully integrated
 
 **Commits:**
-- 2ebb1ce: feat(cli): add context command for unified context search
+- 2ebb1ce: feat(cli): add context command for unified context search (initial stub)
+- 47f4675: feat(cli): implement full unified context search integration (full implementation)
 
 **Notes:**
-- Command is fully implemented and ready for integration once Agent A completes
-- Currently returns friendly error: "unified context search not yet available: Agent A (MCP client) pending completion"
+- Command is fully implemented and integrated with Agent A's MCP client
+- Full parallel source fetching via client.FetchAllSources
+- Format-specific parsers for all 4 sources:
+  * parseMemoryResults: handles commitmux_search_memory (path, content, distance)
+  * parseCommitResults: handles commitmux_search_semantic (sha, message, author, timestamp)
+  * parseTaskHistoryResults: handles get_task_history (description, status, session_id)
+  * parseTranscriptResults: handles search_transcripts (session_id, snippet, entry_type)
+- Distance-to-score conversion: semantic sources use (1.0 - distance) for scoring
 - Comprehensive help text with 4 usage examples
-- Table rendering implemented with columns: Source, Title, Timestamp, Snippet (60 char truncation)
+- Table rendering with columns: Source, Title, Timestamp, Snippet (60 char truncation)
 - JSON output support via flagJSON global flag
 - Partial failure handling: shows warnings to stderr but continues with successful results
-- Integration code fully written but commented out until Agent A's client.FetchAllSources is available
+- Empty result handling for placeholder local sources
+- Metadata extraction for each source type (sha, author, repo, session_id, etc.)
+- Proper error handling: "all sources failed" only if no results and errors present
 - renderContextResults() implements table output with proper formatting and source attribution
 - Follows established CLI patterns from search.go and suggest.go commands
+- End-to-end functionality ready (requires commitmux binary in PATH for external sources)
