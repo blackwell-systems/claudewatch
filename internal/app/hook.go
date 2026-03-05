@@ -67,6 +67,13 @@ func runHook(cmd *cobra.Command, args []string) {
 		if dashboard, err := analyzer.ComputeSessionDashboard(activePath, fallbackPricing); err == nil {
 			fmt.Fprintln(os.Stderr, analyzer.FormatDashboard(dashboard))
 			recordDashboardDisplay(activePath, dashboard.ToolCallCount)
+
+			// Commit-triggered memory nudge: after every 3 commits, suggest checkpointing.
+			if dashboard.Commits > 0 && dashboard.Commits%3 == 0 {
+				if shouldNudgeMemory(dashboard.Commits) {
+					fmt.Fprintf(os.Stderr, "✓ %d commits this session. Call extract_current_session_memory to checkpoint.\n", dashboard.Commits)
+				}
+			}
 		}
 	}
 
@@ -251,4 +258,20 @@ func recordDashboardDisplay(activePath string, toolCallCount int) {
 	countFile := os.ExpandEnv("$HOME/.cache/claudewatch-toolcount")
 	_ = os.MkdirAll(os.ExpandEnv("$HOME/.cache"), 0o755)
 	_ = os.WriteFile(countFile, []byte(strconv.Itoa(toolCallCount)), 0o644)
+}
+
+// shouldNudgeMemory returns true if the commit count has crossed a new
+// multiple-of-3 boundary since the last nudge. Uses a state file to prevent
+// repeated nudges at the same commit count.
+func shouldNudgeMemory(commits int) bool {
+	nudgeFile := os.ExpandEnv("$HOME/.cache/claudewatch-nudge-commits")
+	if data, err := os.ReadFile(nudgeFile); err == nil {
+		if last, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil {
+			if commits <= last {
+				return false
+			}
+		}
+	}
+	_ = os.WriteFile(nudgeFile, []byte(strconv.Itoa(commits)), 0o644)
+	return true
 }

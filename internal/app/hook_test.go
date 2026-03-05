@@ -1,6 +1,7 @@
 package app
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -59,5 +60,31 @@ func TestHookCmd_PriorityOrdering(t *testing.T) {
 	if idx1 >= idx15 || idx15 >= idx2 || idx2 >= idx3 || idx3 >= idx4 {
 		t.Fatalf("priority ordering in Long description is wrong: 1=%d, 1.5=%d, 2=%d, 3=%d, 4=%d",
 			idx1, idx15, idx2, idx3, idx4)
+	}
+}
+
+func TestShouldNudgeMemory(t *testing.T) {
+	// Use a temp dir to isolate the state file.
+	origHome := os.Getenv("HOME")
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	_ = os.MkdirAll(tmp+"/.cache", 0o755)
+	defer func() { _ = os.Setenv("HOME", origHome) }()
+
+	// First call at 3 commits → true.
+	if !shouldNudgeMemory(3) {
+		t.Error("expected true on first nudge at 3 commits")
+	}
+	// Same count again → false (already nudged).
+	if shouldNudgeMemory(3) {
+		t.Error("expected false on repeated nudge at 3 commits")
+	}
+	// Higher count → true.
+	if !shouldNudgeMemory(6) {
+		t.Error("expected true on nudge at 6 commits")
+	}
+	// Lower count → false.
+	if shouldNudgeMemory(3) {
+		t.Error("expected false on lower commit count")
 	}
 }
