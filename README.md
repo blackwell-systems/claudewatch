@@ -7,7 +7,7 @@
 
 **AgentOps for Claude Code.** Real-time monitoring and behavioral intervention for AI agents + post-session analytics for developers.
 
-NOT memory storage. NOT infrastructure observability. NOT LLM API monitoring. Operations for the AI agent itself during development.
+NOT a memory MCP replacement. NOT infrastructure observability. NOT LLM API monitoring. Operations for the AI agent itself during development. Cost is inferred from Claude Code's local usage data, not from API-side tracing.
 
 ## The Gap We Fill
 
@@ -17,7 +17,7 @@ NOT memory storage. NOT infrastructure observability. NOT LLM API monitoring. Op
 | **When** | After session | After API call | **During session + after** |
 | **For** | AI (read past) | Humans (API dashboards) | **AI (live feedback) + Humans (ops dashboards)** |
 | **Monitors** | Conversations | API costs/latency | **Agent behavior + workflow friction** |
-| **Examples** | `claude-memory-mcp` | LangSmith, Langfuse | — |
+| **Examples** | `claude-memory-mcp` | LangSmith, Langfuse | **PostToolUse interventions, drift alerts, agent performance, CLAUDE.md effectiveness** |
 
 ### What is AgentOps?
 
@@ -60,7 +60,7 @@ claudewatch reads local session data from `~/.claude/` and turns it into actiona
 ### 2. Pull (MCP Tools)
 **Self-reflection API** - 29 MCP tools let Claude query its own metrics mid-session: `get_project_health`, `get_drift_signal`, `get_task_history`, `get_blockers`, `get_agent_performance`. No other tool gives an AI agent this kind of introspective access.
 
-### 3. Persistent (Task Memory)
+### 3. Persistent (Ops Memory)
 **Cross-session learning** - Task history, blockers, and solutions tracked automatically. Claude queries "did we try this before?" and gets "yes, JWT approach hit rate limits, pivoted to sessions" - without you having to remember or explain.
 
 **All local.** Reads `~/.claude/` files on disk. No network calls. No telemetry.
@@ -124,7 +124,7 @@ That's it. Claude now has real-time awareness of its own behavior.
 <tr>
 <td>
 
-### Task Memory
+### Ops Memory
 **Cross-session history and blocker tracking**
 
 - Query previous attempts by description
