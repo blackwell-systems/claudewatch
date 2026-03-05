@@ -79,11 +79,7 @@ func shouldSkipSession(meta *claude.SessionMeta, activePath string) bool {
 
 	// Pure research: zero Edit/Write calls
 	editWrites := meta.ToolCounts["Edit"] + meta.ToolCounts["Write"]
-	if editWrites == 0 {
-		return true
-	}
-
-	return false
+	return editWrites == 0
 }
 
 // isSignificant returns true if the session meets any significance criteria.
