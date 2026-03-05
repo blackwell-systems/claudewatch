@@ -38,7 +38,7 @@ func TestTryAutoExtract_TransitionDetection(t *testing.T) {
 	// logic components individually.
 
 	// Test 1: No state file + elevated status → transition.
-	os.Remove(sf)
+	_ = os.Remove(sf)
 	prev := ""
 	current := "pressure"
 	isTransition := isElevatedPressure(current) && !isElevatedPressure(prev)
