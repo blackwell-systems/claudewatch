@@ -593,10 +593,10 @@ After wave 2 completes:
 
 | Wave | Agent | Description | Status |
 |------|-------|-------------|--------|
-| 1 | A | Core `EstimateSessionCost` per-model pricing + analyzer tests | TO-DO |
+| 1 | A | Core `EstimateSessionCost` per-model pricing + analyzer tests | COMPLETE |
 | 2 | B | MCP tool integration tests for per-model pricing | COMPLETE |
 | 2 | C | App/export/watcher integration tests for per-model pricing | COMPLETE |
-| — | Orch | Post-merge verification + binary install | TO-DO |
+| — | Orch | Post-merge verification + binary install | COMPLETE |
 
 ## Wave 2 Agent B — Completion Report
 
