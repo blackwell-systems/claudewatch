@@ -4,6 +4,18 @@ All notable changes to claudewatch are documented here.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-03-05
+
+### Added
+
+- **Repetitive error detection in PostToolUse hook** — New Priority 1.5 check between consecutive errors (P1) and context pressure (P2). `ParseLiveRepetitiveErrors` tracks per-(tool, error-pattern) tuples using first 120 chars of error content as the pattern key. Warns at 3rd consecutive occurrence of the same tool producing the same error, breaking retry loops where the agent repeats a failing operation. A successful tool_result resets all error streaks for that tool. Results sorted by count descending. 6 new tests.
+
+- **Auto-extract memory on context pressure transitions** — New `tryAutoExtract` in `internal/app/hook_extract.go` detects when context pressure transitions into "pressure" or "critical" (not repeated checks while already elevated) and automatically runs the full memory extraction pipeline (`ExtractTaskMemory` + `ExtractBlockers`). Uses a state file at `~/.cache/claudewatch-ctx-state` for transition tracking. Fires before the existing context pressure warning so memory is preserved before the agent sees the alert. All errors swallowed — hook never disrupts agent workflow. 5 new tests.
+
+### Changed
+
+- **PostToolUse hook priority structure updated** — Priority chain is now: P1 (consecutive errors) → P1.5 (repetitive error patterns) → auto-extract → P2 (context pressure warning) → P3 (cost velocity) → P4 (drift). `hookCmd.Long` description updated to document the full priority ordering. 3 new integration tests verify priority ordering and feature mentions in help text.
+
 ## [0.13.0] - 2026-03-05
 
 ### Added
