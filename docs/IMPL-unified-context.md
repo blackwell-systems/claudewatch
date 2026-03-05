@@ -586,7 +586,7 @@ After wave 2 completes:
 
 | Wave | Agent | Description | Status |
 |------|-------|-------------|--------|
-| 1 | A | MCP client + parallel executor | TO-DO |
+| 1 | A | MCP client + parallel executor | COMPLETE |
 | 1 | B | Unified types + dedup/rank | COMPLETE |
 | 1 | C | CLI context command | COMPLETE |
 | 2 | D | get_context MCP tool handler | TO-DO |
@@ -595,6 +595,44 @@ After wave 2 completes:
 ---
 
 ## Agent Completion Reports
+
+### Agent A - Completion Report
+
+**Status:** complete
+
+**Files changed:**
+- internal/client/mcp_client.go (created, +220 lines)
+- internal/client/mcp_client_test.go (created, +262 lines)
+
+**Interface deviations:**
+None. All interfaces and function signatures match the Interface Contracts exactly.
+
+**Out of scope dependencies:**
+None identified. Local tool integration (get_task_history, search_transcripts) deferred to Agent D in Wave 2 as intended - current implementation returns empty results for local sources as placeholders.
+
+**Verification:**
+- [x] Build passed: `go build ./...`
+- [x] Vet passed: `go vet ./...`
+- [x] Tests passed: `go test ./internal/client -v` (10/10 tests passing)
+- [x] Manual verification: All test cases cover JSON-RPC communication, error handling, and parallel execution
+
+**Commits:**
+- 76cebcf: feat(client): implement MCP client and parallel executor
+
+**Notes:**
+- MCPClient interface uses stdio JSON-RPC 2.0 protocol as specified
+- Request format: `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"<tool>","arguments":<args>}}`
+- Response parsing extracts `result.content[0].text` field and returns as raw JSON bytes
+- FetchAllSources uses golang.org/x/sync/errgroup for parallel execution across 4 sources
+- Per-source limit distribution: each source gets `limit/4` initial results (default 5 per source)
+- Partial failure handling: accumulates errors but returns results from successful sources
+- External MCP calls (commitmux binary) fully implemented
+- Local tool calls (get_task_history, search_transcripts) return placeholder empty results - Agent D will wire these up in Wave 2
+- Context cancellation and timeout support via context.Context
+- Comprehensive test suite with mock binaries, error cases, and parallel execution scenarios
+- All 10 unit tests passing
+
+---
 
 ### Agent B - Completion Report
 
