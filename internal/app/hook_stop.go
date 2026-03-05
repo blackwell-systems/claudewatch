@@ -62,14 +62,27 @@ func runHookStop(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	// Parse the session from the provided transcript path
-	meta, err := claude.ParseActiveSession(input.TranscriptPath)
-	if err != nil || meta == nil {
+	// Read session-meta file which has full metadata (commits, tool counts, errors, duration)
+	// Session-meta path: ~/.claude/usage-data/session-meta/{session_id}.json
+	claudeHome := os.Getenv("CLAUDE_HOME")
+	if claudeHome == "" {
+		claudeHome = os.ExpandEnv("$HOME/.claude")
+	}
+
+	metaPath := claudeHome + "/usage-data/session-meta/" + input.SessionID + ".json"
+	metaData, err := os.ReadFile(metaPath)
+	if err != nil {
+		// Session-meta not available yet (very recent session)
+		return
+	}
+
+	var meta claude.SessionMeta
+	if err := json.Unmarshal(metaData, &meta); err != nil {
 		return
 	}
 
 	// Check significance and print prompt
-	prompt := determinePrompt(meta, input.TranscriptPath)
+	prompt := determinePrompt(&meta, input.TranscriptPath)
 	if prompt != "" {
 		fmt.Fprintln(os.Stderr, prompt)
 	}
