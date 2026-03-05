@@ -179,6 +179,155 @@ func TestEstimateSessionCost_Exported(t *testing.T) {
 	}
 }
 
+func TestEstimateSessionCost_PerModel(t *testing.T) {
+	// Session with ModelUsage containing an Opus model.
+	// Should use Opus pricing ($15/M input, $75/M output), not Sonnet.
+	s := claude.SessionMeta{
+		InputTokens:  1_000_000,
+		OutputTokens: 100_000,
+		ModelUsage: map[string]claude.ModelStats{
+			"claude-3-opus-20240229": {
+				InputTokens:  1_000_000,
+				OutputTokens: 100_000,
+			},
+		},
+	}
+
+	got := EstimateSessionCost(s, testPricing, NoCacheRatio())
+
+	// Opus pricing: input $15/M, output $75/M
+	// 1M * 15/M = $15.00 input + 100K * 75/M = $7.50 output = $22.50
+	expected := 22.50
+	if diff := got - expected; diff > 0.001 || diff < -0.001 {
+		t.Errorf("EstimateSessionCost (per-model Opus) = %.4f, want %.4f", got, expected)
+	}
+}
+
+func TestEstimateSessionCost_PerModelMulti(t *testing.T) {
+	// Session with both Sonnet and Opus in ModelUsage.
+	s := claude.SessionMeta{
+		InputTokens:  2_000_000,
+		OutputTokens: 200_000,
+		ModelUsage: map[string]claude.ModelStats{
+			"claude-3-opus-20240229": {
+				InputTokens:  1_000_000,
+				OutputTokens: 100_000,
+			},
+			"claude-3-5-sonnet-20241022": {
+				InputTokens:  1_000_000,
+				OutputTokens: 100_000,
+			},
+		},
+	}
+
+	got := EstimateSessionCost(s, testPricing, NoCacheRatio())
+
+	// Opus: 1M*15/M + 100K*75/M = 15.00 + 7.50 = 22.50
+	// Sonnet: 1M*3/M + 100K*15/M = 3.00 + 1.50 = 4.50
+	// Total = 27.00
+	expected := 27.00
+	if diff := got - expected; diff > 0.001 || diff < -0.001 {
+		t.Errorf("EstimateSessionCost (multi-model) = %.4f, want %.4f", got, expected)
+	}
+}
+
+func TestEstimateSessionCost_FallbackWhenNoModelUsage(t *testing.T) {
+	// Session with nil ModelUsage: existing single-tier behavior preserved.
+	s := claude.SessionMeta{
+		InputTokens:  1_000_000,
+		OutputTokens: 100_000,
+	}
+
+	got := EstimateSessionCost(s, testPricing, NoCacheRatio())
+
+	// Sonnet (testPricing): 1M*3/M + 100K*15/M = 3.00 + 1.50 = 4.50
+	expected := 4.50
+	if diff := got - expected; diff > 0.001 || diff < -0.001 {
+		t.Errorf("EstimateSessionCost (fallback nil) = %.4f, want %.4f", got, expected)
+	}
+}
+
+func TestEstimateSessionCost_EmptyModelUsage(t *testing.T) {
+	// Session with ModelUsage set to an empty map: should fallback to single-tier.
+	s := claude.SessionMeta{
+		InputTokens:  1_000_000,
+		OutputTokens: 100_000,
+		ModelUsage:   map[string]claude.ModelStats{},
+	}
+
+	got := EstimateSessionCost(s, testPricing, NoCacheRatio())
+
+	// Fallback to testPricing (Sonnet): 3.00 + 1.50 = 4.50
+	expected := 4.50
+	if diff := got - expected; diff > 0.001 || diff < -0.001 {
+		t.Errorf("EstimateSessionCost (empty ModelUsage) = %.4f, want %.4f", got, expected)
+	}
+}
+
+func TestEstimateSessionCost_WithCacheTokensPerModel(t *testing.T) {
+	// Session with ModelUsage containing cache read/write tokens.
+	s := claude.SessionMeta{
+		InputTokens:  1_000_000,
+		OutputTokens: 100_000,
+		ModelUsage: map[string]claude.ModelStats{
+			"claude-3-opus-20240229": {
+				InputTokens:              500_000,
+				OutputTokens:             50_000,
+				CacheReadInputTokens:     2_000_000,
+				CacheCreationInputTokens: 300_000,
+			},
+		},
+	}
+
+	got := EstimateSessionCost(s, testPricing, NoCacheRatio())
+
+	// Opus pricing: input $15/M, output $75/M, cache read $1.5/M, cache write $18.75/M
+	// 500K*15/M = 7.50 input
+	// 50K*75/M = 3.75 output
+	// 2M*1.5/M = 3.00 cache read
+	// 300K*18.75/M = 5.625 cache write
+	// Total = 19.875
+	expected := 19.875
+	if diff := got - expected; diff > 0.001 || diff < -0.001 {
+		t.Errorf("EstimateSessionCost (cache tokens per-model) = %.4f, want %.4f", got, expected)
+	}
+}
+
+func TestEstimateFromModelUsage(t *testing.T) {
+	// Direct unit test of the unexported helper.
+	usage := map[string]claude.ModelStats{
+		"claude-3-haiku-20240307": {
+			InputTokens:  1_000_000,
+			OutputTokens: 500_000,
+		},
+	}
+
+	got := estimateFromModelUsage(usage)
+
+	// Haiku pricing: input $0.25/M, output $1.25/M
+	// 1M*0.25/M = 0.25 + 500K*1.25/M = 0.625 = 0.875
+	expected := 0.875
+	if diff := got - expected; diff > 0.001 || diff < -0.001 {
+		t.Errorf("estimateFromModelUsage (Haiku) = %.4f, want %.4f", got, expected)
+	}
+
+	// Test with unknown model — should default to Sonnet pricing.
+	usage2 := map[string]claude.ModelStats{
+		"unknown-model-v1": {
+			InputTokens:  1_000_000,
+			OutputTokens: 100_000,
+		},
+	}
+
+	got2 := estimateFromModelUsage(usage2)
+
+	// Sonnet (default): 1M*3/M + 100K*15/M = 3.00 + 1.50 = 4.50
+	expected2 := 4.50
+	if diff := got2 - expected2; diff > 0.001 || diff < -0.001 {
+		t.Errorf("estimateFromModelUsage (unknown model) = %.4f, want %.4f", got2, expected2)
+	}
+}
+
 func TestAnalyzeOutcomes_WithCacheRatio(t *testing.T) {
 	// Simulate a cache ratio where cache reads are 2900x uncached input
 	// and cache writes are 395x uncached input (realistic from stats-cache data).
