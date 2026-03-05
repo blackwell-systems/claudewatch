@@ -4,6 +4,8 @@ All notable changes to claudewatch are documented here.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-03-05
+
 ### Added
 
 - **Expanded startup briefing metrics (v0.13.0 Wave 2)** — SessionStart hook now shows average tool errors per session, lists agents with 0% success rate with "DO NOT SPAWN" warning, and displays new blocker count since last session. High friction (≥60%) and moderate friction (≥30%) environments get explicit warning banners.
