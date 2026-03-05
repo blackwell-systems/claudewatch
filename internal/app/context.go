@@ -1,9 +1,14 @@
 package app
 
 import (
+	stdcontext "context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
+	"time"
 
+	"github.com/blackwell-systems/claudewatch/internal/client"
 	"github.com/blackwell-systems/claudewatch/internal/context"
 	"github.com/blackwell-systems/claudewatch/internal/output"
 	"github.com/spf13/cobra"
@@ -42,96 +47,253 @@ func runContext(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("query cannot be empty")
 	}
 
-	// project, _ := cmd.Flags().GetString("project")
-	// limit, _ := cmd.Flags().GetInt("limit")
+	project, _ := cmd.Flags().GetString("project")
+	limit, _ := cmd.Flags().GetInt("limit")
 
 	if flagNoColor {
 		output.SetNoColor(true)
 	}
 
-	// TODO: Once Agent A completes, replace this stub with actual parallel execution:
-	// client := client.NewMCPClient()
-	// rawResults, errors := client.FetchAllSources(context.Background(), query, project, limit)
-	// For now, return a helpful error message.
-	return fmt.Errorf("unified context search not yet available: Agent A (MCP client) pending completion")
+	// Create MCP client and fetch from all sources
+	mcpClient := client.NewMCPClient()
+	ctx := stdcontext.Background()
+	rawResults, errors := client.FetchAllSources(ctx, mcpClient, query, project, limit)
 
-	// The code below shows the intended implementation once Agent A is merged:
-	/*
-		// Parse raw JSON results into ContextItems
-		var allItems []context.ContextItem
-		var parseErrors []string
+	// Parse raw JSON results into ContextItems
+	var allItems []context.ContextItem
+	var parseErrors []string
 
-		for source, rawJSON := range rawResults {
-			items, err := parseSourceResults(source, rawJSON)
-			if err != nil {
-				parseErrors = append(parseErrors, fmt.Sprintf("%s: %v", source, err))
-				continue
-			}
-			allItems = append(allItems, items...)
+	for source, rawJSON := range rawResults {
+		items, err := parseSourceResults(source, rawJSON)
+		if err != nil {
+			parseErrors = append(parseErrors, fmt.Sprintf("%s: %v", source, err))
+			continue
 		}
+		allItems = append(allItems, items...)
+	}
 
-		// Add errors from parallel execution
-		for _, err := range errors {
-			parseErrors = append(parseErrors, err.Error())
-		}
+	// Add errors from parallel execution
+	for _, err := range errors {
+		parseErrors = append(parseErrors, err.Error())
+	}
 
-		// If all sources failed, return error
-		if len(allItems) == 0 && len(parseErrors) > 0 {
-			if !flagJSON {
-				fmt.Fprintln(os.Stderr, "All sources failed:")
-				for _, e := range parseErrors {
-					fmt.Fprintf(os.Stderr, "  - %s\n", e)
-				}
-			}
-			return fmt.Errorf("all context sources failed")
-		}
-
-		// Deduplicate and rank
-		allItems = context.DeduplicateItems(allItems)
-		context.RankAndSort(allItems)
-
-		// Apply limit
-		if limit > 0 && len(allItems) > limit {
-			allItems = allItems[:limit]
-		}
-
-		// Build result
-		result := context.UnifiedContextResult{
-			Query:   query,
-			Items:   allItems,
-			Count:   len(allItems),
-			Sources: getSourcesList(rawResults),
-			Errors:  parseErrors,
-		}
-
-		// Render output
-		if flagJSON {
-			enc := json.NewEncoder(os.Stdout)
-			enc.SetIndent("", "  ")
-			return enc.Encode(result)
-		}
-
-		// Print warnings if some sources failed
-		if len(parseErrors) > 0 {
+	// If all sources failed, return error
+	if len(allItems) == 0 && len(parseErrors) > 0 {
+		if !flagJSON {
+			fmt.Fprintln(os.Stderr, "All sources failed:")
 			for _, e := range parseErrors {
-				fmt.Fprintf(os.Stderr, "Warning: %s\n", e)
+				fmt.Fprintf(os.Stderr, "  - %s\n", e)
 			}
-			fmt.Fprintln(os.Stderr)
 		}
+		return fmt.Errorf("all context sources failed")
+	}
 
-		renderContextResults(result)
-		return nil
-	*/
+	// Deduplicate and rank
+	allItems = context.DeduplicateItems(allItems)
+	context.RankAndSort(allItems)
+
+	// Apply limit
+	if limit > 0 && len(allItems) > limit {
+		allItems = allItems[:limit]
+	}
+
+	// Build result
+	result := context.UnifiedContextResult{
+		Query:   query,
+		Items:   allItems,
+		Count:   len(allItems),
+		Sources: getSourcesList(rawResults),
+		Errors:  parseErrors,
+	}
+
+	// Render output
+	if flagJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(result)
+	}
+
+	// Print warnings if some sources failed
+	if len(parseErrors) > 0 {
+		for _, e := range parseErrors {
+			fmt.Fprintf(os.Stderr, "Warning: %s\n", e)
+		}
+		fmt.Fprintln(os.Stderr)
+	}
+
+	renderContextResults(result)
+	return nil
 }
 
 // parseSourceResults parses raw JSON from a source into ContextItems.
-// This will be implemented once Agent A's MCP client interface is available.
 func parseSourceResults(source string, rawJSON []byte) ([]context.ContextItem, error) {
-	// TODO: Implement JSON parsing for each source type
-	// Memory and commits: parse commitmux JSON response format
-	// Task history: parse local get_task_history response
-	// Transcripts: parse local search_transcripts response
-	return nil, fmt.Errorf("not implemented")
+	// Handle empty results (e.g., from local tool placeholders)
+	if len(rawJSON) == 0 || string(rawJSON) == "{}" {
+		return []context.ContextItem{}, nil
+	}
+
+	switch source {
+	case "memory":
+		return parseMemoryResults(rawJSON)
+	case "commit":
+		return parseCommitResults(rawJSON)
+	case "task_history":
+		return parseTaskHistoryResults(rawJSON)
+	case "transcript":
+		return parseTranscriptResults(rawJSON)
+	default:
+		return nil, fmt.Errorf("unknown source: %s", source)
+	}
+}
+
+// parseMemoryResults parses commitmux_search_memory response.
+func parseMemoryResults(rawJSON []byte) ([]context.ContextItem, error) {
+	// commitmux returns array of results with fields: path, content, distance, timestamp
+	var response struct {
+		Results []struct {
+			Path      string    `json:"path"`
+			Content   string    `json:"content"`
+			Distance  float64   `json:"distance"`
+			Timestamp time.Time `json:"timestamp"`
+		} `json:"results"`
+	}
+
+	if err := json.Unmarshal(rawJSON, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse memory results: %w", err)
+	}
+
+	items := make([]context.ContextItem, 0, len(response.Results))
+	for _, r := range response.Results {
+		items = append(items, context.ContextItem{
+			Source:    context.SourceMemory,
+			Title:     fmt.Sprintf("memory: %s", r.Path),
+			Snippet:   r.Content,
+			Timestamp: r.Timestamp,
+			Metadata: map[string]string{
+				"path": r.Path,
+			},
+			Score: 1.0 - r.Distance, // Convert distance to score (lower distance = higher score)
+		})
+	}
+
+	return items, nil
+}
+
+// parseCommitResults parses commitmux_search_semantic response.
+func parseCommitResults(rawJSON []byte) ([]context.ContextItem, error) {
+	// commitmux returns array of results with fields: sha, message, author, timestamp, distance
+	var response struct {
+		Results []struct {
+			SHA       string    `json:"sha"`
+			Message   string    `json:"message"`
+			Author    string    `json:"author"`
+			Timestamp time.Time `json:"timestamp"`
+			Distance  float64   `json:"distance"`
+			Repo      string    `json:"repo"`
+		} `json:"results"`
+	}
+
+	if err := json.Unmarshal(rawJSON, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse commit results: %w", err)
+	}
+
+	items := make([]context.ContextItem, 0, len(response.Results))
+	for _, r := range response.Results {
+		items = append(items, context.ContextItem{
+			Source:    context.SourceCommit,
+			Title:     fmt.Sprintf("commit: %s", r.SHA[:8]),
+			Snippet:   r.Message,
+			Timestamp: r.Timestamp,
+			Metadata: map[string]string{
+				"sha":    r.SHA,
+				"author": r.Author,
+				"repo":   r.Repo,
+			},
+			Score: 1.0 - r.Distance,
+		})
+	}
+
+	return items, nil
+}
+
+// parseTaskHistoryResults parses get_task_history response.
+func parseTaskHistoryResults(rawJSON []byte) ([]context.ContextItem, error) {
+	// Local task history returns array of tasks
+	var response struct {
+		Tasks []struct {
+			Description string    `json:"description"`
+			Status      string    `json:"status"`
+			Timestamp   time.Time `json:"timestamp"`
+			SessionID   string    `json:"session_id"`
+			Score       float64   `json:"score,omitempty"`
+		} `json:"tasks"`
+	}
+
+	if err := json.Unmarshal(rawJSON, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse task history results: %w", err)
+	}
+
+	items := make([]context.ContextItem, 0, len(response.Tasks))
+	for _, t := range response.Tasks {
+		score := t.Score
+		if score == 0 {
+			score = 0.5 // Default score for keyword match
+		}
+
+		items = append(items, context.ContextItem{
+			Source:    context.SourceTaskHistory,
+			Title:     fmt.Sprintf("task: %s", t.Description),
+			Snippet:   t.Description,
+			Timestamp: t.Timestamp,
+			Metadata: map[string]string{
+				"status":     t.Status,
+				"session_id": t.SessionID,
+			},
+			Score: score,
+		})
+	}
+
+	return items, nil
+}
+
+// parseTranscriptResults parses search_transcripts response.
+func parseTranscriptResults(rawJSON []byte) ([]context.ContextItem, error) {
+	// Local transcript search returns array of results
+	var response struct {
+		Results []struct {
+			SessionID string    `json:"session_id"`
+			EntryType string    `json:"entry_type"`
+			Timestamp time.Time `json:"timestamp"`
+			Snippet   string    `json:"snippet"`
+			Rank      float64   `json:"rank,omitempty"`
+		} `json:"results"`
+	}
+
+	if err := json.Unmarshal(rawJSON, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse transcript results: %w", err)
+	}
+
+	items := make([]context.ContextItem, 0, len(response.Results))
+	for _, r := range response.Results {
+		score := r.Rank
+		if score == 0 {
+			score = 0.5 // Default score
+		}
+
+		items = append(items, context.ContextItem{
+			Source:    context.SourceTranscript,
+			Title:     fmt.Sprintf("transcript: %s", r.SessionID[:12]),
+			Snippet:   r.Snippet,
+			Timestamp: r.Timestamp,
+			Metadata: map[string]string{
+				"session_id": r.SessionID,
+				"entry_type": r.EntryType,
+			},
+			Score: score,
+		})
+	}
+
+	return items, nil
 }
 
 // getSourcesList extracts source names from rawResults map.
