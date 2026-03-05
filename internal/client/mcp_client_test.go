@@ -106,7 +106,7 @@ func TestCallTool_ContextCancellation(t *testing.T) {
 sleep 5
 echo '{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{}"}]}}'
 `)
-	defer os.Remove(mockBinary)
+	defer func() { _ = os.Remove(mockBinary) }()
 
 	client := NewMCPClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -125,7 +125,7 @@ cat <<'EOF'
 {"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"[{\"item\":\"test\"}]"}]}}
 EOF
 `)
-	defer os.Remove(mockBinary)
+	defer func() { _ = os.Remove(mockBinary) }()
 
 	// Create a mock client that fails for specific tools
 	client := &mockMCPClient{
@@ -217,7 +217,7 @@ cat <<'EOF'
 {"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{}"}]}}
 EOF
 `)
-	defer os.Remove(mockBinary)
+	defer func() { _ = os.Remove(mockBinary) }()
 
 	client := NewMCPClient()
 
