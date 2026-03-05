@@ -178,40 +178,46 @@ These require architectural additions beyond analysis of local session data.
 
 ---
 
-### Memory-Commit Integration (commitmux enrichment)
+### Memory-Commit Integration (optional convenience wrapper)
 
-**What:** Enrich cross-session memory with commit details from commitmux. Connect the "why" (task goals, blockers) with the "what" (actual code changes).
+**Status:** Phase 1 shipped. Phase 2 deferred (needs usage data to justify).
 
-**Why:** Memory currently stores commit SHAs as strings. Claude has to manually query commitmux to see what changed. Automatic enrichment creates a complete narrative: "We attempted X, hit blocker Y in file Z, solved it with commit ABC: [diff summary]."
+**Current state (Phase 1):** Memory stores commit SHAs as strings. Claude queries both systems manually:
+1. `get_task_history(query="auth")` → returns task with `commits=["abc123"]`
+2. `commitmux_get_patch(sha="abc123")` → returns full diff and message
+3. Claude synthesizes answer from both sources
 
-**Approach (phased):**
+**This explicit composition is the right default.** It's verbose but traceable, works without commitmux (step 2 just skips), and keeps concerns separated.
 
-**Phase 1 (passive):** Already shipped. Memory stores commit SHAs, Claude queries both tools manually.
+**Future consideration (Phase 2 - convenience only):**
 
-**Phase 2 (auto-enrichment):** Enhance `ExtractTaskMemory` to populate Solution field automatically:
-```go
-if status == "completed" && len(commits) > 0 {
-    // Query: commitmux get-patch <repo> <sha>
-    solution = extractSolutionFromCommit(commits[0])
-    // Returns: "Modified auth.go: added token refresh logic"
-}
-```
-Guard: only runs if commitmux binary exists and repo is indexed.
+IF usage data shows Claude frequently queries both systems together (≥5x per session over 20+ sessions), consider adding `enrich_commits` parameter to `get_task_history` as a convenience wrapper:
 
-**Phase 3 (MCP enrichment):** Add `enrich_commits` parameter to `get_task_history`:
 ```json
 {
   "query": "auth",
-  "enrich_commits": true  // Fetch full commit details from commitmux
+  "enrich_commits": true  // Explicit opt-in
 }
 ```
-Returns task history WITH commit messages and diff summaries on-demand.
 
-**Phase 4 (solution mining):** Extract patterns from diffs ("added retry logic", "fixed race condition"), store pattern taxonomy, enable pattern-based search: "How did we solve retry logic before?"
+**Implementation requirements:**
+- Must be explicit parameter (no auto-magic)
+- Must degrade gracefully when commitmux unavailable (return SHAs only)
+- Enrichment happens at query time (no storage of commit data in memory files)
+- Returns commit SHAs with inline diff summaries
 
-**Decision criteria:** Measure memory query usage for 10-20 sessions. If Claude uses `get_task_history` ≥3x per session, Phase 2 ROI is clear.
+**Why defer Phase 2:**
+- Saves Claude one MCP call, but adds complexity
+- Hidden dependency on commitmux creates confusion
+- Need data proving the convenience is worth the coupling
 
-**Depends on:** Cross-session memory (shipped), commitmux indexing
+**Rejected approaches:**
+- ❌ Auto-enrichment during memory extraction (hidden coupling, staleness, storage bloat)
+- ❌ Solution pattern mining (premature optimization, no proven need)
+
+**Decision gate:** Deploy current state, measure `get_task_history` usage for 20+ sessions. If frequency ≥5x per session, revisit. Otherwise, explicit composition wins.
+
+**Depends on:** Cross-session memory (shipped), graceful commitmux integration
 
 ---
 
