@@ -109,12 +109,12 @@ func TestComputeSessionDashboard(t *testing.T) {
 
 func TestComputeStatus(t *testing.T) {
 	tests := []struct {
-		name           string
-		costPerCommit  float64
-		toolErrors     int
-		driftPercent   float64
-		wantStatus     string
-		wantEmoji      string
+		name          string
+		costPerCommit float64
+		toolErrors    int
+		driftPercent  float64
+		wantStatus    string
+		wantEmoji     string
 	}{
 		{
 			name:          "efficient session",
