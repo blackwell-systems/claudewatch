@@ -595,5 +595,39 @@ After wave 2 completes:
 |------|-------|-------------|--------|
 | 1 | A | Core `EstimateSessionCost` per-model pricing + analyzer tests | TO-DO |
 | 2 | B | MCP tool integration tests for per-model pricing | TO-DO |
-| 2 | C | App/export/watcher integration tests for per-model pricing | TO-DO |
+| 2 | C | App/export/watcher integration tests for per-model pricing | DONE |
 | — | Orch | Post-merge verification + binary install | TO-DO |
+
+## Agent C Completion Report
+
+```yaml
+agent: C
+wave: 2
+status: complete
+branch: wave2-agent-c
+commit: 51d8d3e
+files_changed:
+  - internal/export/metrics_test.go
+  - internal/app/compare_test.go
+  - internal/app/anomalies_test.go
+tests_added:
+  - TestExportPrometheus_PerModelCost
+  - TestExportJSON_PerModelCost
+  - TestCompareSAWVsSequential_PerModelCost
+  - TestDetectAnomalies_PerModelCost_AppLevel
+tests_passing: true
+interface_deviations: []
+out_of_scope_deps: []
+notes: |
+  All four specified tests pass. The per-model pricing path is exercised end-to-end:
+  - Export tests verify that MetricSnapshot cost fields reflect Opus pricing ($52.50)
+    when sessions have ModelUsage populated, not Sonnet fallback ($10.50).
+  - CompareSAWVsSequential test confirms SAW vs sequential groups use correct
+    per-model pricing (Opus=$52.50 for SAW, Sonnet=$10.50 for sequential).
+  - DetectAnomalies test confirms Opus sessions are correctly flagged as anomalous
+    against a Sonnet-calibrated baseline (z-score=21.0, severity=critical).
+  No source file modifications were needed — the per-model pricing is handled
+  internally by EstimateSessionCost when ModelUsage is populated.
+  scan_test.go and hook_test.go were reviewed but have no cost-related code paths
+  that benefit from per-model pricing tests.
+```
