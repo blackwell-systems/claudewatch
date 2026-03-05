@@ -540,6 +540,65 @@ go test ./internal/mcp -run TestUnifiedContext -v
 
 ---
 
+### Agent D - Completion Report
+
+**Status:** complete
+
+**Files changed:**
+- internal/mcp/unified_context_tools.go (created, +315 lines)
+- internal/mcp/unified_context_tools_test.go (created, +300 lines)
+
+**Interface deviations:**
+None. All interfaces and function signatures match the Interface Contracts exactly.
+
+**Out of scope dependencies:**
+None identified.
+
+**Verification:**
+- [x] Build passed: `go build ./...`
+- [x] Vet passed: `go vet ./...`
+- [x] Tests passed: `go test ./internal/mcp -run "TestAdd.*Unified|TestHandle.*Context|TestParse" -v` (8/8 tests passing)
+- [x] Manual verification: All test cases cover tool registration, argument parsing, result structure, and source-specific parsing
+
+**Commits:**
+- 2dcb023: feat(mcp): implement get_context unified search MCP tool handler
+
+**Notes:**
+- Implemented `addUnifiedContextTools(s *Server)` that registers the `get_context` MCP tool with correct schema
+- Implemented `handleGetContext(args json.RawMessage) (any, error)` that:
+  * Parses args into struct with query, project, limit fields (with proper defaults: limit=20)
+  * Validates query is not empty (returns error if empty)
+  * Creates MCP client and calls `client.FetchAllSources()` with 30s timeout
+  * Parses raw JSON results from all 4 sources using source-specific parsers
+  * Applies `context.DeduplicateItems()` to remove duplicates
+  * Applies `context.RankAndSort()` for relevance scoring and sorting
+  * Truncates to limit after ranking
+  * Returns `UnifiedContextResult` with query, items, count, sources list, and errors
+  * Handles partial failures: includes error messages in result but returns successful results
+  * Returns error only if all sources fail or query is empty
+- Implemented 4 source-specific parsers:
+  * `parseMemoryResults()`: handles commitmux_search_memory format (path, content, distance)
+  * `parseCommitResults()`: handles commitmux_search_semantic format (sha, message, author, timestamp, repo, distance)
+  * `parseTaskHistoryResults()`: handles get_task_history format (task_identifier, sessions, status, solution, commits)
+  * `parseTranscriptResults()`: handles search_transcripts format (session_id, snippet, entry_type, timestamp, rank)
+- Distance-to-score conversion: semantic sources use (1.0 - distance) for scoring
+- Default scores: task_history uses 0.5 (keyword-based), transcripts use FTS rank directly
+- Used package alias `ctxpkg` to avoid conflict with stdlib `context` package
+- Comprehensive test suite with 8 unit tests:
+  * TestAddUnifiedContextTools: verifies tool registration and schema structure
+  * TestHandleGetContext_EmptyQuery: verifies error handling for empty/missing query
+  * TestHandleGetContext_ParsesArgs: verifies argument parsing works
+  * TestHandleGetContext_ReturnsUnifiedContextResult: verifies return type structure
+  * TestParseMemoryResults: verifies memory result parsing and score conversion
+  * TestParseCommitResults: verifies commit result parsing with metadata extraction
+  * TestParseTaskHistoryResults: verifies task history parsing with status/solution
+  * TestParseTranscriptResults: verifies transcript parsing with session metadata
+- All 8 tests passing
+- Build and vet clean with no warnings
+- Ready for orchestrator to append `addUnifiedContextTools(s)` to `internal/mcp/tools.go`
+
+---
+
 ## Orchestrator Post-Merge Checklist
 
 After wave 1 completes:
