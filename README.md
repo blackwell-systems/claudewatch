@@ -5,15 +5,32 @@
 [![Release](https://img.shields.io/github/v/release/blackwell-systems/claudewatch)](https://github.com/blackwell-systems/claudewatch/releases/latest)
 [![Go Report Card](https://goreportcard.com/badge/github.com/blackwell-systems/claudewatch)](https://goreportcard.com/report/github.com/blackwell-systems/claudewatch)
 
-**AI agent metacognition for Claude Code.** NOT a memory tool. NOT an observability platform. A real-time feedback layer that gives Claude awareness of its own behavior during execution.
+**AgentOps for Claude Code.** Real-time monitoring and behavioral intervention for AI agents + post-session analytics for developers.
+
+NOT memory storage. NOT infrastructure observability. NOT LLM API monitoring. Operations for the AI agent itself during development.
 
 ## The Gap We Fill
 
-| | Memory Tools | LLM Observability | **claudewatch** |
+| | Memory Tools | LLM Observability | **claudewatch (AgentOps)** |
 |---|---|---|---|
-| **When** | After session | After session | **During session** |
-| **For** | AI (read past) | Humans (dashboards) | **AI (live feedback)** |
-| **Does** | Archive conversations | Track API costs | **Detect drift, prevent errors, surface patterns** |
+| **Category** | Storage | API monitoring | **Agent operations** |
+| **When** | After session | After API call | **During session + after** |
+| **For** | AI (read past) | Humans (API dashboards) | **AI (live feedback) + Humans (ops dashboards)** |
+| **Monitors** | Conversations | API costs/latency | **Agent behavior + workflow friction** |
+| **Examples** | `claude-memory-mcp` | LangSmith, Langfuse | — |
+
+### What is AgentOps?
+
+Like **DevOps** is operations for software delivery and **MLOps** is operations for ML models, **AgentOps is operations for AI agents**:
+
+- **Monitor agent behavior** - Error rates, drift patterns, context pressure, cost velocity
+- **Intervene automatically** - Block retry loops, surface known blockers, detect stuck states
+- **Provide analytics** - Friction trends, cost per commit, agent success rates, exportable metrics
+- **Enable self-awareness** - Agent queries its own performance mid-session via MCP tools
+
+**Other AgentOps tools exist** (AgentOps.ai for production LLM apps), but claudewatch is AgentOps for the development experience—monitoring Claude Code sessions, not production API calls.
+
+---
 
 **Three concrete examples:**
 
