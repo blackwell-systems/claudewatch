@@ -143,6 +143,71 @@ extract_* = write/checkpoint operation
 
 ---
 
+### Stop Hook for Memory Extraction (Pre-1.0.0 enhancement)
+
+**Status:** SessionStart and PostToolUse hooks shipped. Stop hook missing.
+
+**Problem:** Ops Memory layer depends on consistent memory extraction, but users have to remember to call `extract_current_session_memory` before sessions close. Long sessions with significant progress can close without checkpointing, losing valuable context about task state, blockers encountered, and solutions attempted.
+
+**Why it matters for AgentOps:**
+- Session close is a context loss event — equivalent to a system restart without saving state
+- Cross-session learning breaks if memory extraction is manual and forgotten
+- SessionStart can only surface prior context if Stop ensured it was saved
+- The memory lifecycle is incomplete: SessionStart (load) → PostToolUse (monitor) → **Stop (checkpoint)** ← missing
+
+**Solution:** Add Stop hook that detects significant sessions and prompts for memory extraction.
+
+**Detection logic:**
+```go
+// Significant session criteria (any of):
+- Duration > 30 minutes
+- Tool calls > 50
+- Commits made > 0
+- Errors encountered and resolved (error count > 5 but friction not critical)
+```
+
+**Smart prompting based on session status:**
+1. **Task completed** (commits > 0, low final drift):
+   - "Session completed with N commits. Extract memory? Call extract_current_session_memory"
+
+2. **Task abandoned** (zero commits, high tool errors):
+   - "Session ended with zero commits and N errors. Worth extracting blockers? Call extract_current_session_memory"
+
+3. **Task in-progress** (active work, no clear resolution):
+   - "Session has significant work in progress. Extract checkpoint before closing? Call extract_current_session_memory"
+
+**Skip conditions:**
+- Session < 10 minutes and < 20 tool calls (trivial session)
+- Last `extract_current_session_memory` call within 20 minutes (already checkpointed)
+- Session is pure research (zero Edit/Write calls, only Read/Grep/Glob)
+
+**Implementation:**
+- New file: `internal/app/hook_stop.go`
+- New hook configuration: `~/.claude/settings.json` Stop hook registration
+- Leverage existing `GetActiveSession()` and session metadata
+- Check `extract_current_session_memory` invocation timestamp from MCP call log
+- Non-blocking: prompts Claude, doesn't force extraction
+
+**Files to change:**
+- `internal/app/hook_stop.go` — new handler
+- `internal/claude/active.go` — add `WorthCheckpointing()` method to Session
+- `cmd/claudewatch/hook.go` — register Stop event
+- `docs/features/HOOKS.md` — document Stop hook behavior
+- Tests for detection logic and skip conditions
+
+**Migration:**
+- Hook is additive — existing users get prompts, can ignore if they prefer manual extraction
+- No breaking changes to existing hook behavior
+
+**Why before 1.0.0:**
+- Completes the memory lifecycle story (load → monitor → checkpoint)
+- Establishes hook coverage expectations for 1.0.0 (SessionStart + PostToolUse + Stop)
+- Validates that Ops Memory works end-to-end without manual intervention
+
+**Estimated effort:** ~3 hours (detection logic + prompting + tests + docs)
+
+---
+
 ### Graceful commitmux integration
 
 **Status:** Shipped in v0.15.0. ✓ Complete
