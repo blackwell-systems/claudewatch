@@ -141,110 +141,41 @@
 
 **Goal:** Block known failures before they happen, preserve memory across compactions
 
-### 2.1 Drift intervention
+### 2.1 Drift intervention ✅ COMPLETE
 **Impact:** 🔥🔥 Medium-High - Reduces wasted time exploring without implementing
 **Effort:** 🛠 Low - PostToolUse hook extension
 **Dependencies:** Drift detection (exists via `get_drift_signal`)
 
-**Implementation:**
-- PostToolUse hook tracks read/write ratio in rolling 15-tool window
-- After 10 consecutive reads (no writes), inject warning:
-  ```
-  🛑 DRIFT DETECTED: 10 reads, 0 writes in 15 minutes
-
-  You are exploring without implementing. Common causes:
-  - Unclear requirements → Ask user for clarification
-  - Overwhelmed by complexity → Scope down to smallest first step
-  - Avoiding implementation → What's blocking you?
-
-  Actions:
-  [ ] Ask user for direction
-  [ ] Scope down and implement smallest piece
-  [ ] Call get_blockers() - is there a known issue?
-  ```
-- Escalate every 5 additional reads without writes
+**Status:** Already implemented in PostToolUse hook Priority 4. Rolling 15-tool window tracks read/write ratio, warns when drifting with actionable message including read count, window size, and suggestions (`get_drift_signal`, `get_blockers`). No additional code needed — Scout confirmed during Phase 2 SAW execution.
 
 **Success metric:** Drift sessions (>20% time in read-only mode) drop by 40%
 
-**Priority:** DO FIRST
-
-### 2.2 Repetitive error blocking
+### 2.2 Repetitive error blocking ✅ COMPLETE
 **Impact:** 🔥🔥 Medium - Stops error loops early
 **Effort:** 🛠 Low - PostToolUse hook logic
 **Dependencies:** Live friction tracking (exists)
 
-**Implementation:**
-- Track (tool_name, error_category) tuples in current session
-- After 3rd occurrence of same pattern:
-  ```
-  ⚠ PATTERN DETECTED: 3 Bash retries in 10 min
-
-    Your friction rate this session: 40%
-    Your normal rate: 25%
-    → You're struggling 60% more than usual
-
-    Common cause on this project: commands not verified before execution
-
-    Action: Call get_blockers() to check for known issues
-  ```
+**Status:** Implemented as Priority 1.5 in PostToolUse hook. `ParseLiveRepetitiveErrors` tracks per-(tool, error-pattern) tuples using first 120 chars of error content as pattern key. Warns at 3rd consecutive occurrence. A successful tool_result resets all streaks for that tool. 6 tests in `internal/claude/active_live_test.go`.
 
 **Success metric:** Sessions with 5+ repetitive errors drop by 50%
 
-**Priority:** DO FIRST
-
-### 2.3 Auto-extract memory on compaction (pulled forward from 3.5.1)
+### 2.3 Auto-extract memory on compaction (pulled forward from 3.5.1) ✅ COMPLETE
 **Impact:** 🔥🔥🔥 High - Solves the #1 memory loss problem
 **Effort:** 🛠 Low - Hook + context pressure detection
 **Dependencies:** `extract_current_session_memory` (exists), context pressure detection (exists)
 
-**Current state:** `extract_current_session_memory` must be called manually before compaction. Agents rarely remember to do this. The CLAUDE.md instructions say "At 'pressure' level, call `extract_current_session_memory` before compaction" but compliance is low.
-
-**Implementation:**
-- PostToolUse hook already detects context pressure via `ParseLiveContextPressure`
-- When pressure transitions from "comfortable" → "pressure", auto-call `extract_current_session_memory` before the agent's next turn
-- Store a state file (`~/.cache/claudewatch-compaction-extracted`) to prevent duplicate extraction
-- Format: inject into hook output:
-  ```
-  ⚠ Context pressure at 75% — auto-extracting session memory before compaction...
-  ✓ Saved: 3 tasks, 2 blockers, 1 architectural insight
-  ```
-- Reset state file when session ID changes
+**Status:** Implemented in `internal/app/hook_extract.go`. `tryAutoExtract` detects context pressure transitions to "pressure" or "critical" using a state file at `~/.cache/claudewatch-ctx-state`. Only fires on transitions (not repeated checks while already elevated). Calls the full `memory.ExtractTaskMemory` + `memory.ExtractBlockers` pipeline. Errors swallowed — hook never disrupts agent workflow. 5 tests in `internal/app/hook_extract_test.go`.
 
 **Success metric:** Memory extraction rate goes from <10% to 90%+ for sessions that hit compaction
 
-**Priority:** DO FIRST
-
-### 2.4 Agent spawn prevention via auto-generated rules
-**Impact:** 🔥🔥🔥 High - Prevents wasted cost on failing agents
-**Effort:** 🛠 Low - Rules file generation, no hook needed
+### 2.4 Agent spawn prevention via auto-generated rules — DEFERRED
+**Impact:** 🔥 Low in practice - Session start briefing already shows "DO NOT SPAWN" for failing types
+**Effort:** 🛠 Low
 **Dependencies:** Agent performance data (exists)
 
-**Rationale:** PreToolUse hooks don't exist in Claude Code, so hook-based blocking isn't possible. Instead, prevent bad spawns at the instruction layer — auto-generate project-specific `.claude/rules/` files that tell agents which agent types to avoid. Rules are processed as high-priority instructions, making them preventive rather than reactive.
+**Rationale for deferral:** The session start hook already injects agent failure warnings (e.g., "statusline-setup 0% success — DO NOT SPAWN"). Auto-generating `.claude/rules/` files adds a second soft-compliance layer on top of an existing soft-compliance layer. With thin data (n=2 for the only failing type) and rare unprompted spawns, the ROI is low. Revisit when agent performance data is richer.
 
-**Implementation:**
-- `claudewatch install` (or new `claudewatch rules generate`) analyzes agent performance data
-- For agent types with <30% success rate on the current project, generate a rule file:
-  ```
-  # .claude/rules/claudewatch-agent-blocklist.md
-
-  ## Agent Types to Avoid on This Project
-
-  DO NOT spawn the following agent types — they have consistently failed:
-
-  - **statusline-setup** — 0% success (0/2). Common error: permission denied.
-    Alternative: manual configuration per CLAUDE.md instructions.
-
-  Last updated: 2026-03-05 by claudewatch
-  ```
-- Re-generate on each `claudewatch install` or `claudewatch scan` run
-- Project-specific (`.claude/rules/`) so it doesn't affect other repos
-- Users can edit or delete the file to override
-
-**Success metric:** Zero spawns of agents with <30% success rate (via instruction compliance, not blocking)
-
-**Priority:** DO NEXT
-
-**Deliverable:** v0.14.0 - "Guardrails Release"
+**Deliverable:** v0.14.0 - "Guardrails Release" (ships with 2.1-2.3)
 
 ---
 
@@ -252,36 +183,23 @@
 
 **Goal:** Build memory habits through mandatory pauses
 
-### 3.1 Reflection checkpoints
-**Impact:** 🔥🔥🔥 High - Dramatically improves memory extraction quality and frequency
-**Effort:** 🛠🛠 Medium - Requires interruption mechanism
-**Dependencies:** `extract_current_session_memory` (exists)
+### 3.1 Commit-triggered memory nudge (reframed from "Reflection checkpoints")
+**Impact:** 🔥🔥 Medium - Captures insights during productive sessions
+**Effort:** 🛠 Low - PostToolUse hook, commit counter
+**Dependencies:** `extract_current_session_memory` (exists), dashboard commit tracking (exists)
+
+**Rationale:** The original timer-based checkpoint design (30/60/90 min) was redundant with 2.3 (auto-extract on compaction) for the critical case. Timer-based interrupts are also a blunt instrument — a productive session making commits doesn't need arbitrary pauses, while a stuck session is already handled by drift detection. Reframed to trigger on a meaningful productivity signal instead.
 
 **Implementation:**
-- Timer-based triggers: 30 min, 60 min, 90 min
-- PostToolUse hook injects checkpoint prompt:
+- PostToolUse hook already tracks commit count (via dashboard)
+- After every 3 commits, emit a one-line nudge:
   ```
-  ⏸ REFLECTION CHECKPOINT (30 min elapsed)
-
-  What have you learned that's worth preserving?
-  - New blockers discovered and solutions?
-  - Patterns that worked or failed?
-  - Architectural insights about this codebase?
-
-  Template:
-  ## Blocker: [brief name]
-  File: [path if relevant]
-  Issue: [what went wrong]
-  Solution: [how it was fixed]
-
-  ## Pattern: [what worked/failed]
-  Context: [when this applies]
-  Outcome: [result]
+  ✓ 3 commits this session. Call extract_current_session_memory to checkpoint.
   ```
-- Agent writes response, system auto-calls `extract_current_session_memory` with notes
-- Snooze option: "Remind me in 15 min"
+- No template, no multi-line prompt, no snooze mechanism
+- Tied to real output, not elapsed time
 
-**Success metric:** Memory extraction rate goes from <10% to 60% of sessions >30min
+**Success metric:** Memory extraction rate for productive sessions (3+ commits) reaches 50%
 
 **Priority:** ⭐ DO NEXT
 
@@ -612,10 +530,10 @@ Meanwhile, commitmux already has exactly the infrastructure we'd need to build:
 - 1.4 Per-model cost accuracy ✅
 
 ### High Impact, Low Effort (DO FIRST - v0.14.0)
-- 2.1 Drift intervention
-- 2.2 Repetitive error blocking
-- 2.3 Auto-extract on compaction (pulled from 3.5.1)
-- 2.4 Agent spawn prevention via auto-generated rules
+- 2.1 Drift intervention ✅
+- 2.2 Repetitive error blocking ✅
+- 2.3 Auto-extract on compaction (pulled from 3.5.1) ✅
+- ~~2.4 Agent spawn prevention via auto-generated rules~~ DEFERRED
 
 ### High Impact, Medium Effort (DO NEXT - v0.15.0-v0.15.5)
 - ⭐ 3.1 Reflection checkpoints
