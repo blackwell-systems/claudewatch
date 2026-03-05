@@ -445,12 +445,12 @@ gofmt -l .   # should return empty (no unformatted files)
 
 ## Orchestrator Post-Merge Checklist
 
-1. [ ] Verify `go test ./...` passes after all merges
-2. [ ] Verify `go vet ./...` passes
-3. [ ] Verify `gofmt -l .` returns empty
-4. [ ] Verify `hookCmd.Long` description in hook.go mentions repetitive errors
-5. [ ] Manual smoke test: `go run ./cmd/claudewatch hook` exits 0 with no active session
-6. [ ] Verify auto-extract state file is created at `~/.cache/claudewatch-ctx-state` after hook run with active session
+1. [x] Verify `go test ./...` passes after all merges — ✅ 15 packages pass
+2. [x] Verify `go vet ./...` passes — ✅ clean
+3. [x] Verify `gofmt -l .` returns empty — ✅ clean
+4. [x] Verify `hookCmd.Long` description in hook.go mentions repetitive errors — ✅ Agent B updated
+5. [x] Manual smoke test: `go run ./cmd/claudewatch hook` exits 0 with no active session — ✅ exit 0
+6. [ ] Verify auto-extract state file is created at `~/.cache/claudewatch-ctx-state` after hook run with active session — deferred to live testing
 
 ---
 
@@ -460,7 +460,7 @@ gofmt -l .   # should return empty (no unformatted files)
 |-------|------|--------|-------|
 | A — Repetitive Error Parser | 1 | COMPLETE | See completion report below |
 | C — Auto-Extract Helper | 1 | COMPLETE | See completion report below |
-| B — Hook Integration | 2 | BLOCKED on Wave 1 | |
+| B — Hook Integration | 2 | COMPLETE | See completion report below |
 
 ---
 
@@ -488,4 +488,18 @@ tests_passing: yes
 interface_deviations: none — used os.UserCacheDir() instead of os.ExpandEnv for state file path (more portable, same result on macOS/Linux)
 commits: [a777782]
 notes: All 5 transition detection scenarios tested via isElevatedPressure logic tests. Integration test with minimal JSONL fixture confirms graceful handling when no facet exists (returns "" silently). tryAutoExtract uses ParseActiveSession meta as fallback if session not found in ParseAllSessionMeta results. Full app package test suite passes. No modifications to hook.go or any files outside internal/app/.
+```
+
+---
+
+### Agent B - Completion Report
+
+```
+status: complete
+files_changed: [internal/app/hook.go, internal/app/hook_test.go]
+tests_added: 3
+tests_passing: yes
+interface_deviations: none
+commits: [ccd1d17]
+notes: Added Priority 1.5 (repetitive error patterns via ParseLiveRepetitiveErrors) between Priority 1 and Priority 2. Added tryAutoExtract call before Priority 2 context pressure check. Both new checks include hookChronicPatternNote integration for enriched warnings. Updated hookCmd.Long description to document the new priority ordering including 1.5 and auto-extract. Enhancement 1 (drift intervention) verified — existing Priority 4 already implements rolling 15-tool window with actionable message showing read/write counts and suggesting get_drift_signal or get_blockers. No code change needed. Three new tests: LongMentionsRepetitiveErrors, LongMentionsAutoExtract, PriorityOrdering (verifies all 5 priorities appear in correct order in Long description). All existing and new tests pass. go vet clean.
 ```
