@@ -21,7 +21,7 @@ cat <<'EOF'
 {"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{\"status\":\"ok\"}"}]}}
 EOF
 `)
-	defer os.Remove(mockBinary)
+	defer func() { _ = os.Remove(mockBinary) }()
 
 	client := NewMCPClient()
 	ctx := context.Background()
