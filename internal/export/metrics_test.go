@@ -1,9 +1,11 @@
 package export
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
+	"github.com/blackwell-systems/claudewatch/internal/analyzer"
 	"github.com/blackwell-systems/claudewatch/internal/claude"
 	"github.com/blackwell-systems/claudewatch/internal/config"
 	"github.com/stretchr/testify/assert"
@@ -345,4 +347,90 @@ func TestFilterAgentTasksByDays(t *testing.T) {
 	assert.Equal(t, 2, len(filtered))
 	assert.Equal(t, "s1", filtered[0].SessionID)
 	assert.Equal(t, "s2", filtered[1].SessionID)
+}
+
+// TestExportPrometheus_PerModelCost verifies that Prometheus export reflects per-model
+// costs when MetricSnapshot is built from sessions with ModelUsage populated.
+// The test constructs a snapshot whose TotalCostUSD was computed via AnalyzeOutcomes
+// with an Opus session, then verifies the exported Prometheus output contains the
+// Opus-tier cost rather than the Sonnet-tier fallback.
+func TestExportPrometheus_PerModelCost(t *testing.T) {
+	// Opus pricing: $15/M input, $75/M output
+	// 1M input + 500K output = $15.00 + $37.50 = $52.50
+	opusCost := 52.50
+
+	snapshot := MetricSnapshot{
+		Timestamp:         time.Now(),
+		ProjectName:       "opus-project",
+		ProjectHash:       "abc123",
+		SessionCount:      1,
+		TotalCostUSD:      opusCost,
+		AvgCostPerSession: opusCost,
+		CostPerCommit:     opusCost, // 1 commit
+		TotalCommits:      1,
+		FrictionByType:    map[string]int{},
+		ModelUsagePct:     map[string]float64{"claude-opus-4": 100.0},
+	}
+
+	exporter := &PrometheusExporter{}
+	output, err := exporter.Export(snapshot)
+	require.NoError(t, err)
+
+	outputStr := string(output)
+
+	// Verify the cost metric reflects Opus pricing ($52.50), not Sonnet ($10.50)
+	assert.Contains(t, outputStr, `claudewatch_cost_usd_total{project="opus-project"} 52.5`)
+	assert.Contains(t, outputStr, `claudewatch_cost_per_session_avg{project="opus-project"} 52.5`)
+}
+
+// TestExportJSON_PerModelCost verifies that JSON export reflects per-model costs
+// when MetricSnapshot is built from sessions with ModelUsage populated.
+func TestExportJSON_PerModelCost(t *testing.T) {
+	// Build sessions with Opus ModelUsage
+	sessions := []claude.SessionMeta{
+		{
+			SessionID:   "opus-session-1",
+			ProjectPath: "/code/myproject",
+			InputTokens: 1_000_000,
+			OutputTokens: 500_000,
+			GitCommits:  1,
+			ModelUsage: map[string]claude.ModelStats{
+				"claude-opus-4": {
+					InputTokens:  1_000_000,
+					OutputTokens: 500_000,
+				},
+			},
+		},
+	}
+
+	// Use AnalyzeOutcomes which calls EstimateSessionCost internally.
+	// The sonnet pricing passed here is the fallback — it should NOT be used
+	// because ModelUsage is populated.
+	pricing := analyzer.DefaultPricing["sonnet"]
+	cacheRatio := analyzer.NoCacheRatio()
+	outcomeAnalysis := analyzer.AnalyzeOutcomes(sessions, nil, pricing, cacheRatio)
+
+	snapshot := MetricSnapshot{
+		Timestamp:         time.Now(),
+		ProjectName:       "myproject",
+		SessionCount:      1,
+		TotalCostUSD:      outcomeAnalysis.TotalCost,
+		AvgCostPerSession: outcomeAnalysis.AvgCostPerSession,
+		FrictionByType:    map[string]int{},
+		ModelUsagePct:     map[string]float64{},
+	}
+
+	exporter := &JSONExporter{}
+	output, err := exporter.Export(snapshot)
+	require.NoError(t, err)
+
+	var decoded MetricSnapshot
+	err = json.Unmarshal(output, &decoded)
+	require.NoError(t, err)
+
+	// Opus pricing: 1M input * $15/M + 500K output * $75/M = $15 + $37.50 = $52.50
+	// Sonnet pricing would be: 1M * $3/M + 500K * $15/M = $3 + $7.50 = $10.50
+	assert.InDelta(t, 52.50, decoded.TotalCostUSD, 0.01,
+		"JSON export should reflect Opus per-model cost, not Sonnet fallback")
+	assert.InDelta(t, 52.50, decoded.AvgCostPerSession, 0.01)
 }

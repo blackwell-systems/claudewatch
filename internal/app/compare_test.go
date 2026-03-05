@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/blackwell-systems/claudewatch/internal/analyzer"
+	"github.com/blackwell-systems/claudewatch/internal/claude"
+	"github.com/stretchr/testify/assert"
 )
 
 // TestRenderCompare_Empty verifies that renderCompare does not panic
@@ -82,4 +84,66 @@ func TestCompareFlagProject_Registered(t *testing.T) {
 	if flag == nil {
 		t.Fatal("expected --project flag to be registered on compareCmd")
 	}
+}
+
+// TestCompareSAWVsSequential_PerModelCost verifies that CompareSAWVsSequential uses
+// per-model pricing when sessions have ModelUsage populated. The test creates a mix
+// of Opus and Sonnet sessions and verifies the comparison report reflects the correct
+// per-model costs rather than applying Sonnet pricing uniformly.
+func TestCompareSAWVsSequential_PerModelCost(t *testing.T) {
+	sessions := []claude.SessionMeta{
+		{
+			SessionID:    "opus-saw-session",
+			ProjectPath:  "/code/myproject",
+			StartTime:    "2026-03-01T10:00:00Z",
+			InputTokens:  1_000_000,
+			OutputTokens: 500_000,
+			GitCommits:   2,
+			ModelUsage: map[string]claude.ModelStats{
+				"claude-opus-4": {
+					InputTokens:  1_000_000,
+					OutputTokens: 500_000,
+				},
+			},
+		},
+		{
+			SessionID:    "sonnet-seq-session",
+			ProjectPath:  "/code/myproject",
+			StartTime:    "2026-03-01T11:00:00Z",
+			InputTokens:  1_000_000,
+			OutputTokens: 500_000,
+			GitCommits:   3,
+			ModelUsage: map[string]claude.ModelStats{
+				"claude-sonnet-4": {
+					InputTokens:  1_000_000,
+					OutputTokens: 500_000,
+				},
+			},
+		},
+	}
+
+	sawSessionIDs := map[string]int{"opus-saw-session": 2}   // 2 waves
+	sawAgentCounts := map[string]int{"opus-saw-session": 4}  // 4 agents
+
+	// Pass Sonnet pricing as fallback — but per-model path should override.
+	pricing := analyzer.DefaultPricing["sonnet"]
+	cacheRatio := analyzer.NoCacheRatio()
+
+	report := analyzer.CompareSAWVsSequential(
+		"myproject", sessions, nil, sawSessionIDs, sawAgentCounts,
+		pricing, cacheRatio, true,
+	)
+
+	// SAW group: 1 Opus session. Opus cost = 1M * $15/M + 500K * $75/M = $52.50
+	assert.Equal(t, 1, report.SAW.Count)
+	assert.InDelta(t, 52.50, report.SAW.AvgCostUSD, 0.01,
+		"SAW group should use Opus per-model pricing")
+
+	// Sequential group: 1 Sonnet session. Sonnet cost = 1M * $3/M + 500K * $15/M = $10.50
+	assert.Equal(t, 1, report.Sequential.Count)
+	assert.InDelta(t, 10.50, report.Sequential.AvgCostUSD, 0.01,
+		"Sequential group should use Sonnet per-model pricing")
+
+	// Verify individual session details are populated
+	assert.Equal(t, 2, len(report.Sessions))
 }
