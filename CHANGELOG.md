@@ -4,7 +4,9 @@ All notable changes to claudewatch are documented here.
 
 ## [Unreleased]
 
-(empty)
+### Added
+
+- **Stop hook for memory extraction** — Detects significant sessions (>30 min, >50 tools, commits made, errors resolved) and prompts Claude to call `extract_current_session_memory` before closing. Completes the memory lifecycle: SessionStart (load) → PostToolUse (monitor) → Stop (checkpoint). Non-blocking suggestion only. Skip conditions: trivial sessions (<10 min AND <20 tools), already checkpointed (extract called), pure research (zero Edit/Write). Smart prompts based on outcome: ✓ for completed (with commits), ⚠ for abandoned (zero commits + errors), 📋 for in-progress. Command: `claudewatch hook-stop`. Configure in `~/.claude/settings.json` Stop hook. Implementation: `internal/app/hook_stop.go` with 27 passing tests in `internal/app/hook_stop_test.go`.
 
 ## [0.15.0] - 2026-03-05
 

@@ -145,7 +145,7 @@ extract_* = write/checkpoint operation
 
 ### Stop Hook for Memory Extraction (Pre-1.0.0 enhancement)
 
-**Status:** SessionStart and PostToolUse hooks shipped. Stop hook missing.
+**Status:** ✅ Implemented in v0.16.0 — See `internal/app/hook_stop.go` (27 passing tests)
 
 **Problem:** Ops Memory layer depends on consistent memory extraction, but users have to remember to call `extract_current_session_memory` before sessions close. Long sessions with significant progress can close without checkpointing, losing valuable context about task state, blockers encountered, and solutions attempted.
 

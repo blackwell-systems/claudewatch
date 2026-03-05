@@ -6,12 +6,13 @@ Hooks bring real-time awareness to Claude during execution. They are the **push 
 
 Unlike memory tools that archive conversations or observability platforms that log API metrics, hooks give Claude **behavioral intervention during the session where it can act**. They detect problems as they happen and tell Claude what to do about them.
 
-Two hook types:
+Three hook types:
 
 1. **SessionStart** - Briefing injected into context before the first message
 2. **PostToolUse** - Alert fired after tool calls when thresholds are crossed
+3. **Stop** - Prompt for memory extraction when sessions close
 
-Both hooks read local data from `~/.claude/`, compute signals, and emit structured output. No network calls. No telemetry. All local.
+All hooks read local data from `~/.claude/`, compute signals, and emit structured output. No network calls. No telemetry. All local.
 
 ## SessionStart Hook
 
@@ -161,6 +162,84 @@ PostToolUse fires automatically when thresholds are crossed. It doesn't wait for
 6. Claude adjusts approach, applies known solution instead of rediscovering it
 
 Without hooks, steps 2-5 don't happen automatically. Claude continues guessing until the user intervenes.
+
+## Stop Hook
+
+Runs when the Claude Code session closes. Detects significant sessions and prompts Claude to extract memory before context is lost.
+
+### What It Detects
+
+**Significant session criteria** (any of):
+- Duration > 30 minutes
+- Tool calls > 50
+- Commits made > 0
+- Errors encountered and resolved (>5 errors)
+
+**Skip conditions**:
+- Trivial session (< 10 min AND < 20 tool calls)
+- Already checkpointed (`extract_current_session_memory` called)
+- Pure research (zero Edit/Write calls)
+
+### Prompt Format
+
+The hook generates context-aware prompts based on session outcome:
+
+**Completed session** (commits made):
+```
+✓ Session completed with 3 commit(s) in 45 minutes.
+  Extract memory for future sessions? Call extract_current_session_memory
+```
+
+**Abandoned session** (zero commits, high errors):
+```
+⚠ Session ended with zero commits and 8 tool errors.
+  Worth extracting blockers? Call extract_current_session_memory
+```
+
+**In-progress session** (significant work, no clear resolution):
+```
+📋 Session has significant work in progress (65 tool calls, 40 min).
+  Extract checkpoint before closing? Call extract_current_session_memory
+```
+
+### Configuration
+
+Add to `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "claudewatch hook-stop"
+      }
+    ]
+  }
+}
+```
+
+Or install via: `claudewatch install` (if Stop hook support added in installer)
+
+### Non-Blocking Design
+
+The Stop hook **always exits 0** and only suggests extraction—it never forces it. Claude can ignore the prompt if extraction isn't needed. This preserves user agency while providing a helpful reminder.
+
+### Why It Matters
+
+Completes the memory lifecycle: **SessionStart (load) → PostToolUse (monitor) → Stop (checkpoint)**
+
+Without Stop hook:
+- Long productive sessions close without checkpointing
+- Task context, blockers, and solutions are lost
+- SessionStart can't surface prior context because it was never saved
+- Manual extraction depends on agents remembering to call the tool
+
+With Stop hook:
+- Significant sessions prompt for extraction automatically
+- Cross-session learning becomes reliable
+- Memory layer builds incrementally over time
+- Agents develop consistent checkpoint habits
 
 ## Hook Lifecycle
 
