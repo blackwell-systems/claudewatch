@@ -172,7 +172,7 @@ func TestFetchAllSources_AllSuccess(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	results, errs := FetchAllSources(ctx, client, "test query", "test-project", 20)
+	results, _ := FetchAllSources(ctx, client, "test query", "test-project", 20)
 
 	// Should have at least local sources (task_history + transcript)
 	assert.NotEmpty(t, results)
