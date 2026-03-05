@@ -87,9 +87,65 @@ All three Tier 2 items shipped in v0.7.9 and v0.8.0.
 
 ## Tier 2.5 — Polish & Integration UX
 
+### MCP Tool Naming Consistency (Pre-1.0.0 blocker)
+
+**Status:** Shipped `get_context` in v0.15.0, but naming is inconsistent with existing patterns.
+
+**Problem:** Semantic inconsistency in MCP tool verb prefixes creates cognitive friction:
+- `search_transcripts` — takes `query` parameter, returns filtered results
+- `get_context` — takes `query` parameter, returns filtered results
+- `get_task_history` — takes `query` parameter, returns filtered results
+
+Using different verbs (`get` vs `search`) for the same semantic operation (query-based search) violates the principle of least surprise. Users build mental models: `get_*` should retrieve current state without filtering, `search_*` should accept queries and return ranked results.
+
+**Solution:** Establish clear semantic patterns before 1.0.0:
+
+**Semantic verb rules:**
+```
+search_* = takes query parameter, returns filtered/ranked results
+get_*    = computes/returns current state, no query filtering
+extract_* = write/checkpoint operation
+```
+
+**Required renames (v0.16.0):**
+1. `get_context` → `search_context` (shipped yesterday, minimal adoption)
+2. `get_task_history` → `search_task_history` (older, more usage, but still pre-1.0.0)
+
+**Impact on existing tools:**
+- ✓ `search_transcripts` — already correct
+- ✓ `get_session_dashboard` — returns state, no query
+- ✓ `get_project_health` — returns state, no query
+- ✓ `get_drift_signal` — returns state, no query
+- ✓ `get_cost_velocity` — returns state, no query
+- ✓ `get_context_pressure` — returns state, no query
+- ✓ `get_blockers` — returns all blockers, no filtering (correct as-is)
+- ✓ `get_suggestions` — returns all suggestions, no filtering
+- ✓ `extract_current_session_memory` — write operation
+
+**Files to change:**
+- `internal/mcp/unified_context_tools.go` — rename handler function
+- `internal/mcp/server.go` — update tool registration
+- `docs/features/MCP_TOOLS.md` — update documentation
+- `docs/features/CONTEXT_SEARCH.md` — update examples
+- `internal/mcp/task_memory_tools.go` — rename `get_task_history` handler
+- All test files referencing these tools
+
+**Migration path:**
+- Alias old names to new names for 1-2 releases with deprecation warning
+- Remove aliases in v1.1.0 or v1.2.0 after sufficient time for users to migrate
+
+**Why before 1.0.0:**
+- API naming is a contract — post-1.0.0 renames are breaking changes
+- v0.15.0 shipped yesterday — adoption of `get_context` is minimal
+- Establishing clear semantic patterns now prevents future naming debates
+
+**Estimated effort:** ~2 hours (rename + alias + docs + tests)
+
+---
+
 ### Graceful commitmux integration
 
-**Status:** Context search shipped but assumes commitmux installed. Need graceful degradation.
+**Status:** Shipped in v0.15.0. ✓ Complete
 
 **Problem:** `get_context` MCP tool and `claudewatch context` CLI fail silently or return partial results when commitmux not installed. Users don't know commitmux is required for full functionality (memory + commit search). Hard dependency on separate tool creates adoption friction.
 
