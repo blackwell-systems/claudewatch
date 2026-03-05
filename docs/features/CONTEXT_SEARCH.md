@@ -12,9 +12,20 @@ Traditional search requires you to know where to look:
 
 Context search eliminates this decision. You query once, search in parallel across all four sources, and get unified results ranked by relevance.
 
+## Dependencies
+
+**Optional:** commitmux binary for full functionality (4/4 sources)
+
+- **With commitmux:** All 4 sources available (memory, commit, task history, transcript)
+- **Without commitmux:** 2 sources available (task history, transcript) with upgrade message
+
+Install commitmux: `brew install blackwell-systems/tap/commitmux`
+
+Context search degrades gracefully when commitmux is unavailable - you get partial results with clear instructions for upgrading.
+
 ## The Four Sources
 
-### 1. Memory (Semantic)
+### 1. Memory (Semantic) — **Requires commitmux**
 
 Searches `commitmux` memory files using semantic embeddings. Finds conceptually related content even when exact keywords don't match.
 
@@ -31,7 +42,7 @@ Searches `commitmux` memory files using semantic embeddings. Finds conceptually 
 
 **Use case:** "What did we decide about authentication architecture?"
 
-### 2. Commits (Semantic)
+### 2. Commits (Semantic) — **Requires commitmux**
 
 Searches commit messages using semantic embeddings. Finds commits by intent or topic, not just keyword matching.
 
