@@ -3,8 +3,11 @@ package app
 import (
 	"testing"
 
+	"github.com/blackwell-systems/claudewatch/internal/analyzer"
 	"github.com/blackwell-systems/claudewatch/internal/claude"
 	"github.com/blackwell-systems/claudewatch/internal/store"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestRenderAnomalies_Empty verifies that renderAnomalies does not panic
@@ -148,6 +151,62 @@ func TestCheckAnomalyBaselines_MissingBaseline(t *testing.T) {
 	if result.Passed {
 		t.Error("expected check to fail when project has ≥5 sessions but no baseline")
 	}
+}
+
+// TestDetectAnomalies_PerModelCost_AppLevel verifies that DetectAnomalies uses
+// per-model pricing when sessions have ModelUsage populated. An Opus session with
+// high token usage should be flagged as anomalous against a baseline calibrated for
+// Sonnet-level costs.
+func TestDetectAnomalies_PerModelCost_AppLevel(t *testing.T) {
+	// Baseline calibrated for Sonnet costs: avg $10.50, stddev $2.00
+	baseline := store.ProjectBaseline{
+		Project:        "test-project",
+		SessionCount:   20,
+		AvgCostUSD:     10.50,
+		StddevCostUSD:  2.00,
+		AvgFriction:    3.0,
+		StddevFriction: 1.0,
+	}
+
+	// An Opus session with 1M input + 500K output
+	// Opus cost = 1M * $15/M + 500K * $75/M = $52.50
+	// Z-score = ($52.50 - $10.50) / $2.00 = 21.0 — way above threshold
+	sessions := []claude.SessionMeta{
+		{
+			SessionID:    "opus-expensive-session",
+			ProjectPath:  "/code/test-project",
+			StartTime:    "2026-03-01T10:00:00Z",
+			InputTokens:  1_000_000,
+			OutputTokens: 500_000,
+			ModelUsage: map[string]claude.ModelStats{
+				"claude-opus-4": {
+					InputTokens:  1_000_000,
+					OutputTokens: 500_000,
+				},
+			},
+		},
+	}
+
+	pricing := analyzer.DefaultPricing["sonnet"] // fallback, should not be used
+	cacheRatio := analyzer.NoCacheRatio()
+
+	anomalies := analyzer.DetectAnomalies(sessions, nil, baseline, pricing, cacheRatio, 2.0)
+
+	require.Equal(t, 1, len(anomalies), "Opus session should be flagged as anomalous")
+	assert.Equal(t, "opus-expensive-session", anomalies[0].SessionID)
+	assert.InDelta(t, 52.50, anomalies[0].CostUSD, 0.01,
+		"Anomaly cost should reflect Opus per-model pricing")
+	assert.Equal(t, "critical", anomalies[0].Severity,
+		"Z-score of 21.0 should be critical severity")
+
+	// Verify the anomaly was NOT computed with Sonnet fallback pricing
+	// If Sonnet fallback were used: cost = 1M*$3/M + 500K*$15/M = $10.50
+	// which would have z-score = 0 (matches baseline exactly)
+	assert.Greater(t, anomalies[0].CostZScore, 2.0,
+		"Cost z-score should be well above threshold with Opus pricing")
+
+	// Should not panic when rendered
+	renderAnomalies(anomalies, "test-project", baseline, 2.0)
 }
 
 // TestCheckAnomalyBaselines_BaselinePresent verifies the check passes when a project
