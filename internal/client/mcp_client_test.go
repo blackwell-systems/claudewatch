@@ -54,7 +54,7 @@ cat <<'EOF'
 {"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"Invalid Request"}}
 EOF
 `)
-	defer os.Remove(mockBinary)
+	defer func() { _ = os.Remove(mockBinary) }()
 
 	client := NewMCPClient()
 	ctx := context.Background()
@@ -71,7 +71,7 @@ func TestCallTool_MalformedJSON(t *testing.T) {
 	mockBinary := createMockBinary(t, `#!/bin/sh
 echo "not valid json"
 `)
-	defer os.Remove(mockBinary)
+	defer func() { _ = os.Remove(mockBinary) }()
 
 	client := NewMCPClient()
 	ctx := context.Background()
@@ -89,7 +89,7 @@ cat <<'EOF'
 {"jsonrpc":"2.0","id":1,"result":{}}
 EOF
 `)
-	defer os.Remove(mockBinary)
+	defer func() { _ = os.Remove(mockBinary) }()
 
 	client := NewMCPClient()
 	ctx := context.Background()
