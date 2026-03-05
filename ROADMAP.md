@@ -85,6 +85,17 @@
 
 **Priority:** ⭐⭐ DO NEXT
 
+**Next evolution (v0.15.0): Extend to semantic memory search**
+Current implementation only queries `get_task_history` (structured task records). With semantic memory search now available (3.5.2 ✅), extend keyword extraction to also query `commitmux_search_memory`:
+- Extract same keywords from user's opening message
+- Query both `get_task_history` AND `search_memory` in parallel
+- Surface top result from memory files if score is strong (< 1.0)
+- Display format: "📚 MEMORY: Found relevant notes about 'authentication' in brewprune project..."
+
+This solves the **tool discoverability problem**: agents have `search_memory` available but won't think to use it unless triggered. Automatic surfacing at session start creates the invocation pattern.
+
+**Why this matters:** Having the tool ≠ using the tool. Agents under pressure fall back to existing patterns (read known files, grep, ask questions). Proactive memory surfacing makes the tool discoverable at the moment it's most relevant.
+
 ### 1.3 Real-time friction dashboard in briefing ✅ COMPLETE
 **Impact:** 🔥🔥 Medium - Increases awareness during session
 **Effort:** 🛠 Low - Use existing session stats
