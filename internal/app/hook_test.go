@@ -56,7 +56,7 @@ func TestHookCmd_PriorityOrdering(t *testing.T) {
 	if idx1 < 0 || idx15 < 0 || idx2 < 0 || idx3 < 0 || idx4 < 0 {
 		t.Fatal("hookCmd.Long missing one or more priority descriptions")
 	}
-	if !(idx1 < idx15 && idx15 < idx2 && idx2 < idx3 && idx3 < idx4) {
+	if idx1 >= idx15 || idx15 >= idx2 || idx2 >= idx3 || idx3 >= idx4 {
 		t.Fatalf("priority ordering in Long description is wrong: 1=%d, 1.5=%d, 2=%d, 3=%d, 4=%d",
 			idx1, idx15, idx2, idx3, idx4)
 	}
