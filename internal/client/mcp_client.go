@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -134,12 +135,21 @@ type SourceResult struct {
 // FetchAllSources queries 4 sources in parallel and returns results + errors.
 // Returns map[source]jsonBytes for successful queries and a slice of errors for failures.
 // Partial failure handling: accumulates errors but returns results from successful sources.
+// Graceful degradation: if commitmux is not available, skips memory and commit sources.
 func FetchAllSources(ctx context.Context, client MCPClient, query string, project string, limit int) (map[string][]byte, []error) {
 	results := make(map[string][]byte)
 	var errs []error
 
-	// Calculate per-source limit (distribute total limit across sources)
-	perSourceLimit := limit / 4
+	// Detect commitmux availability
+	commitmuxBinary := detectCommitmux()
+	commitmuxAvailable := commitmuxBinary != ""
+
+	// Calculate per-source limit (distribute total limit across active sources)
+	activeSources := 2 // task_history + transcript always available
+	if commitmuxAvailable {
+		activeSources = 4 // add memory + commit
+	}
+	perSourceLimit := limit / activeSources
 	if perSourceLimit < 1 {
 		perSourceLimit = 1
 	}
@@ -148,23 +158,28 @@ func FetchAllSources(ctx context.Context, client MCPClient, query string, projec
 	g, gctx := errgroup.WithContext(ctx)
 	resultChan := make(chan SourceResult, 4)
 
-	// Launch 4 parallel queries
-	// Use full path for commitmux binary (not in PATH when MCP server spawns)
-	commitmuxBinary := "/Users/dayna.blackwell/.cargo/bin/commitmux"
+	// Define all sources
 	sources := []struct {
 		name       string
 		binary     string
 		toolName   string
 		isExternal bool
+		skip       bool
 	}{
-		{"memory", commitmuxBinary, "commitmux_search_memory", true},
-		{"commit", commitmuxBinary, "commitmux_search_semantic", true},
-		{"task_history", "", "get_task_history", false},
-		{"transcript", "", "search_transcripts", false},
+		{"memory", commitmuxBinary, "commitmux_search_memory", true, !commitmuxAvailable},
+		{"commit", commitmuxBinary, "commitmux_search_semantic", true, !commitmuxAvailable},
+		{"task_history", "", "get_task_history", false, false},
+		{"transcript", "", "search_transcripts", false, false},
 	}
 
 	for _, src := range sources {
 		src := src // capture for closure
+
+		// Skip unavailable sources
+		if src.skip {
+			continue
+		}
+
 		g.Go(func() error {
 			// Build arguments
 			args := map[string]any{
@@ -211,7 +226,37 @@ func FetchAllSources(ctx context.Context, client MCPClient, query string, projec
 		}
 	}
 
+	// Add informational message if commitmux unavailable
+	if !commitmuxAvailable {
+		errs = append(errs, fmt.Errorf("commitmux not found: memory and commit sources unavailable. Install commitmux for full context search: brew install blackwell-systems/tap/commitmux"))
+	}
+
 	return results, errs
+}
+
+// detectCommitmux checks for commitmux binary availability.
+// Returns the full path to commitmux if found, empty string otherwise.
+func detectCommitmux() string {
+	// Try hardcoded path first (common install location)
+	hardcodedPath := "/Users/dayna.blackwell/.cargo/bin/commitmux"
+	if fileExists(hardcodedPath) {
+		return hardcodedPath
+	}
+
+	// TODO: Add config option for custom path
+	// TODO: Try PATH lookup as fallback
+
+	return ""
+}
+
+// fileExists checks if a file exists and is executable.
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	// Check if it's a regular file and executable
+	return !info.IsDir() && (info.Mode()&0111 != 0)
 }
 
 // CallToolWithTimeout is a convenience wrapper that adds a default 30s timeout.
