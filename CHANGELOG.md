@@ -4,6 +4,10 @@ All notable changes to claudewatch are documented here.
 
 ## [Unreleased]
 
+(empty)
+
+## [0.15.0] - 2026-03-05
+
 ### Added
 
 - **Unified context search** — Single MCP tool and CLI command that searches across all 4 context sources (commits, memory, task history, transcripts) in parallel. `get_context` MCP tool accepts `query` (required), `project` (optional), and `limit` (default 20) parameters. Returns deduplicated, relevance-ranked results with source attribution, timestamps, and metadata. `claudewatch context <query>` CLI command with same parameters plus `--json` output. Powered by new internal packages:
@@ -11,6 +15,15 @@ All notable changes to claudewatch are documented here.
   - `internal/context`: Shared types (`ContextItem`, `UnifiedContextResult`), SHA-256 content deduplication with source priority (commit > memory > task > transcript), relevance ranking with 20% recency decay over 1 year
   - Queries commitmux via external MCP server for commits and memory, queries claudewatch internal tools for task history and transcripts
   - Built using Scout-and-Wave protocol v0.6.7 (2 waves, 4 agents, with updated worktree isolation using `git -C` flag)
+  - **Graceful degradation:** Works without commitmux (2/4 sources: task history + transcripts), provides clear upgrade message for full functionality
+
+- **Feature documentation** — Created 7 comprehensive feature docs (4,192 lines) for README navigation hub: HOOKS.md (push layer), MCP_TOOLS.md (29 tools), CLI.md (commands), MEMORY.md (persistent layer renamed to Ops Memory), CONTEXT_SEARCH.md (unified search), METRICS.md (friction analysis), AGENTS.md (multi-agent analytics). All README table links now functional.
+
+### Changed
+
+- **AgentOps rebranding** — Complete positioning overhaul throughout README, CLAUDE.md, and documentation. Emphasizes claudewatch as AgentOps infrastructure (not memory MCP replacement, not LLM API monitoring). Updated comparison table, renamed "Task Memory" to "Ops Memory" to reduce confusion, clarified cost tracking is local (not API-side tracing).
+
+- **IMPL docs organization** — Moved all IMPL-*.md coordination artifacts to `docs/IMPL/` subdirectory to reduce clutter. Adopts scout-and-wave v0.6.8 convention.
 
 ## [0.14.0] - 2026-03-05
 
