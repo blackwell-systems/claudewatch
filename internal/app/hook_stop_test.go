@@ -50,7 +50,7 @@ func TestShouldSkipSession_AlreadyCheckpointed(t *testing.T) {
 	meta := &claude.SessionMeta{
 		DurationMinutes: 40,
 		ToolCounts: map[string]int{
-			"Edit":                          20,
+			"Edit":                           20,
 			"extract_current_session_memory": 1,
 		},
 	}
@@ -161,7 +161,7 @@ func TestDeterminePrompt_Completed(t *testing.T) {
 func TestDeterminePrompt_CompletedNoDuration(t *testing.T) {
 	meta := &claude.SessionMeta{
 		GitCommits:      2,
-		DurationMinutes: 0, // Live session, duration not computed yet
+		DurationMinutes: 0,                          // Live session, duration not computed yet
 		ToolCounts:      map[string]int{"Edit": 60}, // Significant via tool count
 	}
 	prompt := determinePrompt(meta, "")
@@ -251,7 +251,7 @@ func TestDeterminePrompt_SkipsCheckpointed(t *testing.T) {
 		GitCommits:      3,
 		DurationMinutes: 45,
 		ToolCounts: map[string]int{
-			"Edit":                          30,
+			"Edit":                           30,
 			"extract_current_session_memory": 1,
 		},
 	}
@@ -372,7 +372,7 @@ func TestWasRecentlyCheckpointed(t *testing.T) {
 			name: "checkpointed once",
 			meta: &claude.SessionMeta{
 				ToolCounts: map[string]int{
-					"Edit":                          20,
+					"Edit":                           20,
 					"extract_current_session_memory": 1,
 				},
 			},
@@ -382,7 +382,7 @@ func TestWasRecentlyCheckpointed(t *testing.T) {
 			name: "checkpointed multiple times",
 			meta: &claude.SessionMeta{
 				ToolCounts: map[string]int{
-					"Edit":                          20,
+					"Edit":                           20,
 					"extract_current_session_memory": 3,
 				},
 			},
