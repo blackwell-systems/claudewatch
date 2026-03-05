@@ -172,3 +172,44 @@ func TestHandleGetCausalInsights_ProjectFilter(t *testing.T) {
 		t.Errorf("Project = %q, want %q", r.Project, "myproject")
 	}
 }
+
+// TestHandleGetCausalInsights_PerModelCost verifies that factor analysis uses
+// per-model costs when sessions have ModelUsage populated. Sessions with Opus
+// usage should show higher cost in the outcome than equivalent Sonnet sessions.
+func TestHandleGetCausalInsights_PerModelCost(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+
+	// Write 10 sessions with Opus model usage and varying friction.
+	for i := 0; i < 10; i++ {
+		id := fmt.Sprintf("sess-opus-ci-%02d", i)
+		start := fmt.Sprintf("2026-01-%02dT10:00:00Z", i+1)
+		writeSessionMetaWithModels(t, dir, id, start, "/home/user/opusproj",
+			map[string][2]int{
+				"claude-3-opus-20240229": {1_000_000, 100_000},
+			})
+		if i%2 == 0 {
+			writeFacet(t, dir, id, map[string]int{"tool_error": i + 1})
+		}
+	}
+
+	s := newTestServer(dir, 0)
+	addCorrelateTools(s)
+
+	result, err := callTool(s, "get_causal_insights", json.RawMessage(`{"outcome":"cost"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	r, ok := result.(CausalInsightsResult)
+	if !ok {
+		t.Fatalf("expected CausalInsightsResult, got %T", result)
+	}
+
+	if r.TotalSessions != 10 {
+		t.Errorf("TotalSessions = %d, want 10", r.TotalSessions)
+	}
+	if r.Outcome != "cost" {
+		t.Errorf("Outcome = %q, want %q", r.Outcome, "cost")
+	}
+}

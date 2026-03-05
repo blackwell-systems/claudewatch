@@ -282,3 +282,54 @@ func TestGetProjectAnomalies_CustomThreshold(t *testing.T) {
 		t.Errorf("with threshold=100, len(Anomalies) = %d, want 0", len(r.Anomalies))
 	}
 }
+
+// TestGetProjectAnomalies_PerModelCost verifies that anomaly detection uses
+// per-model pricing. When most sessions use Haiku (cheap) and one uses Opus
+// (expensive), the Opus session should be flagged as an anomaly because its
+// per-model cost is much higher than the Haiku baseline.
+func TestGetProjectAnomalies_PerModelCost(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+
+	// Write 4 sessions with Haiku model usage (cheap baseline).
+	for i := 0; i < 4; i++ {
+		id := fmt.Sprintf("sess-haiku-anom-%d", i)
+		start := fmt.Sprintf("2026-01-%02dT10:00:00Z", i+1)
+		writeSessionMetaWithModels(t, dir, id, start, "/home/user/anomproj",
+			map[string][2]int{
+				"claude-3-haiku-20240307": {1_000_000, 100_000},
+			})
+	}
+
+	// Write 1 session with Opus model usage (expensive outlier).
+	writeSessionMetaWithModels(t, dir, "sess-opus-outlier", "2026-01-10T10:00:00Z", "/home/user/anomproj",
+		map[string][2]int{
+			"claude-3-opus-20240229": {1_000_000, 100_000},
+		})
+
+	s := newTestServer(dir, 0)
+	addAnomalyTools(s)
+
+	result, err := callTool(s, "get_project_anomalies", json.RawMessage(`{"project":"anomproj","threshold":1.5}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	r, ok := result.(ProjectAnomaliesResult)
+	if !ok {
+		t.Fatalf("expected ProjectAnomaliesResult, got %T", result)
+	}
+
+	if r.Project != "anomproj" {
+		t.Errorf("Project = %q, want %q", r.Project, "anomproj")
+	}
+	if r.Baseline == nil {
+		t.Fatal("Baseline is nil")
+	}
+
+	// The Opus session should be detected as a cost anomaly since Opus pricing
+	// is 60x input and 60x output compared to Haiku.
+	if len(r.Anomalies) == 0 {
+		t.Error("expected at least 1 anomaly (Opus outlier among Haiku sessions), got 0")
+	}
+}

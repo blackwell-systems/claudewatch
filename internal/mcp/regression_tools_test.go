@@ -274,3 +274,68 @@ func TestGetRegressionStatus_CustomThreshold(t *testing.T) {
 		t.Error("threshold=5.0 regressed but threshold=1.5 did not — higher threshold should be harder to exceed")
 	}
 }
+
+// TestGetRegressionStatus_PerModelCost verifies that regression detection uses
+// per-model pricing. Sessions with Opus model usage should produce a higher
+// current cost metric than the Sonnet-based baseline, triggering cost regression.
+func TestGetRegressionStatus_PerModelCost(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+
+	// Write 5 sessions with Opus model usage (expensive).
+	for i := 0; i < 5; i++ {
+		id := fmt.Sprintf("sess-opus-reg-%d", i)
+		start := fmt.Sprintf("2026-01-%02dT10:00:00Z", i+1)
+		writeSessionMetaWithModels(t, dir, id, start, "/home/user/regproj",
+			map[string][2]int{
+				"claude-3-opus-20240229": {1_000_000, 100_000},
+			})
+	}
+
+	// Pre-insert a baseline with low cost (as if historical sessions used Sonnet/Haiku).
+	db := openTestDB(t)
+	baseline := store.ProjectBaseline{
+		Project:        "regproj",
+		ComputedAt:     "2026-01-01T00:00:00Z",
+		SessionCount:   10,
+		AvgCostUSD:     0.50, // low baseline: typical Sonnet session cost
+		StddevCostUSD:  0.1,
+		AvgFriction:    0.0,
+		StddevFriction: 0.0,
+		AvgCommits:     1.0,
+		SAWSessionFrac: 0.0,
+	}
+	if err := db.UpsertProjectBaseline(baseline); err != nil {
+		t.Fatalf("upsert baseline: %v", err)
+	}
+	_ = db.Close()
+
+	s := newTestServer(dir, 0)
+	addRegressionTools(s)
+
+	result, err := callTool(s, "get_regression_status", json.RawMessage(`{"project":"regproj"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	r, ok := result.(analyzer.RegressionStatus)
+	if !ok {
+		t.Fatalf("expected analyzer.RegressionStatus, got %T", result)
+	}
+
+	if !r.HasBaseline {
+		t.Error("HasBaseline = false, want true")
+	}
+	if r.Project != "regproj" {
+		t.Errorf("Project = %q, want %q", r.Project, "regproj")
+	}
+
+	// Opus sessions cost ~$22.50 each. Baseline avg is $0.50.
+	// Current avg ($22.50) >> 1.5 * $0.50 ($0.75) → CostRegressed should be true.
+	if !r.CostRegressed {
+		t.Errorf("CostRegressed = false, want true (Opus sessions at ~$22.50 vs baseline $0.50)")
+	}
+	if !r.Regressed {
+		t.Errorf("Regressed = false, want true (cost regression should trigger overall regression)")
+	}
+}

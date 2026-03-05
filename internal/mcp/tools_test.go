@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/blackwell-systems/claudewatch/internal/analyzer"
 )
 
 // helper: write a session stub under <tmpDir>.
@@ -395,5 +397,220 @@ func TestGetSessionStats_LiveField_False_WhenClosed(t *testing.T) {
 
 	if r.Live {
 		t.Errorf("Live = true, want false for closed session")
+	}
+}
+
+// writeSessionMetaWithModels writes a session meta cache JSON that includes
+// a model_usage map. This causes EstimateSessionCost to use the per-model
+// pricing path (estimateFromModelUsage) instead of the single-tier fallback.
+func writeSessionMetaWithModels(t *testing.T, dir, id, startTime, projectPath string, modelUsage map[string][2]int) {
+	t.Helper()
+
+	// Write minimal JSONL stub so ParseAllSessionMeta discovers the session.
+	projDir := filepath.Join(dir, "projects", id)
+	if err := os.MkdirAll(projDir, 0755); err != nil {
+		t.Fatalf("mkdir projects/%s: %v", id, err)
+	}
+	jsonlPath := filepath.Join(projDir, id+".jsonl")
+	stub := fmt.Sprintf("{\"type\":\"user\",\"sessionId\":%q,\"cwd\":%q,\"timestamp\":%q,\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"test\"}]}}\n", id, projectPath, startTime)
+	if err := os.WriteFile(jsonlPath, []byte(stub), 0644); err != nil {
+		t.Fatalf("write jsonl stub: %v", err)
+	}
+	past := time.Now().Add(-10 * time.Minute)
+	_ = os.Chtimes(jsonlPath, past, past)
+
+	// Build model_usage JSON.
+	modelUsageJSON := "{"
+	first := true
+	totalInput, totalOutput := 0, 0
+	for model, tokens := range modelUsage {
+		if !first {
+			modelUsageJSON += ","
+		}
+		modelUsageJSON += fmt.Sprintf("%q:{\"input_tokens\":%d,\"output_tokens\":%d}", model, tokens[0], tokens[1])
+		totalInput += tokens[0]
+		totalOutput += tokens[1]
+		first = false
+	}
+	modelUsageJSON += "}"
+
+	// Write cache JSON with model_usage field.
+	metaDir := filepath.Join(dir, "usage-data", "session-meta")
+	if err := os.MkdirAll(metaDir, 0755); err != nil {
+		t.Fatalf("mkdir session-meta: %v", err)
+	}
+	data := fmt.Sprintf(`{
+		"session_id": %q,
+		"project_path": %q,
+		"start_time": %q,
+		"duration_minutes": 30,
+		"input_tokens": %d,
+		"output_tokens": %d,
+		"model_usage": %s
+	}`, id, projectPath, startTime, totalInput, totalOutput, modelUsageJSON)
+	if err := os.WriteFile(filepath.Join(metaDir, id+".json"), []byte(data), 0644); err != nil {
+		t.Fatalf("write session meta: %v", err)
+	}
+}
+
+// TestHandleGetSessionStats_PerModelCost verifies that when a session has
+// ModelUsage populated with an Opus-tier model, the estimated cost reflects
+// Opus pricing (which is 5x more expensive than Sonnet for input).
+func TestHandleGetSessionStats_PerModelCost(t *testing.T) {
+	dir := t.TempDir()
+
+	// Session with Opus model usage: 1M input, 100K output.
+	writeSessionMetaWithModels(t, dir, "opus-sess", "2026-01-15T10:00:00Z", "/home/user/myproject",
+		map[string][2]int{
+			"claude-3-opus-20240229": {1_000_000, 100_000},
+		})
+
+	s := newTestServer(dir, 0)
+	result, err := callTool(s, "get_session_stats", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	r, ok := result.(SessionStatsResult)
+	if !ok {
+		t.Fatalf("expected SessionStatsResult, got %T", result)
+	}
+
+	// Compute the expected Opus cost manually:
+	// Input:  1_000_000 / 1M * $15.00 = $15.00
+	// Output: 100_000 / 1M * $75.00  = $7.50
+	// Total: $22.50
+	opusPricing := analyzer.DefaultPricing["opus"]
+	expectedCost := float64(1_000_000)/1_000_000.0*opusPricing.InputPerMillion +
+		float64(100_000)/1_000_000.0*opusPricing.OutputPerMillion
+
+	// Also compute what Sonnet would have been:
+	// Input:  1_000_000 / 1M * $3.00 = $3.00
+	// Output: 100_000 / 1M * $15.00 = $1.50
+	// Total: $4.50
+	sonnetPricing := analyzer.DefaultPricing["sonnet"]
+	sonnetCost := float64(1_000_000)/1_000_000.0*sonnetPricing.InputPerMillion +
+		float64(100_000)/1_000_000.0*sonnetPricing.OutputPerMillion
+
+	// The per-model cost must be significantly higher than Sonnet pricing.
+	if r.EstimatedCost <= sonnetCost {
+		t.Errorf("EstimatedCost = %f, want > %f (Sonnet cost); per-model Opus pricing not applied",
+			r.EstimatedCost, sonnetCost)
+	}
+
+	// Allow small floating-point tolerance.
+	epsilon := 0.01
+	if r.EstimatedCost < expectedCost-epsilon || r.EstimatedCost > expectedCost+epsilon {
+		t.Errorf("EstimatedCost = %f, want ~%f (Opus pricing)", r.EstimatedCost, expectedCost)
+	}
+}
+
+// TestHandleGetRecentSessions_PerModelCost verifies that the recent sessions
+// list shows correct per-model costs: an Opus session costs more than a Sonnet
+// session with identical token counts.
+func TestHandleGetRecentSessions_PerModelCost(t *testing.T) {
+	dir := t.TempDir()
+
+	// Two sessions: one Opus, one Sonnet, same token counts.
+	writeSessionMetaWithModels(t, dir, "opus-recent", "2026-01-15T10:00:00Z", "/home/user/proj",
+		map[string][2]int{
+			"claude-3-opus-20240229": {500_000, 50_000},
+		})
+	writeSessionMetaWithModels(t, dir, "sonnet-recent", "2026-01-14T10:00:00Z", "/home/user/proj",
+		map[string][2]int{
+			"claude-3-5-sonnet-20241022": {500_000, 50_000},
+		})
+
+	s := newTestServer(dir, 0)
+	result, err := callTool(s, "get_recent_sessions", json.RawMessage(`{"n":10}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	r, ok := result.(RecentSessionsResult)
+	if !ok {
+		t.Fatalf("expected RecentSessionsResult, got %T", result)
+	}
+
+	if len(r.Sessions) != 2 {
+		t.Fatalf("expected 2 sessions, got %d", len(r.Sessions))
+	}
+
+	// Find each session's cost.
+	var opusCost, sonnetCost float64
+	for _, sess := range r.Sessions {
+		switch sess.SessionID {
+		case "opus-recent":
+			opusCost = sess.EstimatedCost
+		case "sonnet-recent":
+			sonnetCost = sess.EstimatedCost
+		}
+	}
+
+	if opusCost <= 0 {
+		t.Fatalf("Opus session cost = %f, want > 0", opusCost)
+	}
+	if sonnetCost <= 0 {
+		t.Fatalf("Sonnet session cost = %f, want > 0", sonnetCost)
+	}
+
+	// Opus pricing is 5x input and 5x output compared to Sonnet.
+	// With same token counts, Opus cost should be ~5x Sonnet cost.
+	if opusCost <= sonnetCost {
+		t.Errorf("Opus cost (%f) <= Sonnet cost (%f); per-model pricing not applied",
+			opusCost, sonnetCost)
+	}
+
+	// Verify the ratio is approximately 5x (within tolerance for output price ratio).
+	ratio := opusCost / sonnetCost
+	if ratio < 4.5 || ratio > 5.5 {
+		t.Errorf("Opus/Sonnet cost ratio = %f, want ~5.0", ratio)
+	}
+}
+
+// TestHandleGetSessionStats_MixedModels verifies that a session with both
+// Opus and Haiku model usage produces a cost that is the weighted sum of
+// per-model costs.
+func TestHandleGetSessionStats_MixedModels(t *testing.T) {
+	dir := t.TempDir()
+
+	writeSessionMetaWithModels(t, dir, "mixed-sess", "2026-01-15T10:00:00Z", "/home/user/myproject",
+		map[string][2]int{
+			"claude-3-opus-20240229":  {500_000, 50_000},
+			"claude-3-haiku-20240307": {500_000, 50_000},
+		})
+
+	s := newTestServer(dir, 0)
+	result, err := callTool(s, "get_session_stats", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	r, ok := result.(SessionStatsResult)
+	if !ok {
+		t.Fatalf("expected SessionStatsResult, got %T", result)
+	}
+
+	// Expected cost: Opus portion + Haiku portion.
+	opusPricing := analyzer.DefaultPricing["opus"]
+	haikuPricing := analyzer.DefaultPricing["haiku"]
+	expectedOpus := float64(500_000)/1_000_000.0*opusPricing.InputPerMillion +
+		float64(50_000)/1_000_000.0*opusPricing.OutputPerMillion
+	expectedHaiku := float64(500_000)/1_000_000.0*haikuPricing.InputPerMillion +
+		float64(50_000)/1_000_000.0*haikuPricing.OutputPerMillion
+	expectedTotal := expectedOpus + expectedHaiku
+
+	epsilon := 0.01
+	if r.EstimatedCost < expectedTotal-epsilon || r.EstimatedCost > expectedTotal+epsilon {
+		t.Errorf("EstimatedCost = %f, want ~%f (weighted sum of Opus + Haiku)", r.EstimatedCost, expectedTotal)
+	}
+
+	// Verify it's NOT using single-tier Sonnet pricing on the total tokens.
+	sonnetPricing := analyzer.DefaultPricing["sonnet"]
+	sonnetCost := float64(1_000_000)/1_000_000.0*sonnetPricing.InputPerMillion +
+		float64(100_000)/1_000_000.0*sonnetPricing.OutputPerMillion
+	if r.EstimatedCost <= sonnetCost {
+		t.Errorf("EstimatedCost (%f) <= Sonnet single-tier cost (%f); per-model pricing not applied",
+			r.EstimatedCost, sonnetCost)
 	}
 }
