@@ -1,11 +1,12 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/blackwell-systems/claudewatch/internal/claude"
-	"github.com/blackwell-systems/claudewatch/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -37,29 +38,43 @@ func init() {
 	rootCmd.AddCommand(stopCmd)
 }
 
+// stopHookInput is the JSON payload passed by Claude Code to Stop hooks via stdin.
+type stopHookInput struct {
+	SessionID      string `json:"session_id"`
+	StopHookActive bool   `json:"stop_hook_active"`
+	TranscriptPath string `json:"transcript_path"`
+}
+
 func runHookStop(cmd *cobra.Command, args []string) {
-	cfg, err := config.Load(flagConfig)
+	// Read JSON input from stdin (passed by Claude Code)
+	var input stopHookInput
+	inputBytes, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		return
 	}
 
-	activePath, err := claude.FindActiveSessionPath(cfg.ClaudeHome)
-	if err != nil || activePath == "" {
+	if err := json.Unmarshal(inputBytes, &input); err != nil {
 		return
 	}
 
-	meta, err := claude.ParseActiveSession(activePath)
+	// Prevent infinite loop: if stop_hook_active is true, always allow stop
+	if input.StopHookActive {
+		return
+	}
+
+	// Parse the session from the provided transcript path
+	meta, err := claude.ParseActiveSession(input.TranscriptPath)
 	if err != nil || meta == nil {
 		return
 	}
 
 	// Check significance and print prompt
-	prompt := determinePrompt(meta, activePath)
+	prompt := determinePrompt(meta, input.TranscriptPath)
 	if prompt != "" {
 		fmt.Fprintln(os.Stderr, prompt)
 	}
 
-	// Always exit 0 (non-blocking)
+	// Always exit 0 (non-blocking - just a suggestion)
 }
 
 // shouldSkipSession returns true if the session should not prompt for extraction.
