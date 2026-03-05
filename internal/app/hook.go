@@ -25,10 +25,11 @@ var hookCmd = &cobra.Command{
 	Use:   "hook",
 	Short: "Check session health (for use as a PostToolUse shell hook)",
 	Long: `Checks the active Claude Code session for warning conditions in priority order:
-  1. Consecutive tool errors >= 3
-  2. Context pressure at "pressure" or "critical"
-  3. Cost velocity "burning"
-  4. Drift: read-heavy loop (>=60% reads, 0 writes in last 15 tools)
+  1.   Consecutive tool errors >= 3
+  1.5  Repetitive error patterns (same tool + same error >= 3 times)
+  2.   Context pressure at "pressure" or "critical" (with auto-extract on transitions)
+  3.   Cost velocity "burning"
+  4.   Drift: read-heavy loop (>=60% reads, 0 writes in last 15 tools)
 
 Exit 0 if all clear (silent). Exit 2 if a threshold is exceeded, with one
 actionable line printed to stderr naming the relevant MCP tool to call.
@@ -92,6 +93,24 @@ func runHook(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(os.Stderr, "⚠ %d consecutive tool errors detected. Stop and diagnose: call get_session_dashboard (claudewatch MCP) to check token velocity, friction patterns, and context pressure before continuing.\n", n)
 		}
 		os.Exit(2)
+	}
+
+	// Priority 1.5: repetitive error patterns.
+	if reps, err := claude.ParseLiveRepetitiveErrors(activePath, 100, 3); err == nil && len(reps) > 0 {
+		rep := reps[0]
+		if note := hookChronicPatternNote(cfg, cwd); note != "" {
+			fmt.Fprintf(os.Stderr, "⚠ Repetitive error: %s failed %d times with same error (%s). %s. Call get_session_dashboard (claudewatch MCP) — break the loop by trying a different approach.\n",
+				rep.Tool, rep.Count, rep.Pattern, note)
+		} else {
+			fmt.Fprintf(os.Stderr, "⚠ Repetitive error: %s failed %d times with same error (%s). Call get_session_dashboard (claudewatch MCP) — break the loop by trying a different approach.\n",
+				rep.Tool, rep.Count, rep.Pattern)
+		}
+		os.Exit(2)
+	}
+
+	// Auto-extract on context pressure transitions.
+	if extractMsg := tryAutoExtract(activePath, cfg.ClaudeHome); extractMsg != "" {
+		fmt.Fprintln(os.Stderr, extractMsg)
 	}
 
 	// Priority 2: context pressure.
