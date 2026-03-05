@@ -261,12 +261,19 @@
 
 **Priority:** Shipped in Phase 2
 
-### 3.5.2 Semantic memory search (via commitmux integration)
+### 3.5.2 Semantic memory search (via commitmux integration) ✅ COMPLETE
 **Impact:** 🔥🔥🔥 High - Transforms memory from write-only to searchable
 **Effort:** 🛠🛠 Medium - Leverages commitmux's existing embedding pipeline
 **Dependencies:** Memory files (exists), session transcripts (exists), commitmux (exists)
+**Status:** Shipped in commitmux v0.2.0 (2026-03-05)
 
-**Current state:** Memory is scattered across `~/.claude/projects/*/memory/*.md` files, working memory JSON, and session transcripts. No unified search. Agent must know the exact filename to read relevant memory. `search_transcripts` does keyword matching but misses conceptual connections.
+**Current state:** Claude Code's official auto-memory feature writes learnings to `~/.claude/projects/*/memory/*.md` files automatically as agents work. Each project's memory is loaded into that project's session context (with a 200-line truncation limit). However:
+- **No cross-project retrieval**: When working in Project A, agents can't discover relevant knowledge from Project B's memory
+- **No semantic search**: Memory files are read linearly; keyword matching via `search_transcripts` misses conceptual connections
+- **Context window pressure**: Loading full memory files consumes tokens; the 200-line limit exists because of this
+- **Manual discovery**: Agent must know the exact filename to read relevant memory
+
+Claudewatch's memory extraction (session summaries, tasks, blockers) is separate but has the same discoverability problem.
 
 Meanwhile, commitmux already has exactly the infrastructure we'd need to build:
 - Ollama embedding via `nomic-embed-text` (768-dim vectors)
@@ -296,6 +303,8 @@ Meanwhile, commitmux already has exactly the infrastructure we'd need to build:
 - Agents already have commitmux MCP tools available — no new MCP server to configure
 - Shared embedding model means commit search and memory search return comparable similarity scores
 - Single SQLite database simplifies backup, migration, and debugging
+- **Solves the 200-line limit**: Semantic search retrieves top-K relevant passages instead of loading entire files into context
+- **Enables cross-project discovery**: Search spans all projects' memory, not just current project
 
 **Success metric:** Agent finds relevant prior knowledge in 80% of cases where it exists (vs ~10% today)
 
@@ -536,8 +545,8 @@ Meanwhile, commitmux already has exactly the infrastructure we'd need to build:
 - ~~2.4 Agent spawn prevention via auto-generated rules~~ DEFERRED
 
 ### High Impact, Medium Effort (DO NEXT - v0.15.0-v0.15.5)
-- ⭐ 3.1 Reflection checkpoints
-- ⭐⭐ 3.5.2 Semantic memory search (via commitmux — reduced effort)
+- 3.1 Reflection checkpoints ✅ (commit-triggered nudge shipped in v0.14.0)
+- 3.5.2 Semantic memory search ✅ (shipped in commitmux v0.2.0)
 - ⭐ 3.5.5 Unified context surface (commitmux + claudewatch bridge)
 
 ### Medium Impact (BACKLOG - v0.15.0-v0.16.0)
