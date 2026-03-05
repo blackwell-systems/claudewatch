@@ -28,7 +28,7 @@ Like **DevOps** is operations for software delivery and **MLOps** is operations 
 - **Provide analytics** - Friction trends, cost per commit, agent success rates, exportable metrics
 - **Enable self-awareness** - Agent queries its own performance mid-session via MCP tools
 
-**Other AgentOps tools exist** (AgentOps.ai for production LLM apps), but claudewatch is AgentOps for the development experience—monitoring Claude Code sessions, not production API calls.
+claudewatch brings AgentOps to the development experience—monitoring Claude Code sessions during your workflow, not production API calls.
 
 ---
 
