@@ -139,35 +139,9 @@
 
 ## Phase 2: Guardrails - Prevent Bad Behavior (v0.14.0)
 
-**Goal:** Block known failures before they happen
+**Goal:** Block known failures before they happen, preserve memory across compactions
 
-### 2.1 Agent spawn blocking
-**Impact:** 🔥🔥🔥 High - Prevents wasted cost on failing agents
-**Effort:** 🛠🛠 Medium - Requires PreToolUse hook implementation
-**Dependencies:** Agent performance data (exists)
-
-**Implementation:**
-- Add `PreToolUse` hook that intercepts tool calls before execution
-- On `Agent` tool with `subagent_type` parameter:
-  - Query agent success rate for that type on current project
-  - If <30% success rate, return error blocking the spawn
-  - Inject failure context:
-    ```
-    ✘ BLOCKED: statusline-setup agents fail 100% on this project (0/2 success)
-      Last failures: session abc123 (3h ago), session def456 (1d ago)
-      Common error: "permission denied writing ~/.config/nvim/lua/..."
-
-      Alternatives:
-      - Manual configuration (documented in CLAUDE.md)
-      - Ask user to run setup script directly
-    ```
-- Provide override mechanism for user confirmation if needed
-
-**Success metric:** Zero spawns of agents with <30% success rate without user override
-
-**Priority:** ⭐ DO NEXT
-
-### 2.2 Drift intervention
+### 2.1 Drift intervention
 **Impact:** 🔥🔥 Medium-High - Reduces wasted time exploring without implementing
 **Effort:** 🛠 Low - PostToolUse hook extension
 **Dependencies:** Drift detection (exists via `get_drift_signal`)
@@ -194,7 +168,7 @@
 
 **Priority:** DO FIRST
 
-### 2.3 Repetitive error blocking
+### 2.2 Repetitive error blocking
 **Impact:** 🔥🔥 Medium - Stops error loops early
 **Effort:** 🛠 Low - PostToolUse hook logic
 **Dependencies:** Live friction tracking (exists)
@@ -217,6 +191,58 @@
 **Success metric:** Sessions with 5+ repetitive errors drop by 50%
 
 **Priority:** DO FIRST
+
+### 2.3 Auto-extract memory on compaction (pulled forward from 3.5.1)
+**Impact:** 🔥🔥🔥 High - Solves the #1 memory loss problem
+**Effort:** 🛠 Low - Hook + context pressure detection
+**Dependencies:** `extract_current_session_memory` (exists), context pressure detection (exists)
+
+**Current state:** `extract_current_session_memory` must be called manually before compaction. Agents rarely remember to do this. The CLAUDE.md instructions say "At 'pressure' level, call `extract_current_session_memory` before compaction" but compliance is low.
+
+**Implementation:**
+- PostToolUse hook already detects context pressure via `ParseLiveContextPressure`
+- When pressure transitions from "comfortable" → "pressure", auto-call `extract_current_session_memory` before the agent's next turn
+- Store a state file (`~/.cache/claudewatch-compaction-extracted`) to prevent duplicate extraction
+- Format: inject into hook output:
+  ```
+  ⚠ Context pressure at 75% — auto-extracting session memory before compaction...
+  ✓ Saved: 3 tasks, 2 blockers, 1 architectural insight
+  ```
+- Reset state file when session ID changes
+
+**Success metric:** Memory extraction rate goes from <10% to 90%+ for sessions that hit compaction
+
+**Priority:** DO FIRST
+
+### 2.4 Agent spawn prevention via auto-generated rules
+**Impact:** 🔥🔥🔥 High - Prevents wasted cost on failing agents
+**Effort:** 🛠 Low - Rules file generation, no hook needed
+**Dependencies:** Agent performance data (exists)
+
+**Rationale:** PreToolUse hooks don't exist in Claude Code, so hook-based blocking isn't possible. Instead, prevent bad spawns at the instruction layer — auto-generate project-specific `.claude/rules/` files that tell agents which agent types to avoid. Rules are processed as high-priority instructions, making them preventive rather than reactive.
+
+**Implementation:**
+- `claudewatch install` (or new `claudewatch rules generate`) analyzes agent performance data
+- For agent types with <30% success rate on the current project, generate a rule file:
+  ```
+  # .claude/rules/claudewatch-agent-blocklist.md
+
+  ## Agent Types to Avoid on This Project
+
+  DO NOT spawn the following agent types — they have consistently failed:
+
+  - **statusline-setup** — 0% success (0/2). Common error: permission denied.
+    Alternative: manual configuration per CLAUDE.md instructions.
+
+  Last updated: 2026-03-05 by claudewatch
+  ```
+- Re-generate on each `claudewatch install` or `claudewatch scan` run
+- Project-specific (`.claude/rules/`) so it doesn't affect other repos
+- Users can edit or delete the file to override
+
+**Success metric:** Zero spawns of agents with <30% success rate (via instruction compliance, not blocking)
+
+**Priority:** DO NEXT
 
 **Deliverable:** v0.14.0 - "Guardrails Release"
 
@@ -312,27 +338,10 @@
 
 **Key integration:** [commitmux](https://github.com/blackwell-systems/commitmux) already provides the embedding infrastructure (Ollama + sqlite-vec + 768-dim vectors), full-text commit search, and an MCP server. Rather than building a parallel vector store, claudewatch should extend commitmux's existing infrastructure for memory embedding and leverage its commit history as a complementary knowledge layer.
 
-### 3.5.1 Auto-extract on compaction
-**Impact:** 🔥🔥🔥 High - Solves the #1 memory loss problem
-**Effort:** 🛠 Low - Hook + context pressure detection
-**Dependencies:** `extract_current_session_memory` (exists), context pressure detection (exists)
+### 3.5.1 Auto-extract on compaction ✅ MOVED TO PHASE 2 (2.3)
+**Pulled forward to v0.14.0 as item 2.3.** High impact, low effort, no reason to wait for Phase 3.5.
 
-**Current state:** `extract_current_session_memory` must be called manually before compaction. Agents rarely remember to do this. The CLAUDE.md instructions say "At 'pressure' level, call `extract_current_session_memory` before compaction" but compliance is low.
-
-**Implementation:**
-- PostToolUse hook already detects context pressure via `ParseLiveContextPressure`
-- When pressure transitions from "comfortable" → "pressure", auto-call `extract_current_session_memory` before the agent's next turn
-- Store a state file (`~/.cache/claudewatch-compaction-extracted`) to prevent duplicate extraction
-- Format: inject into hook output:
-  ```
-  ⚠ Context pressure at 75% — auto-extracting session memory before compaction...
-  ✓ Saved: 3 tasks, 2 blockers, 1 architectural insight
-  ```
-- Reset state file when session ID changes
-
-**Success metric:** Memory extraction rate goes from <10% to 90%+ for sessions that hit compaction
-
-**Priority:** ⭐⭐⭐ DO FIRST
+**Priority:** Shipped in Phase 2
 
 ### 3.5.2 Semantic memory search (via commitmux integration)
 **Impact:** 🔥🔥🔥 High - Transforms memory from write-only to searchable
@@ -596,18 +605,20 @@ Meanwhile, commitmux already has exactly the infrastructure we'd need to build:
 
 ## Implementation Priority Matrix
 
-### High Impact, Low Effort (DO FIRST - v0.13.0)
-- ⭐⭐⭐ 1.1 Auto-inject project health
-- 1.3 Real-time friction dashboard
-- 1.4 Per-model cost accuracy (v0.13.1)
-- 2.2 Drift intervention
-- 2.3 Repetitive error blocking
+### High Impact, Low Effort (DO FIRST - v0.13.0 ✅ SHIPPED)
+- ⭐⭐⭐ 1.1 Auto-inject project health ✅
+- 1.2 Contextual memory surfacing ✅
+- 1.3 Real-time friction dashboard ✅
+- 1.4 Per-model cost accuracy ✅
 
-### High Impact, Medium Effort (DO NEXT - v0.14.0-v0.15.5)
-- ⭐⭐ 1.2 Contextual memory surfacing
-- ⭐ 2.1 Agent spawn blocking
+### High Impact, Low Effort (DO FIRST - v0.14.0)
+- 2.1 Drift intervention
+- 2.2 Repetitive error blocking
+- 2.3 Auto-extract on compaction (pulled from 3.5.1)
+- 2.4 Agent spawn prevention via auto-generated rules
+
+### High Impact, Medium Effort (DO NEXT - v0.15.0-v0.15.5)
 - ⭐ 3.1 Reflection checkpoints
-- ⭐⭐⭐ 3.5.1 Auto-extract on compaction
 - ⭐⭐ 3.5.2 Semantic memory search (via commitmux — reduced effort)
 - ⭐ 3.5.5 Unified context surface (commitmux + claudewatch bridge)
 
@@ -645,21 +656,25 @@ Meanwhile, commitmux already has exactly the infrastructure we'd need to build:
 
 ---
 
-### v0.14.0 - "Guardrails" (Target: 3-4 weeks after v0.13.0)
+### v0.14.0 - "Guardrails" (Target: 1-2 weeks after v0.13.0)
 **Deliverables:**
-- Agent spawn blocking for low-success agent types
-- Drift intervention alerts
-- Repetitive error blocking
+- Drift intervention alerts (PostToolUse hook extension)
+- Repetitive error blocking (PostToolUse hook extension)
+- Auto-extract memory on compaction (context pressure trigger)
+- Agent spawn prevention via auto-generated rules files
 
 **Success metrics:**
-- 50% reduction in spawns of agents with <30% success rate
 - 40% reduction in drift sessions (>20% time in read-only)
 - 50% reduction in sessions with 5+ repetitive errors
+- 90%+ memory extraction rate for sessions hitting compaction (vs <10% today)
+- Zero spawns of agents with <30% success rate (via instruction compliance)
 
 **Technical approach:**
-- Implement PreToolUse hook for tool interception
-- Add rolling window tracking to PostToolUse hook
-- Pattern detection for (tool, error) tuples
+- Extend PostToolUse hook with rolling window read/write tracking (drift)
+- Pattern detection for (tool, error) tuples in PostToolUse (error blocking)
+- Context pressure transition detection → auto-call extract_current_session_memory
+- Auto-generate `.claude/rules/claudewatch-agent-blocklist.md` from agent performance data
+- No PreToolUse hook needed — all features use PostToolUse or rules-layer prevention
 
 ---
 
