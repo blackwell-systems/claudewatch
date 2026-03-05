@@ -118,6 +118,7 @@ echo '{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{}"}]}
 }
 
 // TestFetchAllSources_PartialFailure tests that partial failures are handled gracefully.
+// Note: With graceful degradation, commitmux absence means memory/commit sources are skipped.
 func TestFetchAllSources_PartialFailure(t *testing.T) {
 	// Create a mock binary for external sources
 	mockBinary := createMockBinary(t, `#!/bin/sh
@@ -144,15 +145,17 @@ EOF
 	ctx := context.Background()
 	results, errs := FetchAllSources(ctx, client, "test query", "test-project", 20)
 
-	// Should have some results despite partial failure
+	// Should have at least local sources despite external failures
 	assert.NotEmpty(t, results)
+
+	// Should have error about commitmux unavailable (or semantic failure if commitmux present)
 	assert.NotEmpty(t, errs)
 
-	// Verify successful source returned data
-	assert.Contains(t, results, "memory")
+	// Local sources should always succeed
+	assert.Contains(t, results, "task_history")
+	assert.Contains(t, results, "transcript")
 
-	// Verify failed source recorded error
-	assert.NotZero(t, len(errs))
+	// External sources (memory/commit) only available with commitmux
 }
 
 // TestFetchAllSources_AllSuccess tests successful parallel execution.
