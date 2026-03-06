@@ -1,8 +1,6 @@
 package memory
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -209,11 +207,13 @@ func DeriveTaskIdentifier(session claude.SessionMeta, facet *claude.SessionFacet
 		return goal
 	}
 
-	// Fallback: hash FirstPrompt + ProjectPath.
+	// Fallback: use FirstPrompt directly (same normalization as facet.UnderlyingGoal)
 	if session.FirstPrompt != "" {
-		input := session.FirstPrompt + session.ProjectPath
-		hash := sha256.Sum256([]byte(input))
-		return "task-" + hex.EncodeToString(hash[:8])
+		goal := strings.ToLower(strings.TrimSpace(session.FirstPrompt))
+		if len(goal) > 100 {
+			goal = goal[:100]
+		}
+		return goal
 	}
 
 	// Last resort: session ID.
