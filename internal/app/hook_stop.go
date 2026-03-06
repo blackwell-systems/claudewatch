@@ -5,8 +5,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/blackwell-systems/claudewatch/internal/claude"
+	"github.com/blackwell-systems/claudewatch/internal/config"
+	"github.com/blackwell-systems/claudewatch/internal/memory"
+	"github.com/blackwell-systems/claudewatch/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -81,13 +85,102 @@ func runHookStop(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	// Check significance and print prompt
-	prompt := determinePrompt(&meta, input.TranscriptPath)
-	if prompt != "" {
-		fmt.Fprintln(os.Stderr, prompt)
+	// Check if session should be skipped or is insignificant
+	if shouldSkipSession(&meta, input.TranscriptPath) || !isSignificant(&meta) {
+		return
 	}
 
-	// Always exit 0 (non-blocking - just a suggestion)
+	// Hybrid approach: Try auto-extraction
+	extracted, missingFacet := autoExtractMemory(claudeHome, input.SessionID, &meta)
+
+	if extracted {
+		// Success! Memory extracted automatically
+		fmt.Fprintln(os.Stderr, "✓ Session memory extracted automatically")
+		return
+	}
+
+	if missingFacet {
+		// Facet not ready yet - block and force manual extraction
+		// Claude Code will keep session open and Claude can call extract_current_session_memory
+		blockResponse := map[string]string{
+			"decision": "block",
+			"reason":   "Session is significant but AI analysis not ready. Call extract_current_session_memory to checkpoint this session before closing.",
+		}
+		json.NewEncoder(os.Stdout).Encode(blockResponse)
+		os.Exit(2)
+	}
+
+	// Other error (e.g., git failure) - allow closing but log
+	fmt.Fprintln(os.Stderr, "⚠ Memory extraction failed (non-critical)")
+}
+
+// autoExtractMemory extracts task and blocker memory from the given session.
+// Returns (extracted, missingFacet) where:
+// - extracted: true if memory was successfully extracted
+// - missingFacet: true if extraction failed because facet (AI analysis) doesn't exist yet
+func autoExtractMemory(claudeHome, sessionID string, meta *claude.SessionMeta) (bool, bool) {
+	// Load all sessions for this project to get context
+	allSessions, err := claude.ParseAllSessionMeta(claudeHome)
+	if err != nil {
+		return false, false
+	}
+
+	projectName := filepath.Base(meta.ProjectPath)
+
+	// Filter to project sessions
+	var projectSessions []claude.SessionMeta
+	for _, sess := range allSessions {
+		if filepath.Base(sess.ProjectPath) == projectName {
+			projectSessions = append(projectSessions, sess)
+		}
+	}
+
+	// Load facet (AI analysis) for this session
+	allFacets, err := claude.ParseAllFacets(claudeHome)
+	if err != nil {
+		return false, false
+	}
+
+	var sessionFacet *claude.SessionFacet
+	for i := range allFacets {
+		if allFacets[i].SessionID == sessionID {
+			sessionFacet = &allFacets[i]
+			break
+		}
+	}
+
+	if sessionFacet == nil {
+		// Session too new, facet not written yet - return missingFacet=true
+		return false, true
+	}
+
+	// Extract commits from git
+	commits := memory.GetCommitSHAsSince(meta.ProjectPath, meta.StartTime)
+
+	// Open working memory store
+	storePath := filepath.Join(config.ConfigDir(), "projects", projectName, "working-memory.json")
+	memStore := store.NewWorkingMemoryStore(storePath)
+
+	// Extract task memory
+	task, err := memory.ExtractTaskMemory(*meta, sessionFacet, commits)
+	if err == nil && task != nil {
+		_ = memStore.AddOrUpdateTask(task)
+	}
+
+	// Extract blockers (use last 10 sessions for context)
+	recentSessions := projectSessions
+	if len(recentSessions) > 10 {
+		recentSessions = recentSessions[:10]
+	}
+
+	blockers, err := memory.ExtractBlockers(*meta, sessionFacet, projectName, recentSessions, allFacets)
+	if err == nil && len(blockers) > 0 {
+		for _, blocker := range blockers {
+			_ = memStore.AddBlocker(blocker)
+		}
+	}
+
+	return true, false
 }
 
 // shouldSkipSession returns true if the session should not prompt for extraction.
@@ -124,8 +217,10 @@ func isSignificant(meta *claude.SessionMeta) bool {
 	if meta.GitCommits > 0 {
 		return true
 	}
-	// Errors resolved: >5 errors but work continued
+	// Errors resolved: >5 errors but not abandoned
 	if meta.ToolErrors > 5 {
+		// Check facet outcome if available
+		// Consider "resolved" if friction exists but work continued
 		return true
 	}
 
