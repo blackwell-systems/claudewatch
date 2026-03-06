@@ -170,7 +170,7 @@ func (s *Server) resolveProject(projectParam *string) string {
 	}
 
 	// Try to get the active session's project.
-	activePath, err := claude.FindActiveSessionPath(s.claudeHome)
+	activePath, err := claude.FindActiveSessionPathForMCP(s.claudeHome)
 	if err == nil && activePath != "" {
 		meta, parseErr := claude.ParseActiveSession(activePath)
 		if parseErr == nil && meta != nil && meta.ProjectPath != "" {
@@ -212,7 +212,7 @@ type ExtractResult struct {
 // handleExtractCurrentSession extracts memory from the current active session.
 func (s *Server) handleExtractCurrentSession(args json.RawMessage) (any, error) {
 	// Find the active session.
-	activePath, err := claude.FindActiveSessionPath(s.claudeHome)
+	activePath, err := claude.FindActiveSessionPathForMCP(s.claudeHome)
 	if err != nil {
 		return ExtractResult{
 			Success: false,

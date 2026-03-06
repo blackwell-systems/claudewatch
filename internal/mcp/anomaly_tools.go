@@ -62,7 +62,7 @@ func (s *Server) handleGetProjectAnomalies(args json.RawMessage) (any, error) {
 		project = *params.Project
 	} else {
 		// Prefer the active session's project.
-		activePath, activeErr := claude.FindActiveSessionPath(s.claudeHome)
+		activePath, activeErr := claude.FindActiveSessionPathForMCP(s.claudeHome)
 		if activeErr == nil && activePath != "" {
 			meta, parseErr := claude.ParseActiveSession(activePath)
 			if parseErr == nil && meta != nil && meta.ProjectPath != "" {

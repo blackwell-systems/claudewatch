@@ -51,7 +51,7 @@ func addLiveTools(s *Server) {
 
 // handleGetLiveToolErrors returns tool error statistics for the active session.
 func (s *Server) handleGetLiveToolErrors(args json.RawMessage) (any, error) {
-	activePath, err := claude.FindActiveSessionPath(s.claudeHome)
+	activePath, err := claude.FindActiveSessionPathForMCP(s.claudeHome)
 	if err != nil || activePath == "" {
 		return nil, errors.New("no active session found")
 	}
@@ -94,7 +94,7 @@ func (s *Server) handleGetLiveToolErrors(args json.RawMessage) (any, error) {
 
 // handleGetLiveFriction returns friction events for the active session.
 func (s *Server) handleGetLiveFriction(args json.RawMessage) (any, error) {
-	activePath, err := claude.FindActiveSessionPath(s.claudeHome)
+	activePath, err := claude.FindActiveSessionPathForMCP(s.claudeHome)
 	if err != nil || activePath == "" {
 		return nil, errors.New("no active session found")
 	}

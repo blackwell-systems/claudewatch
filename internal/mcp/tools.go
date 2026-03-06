@@ -224,7 +224,7 @@ func (s *Server) handleGetSessionStats(args json.RawMessage) (any, error) {
 	pricing := analyzer.DefaultPricing["sonnet"]
 
 	// Step 1: check for an active (live) session.
-	activePath, err := claude.FindActiveSessionPath(s.claudeHome)
+	activePath, err := claude.FindActiveSessionPathForMCP(s.claudeHome)
 	if err == nil && activePath != "" {
 		// Step 2: parse the active session.
 		meta, err := claude.ParseActiveSession(activePath)

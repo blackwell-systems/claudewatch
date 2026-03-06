@@ -30,7 +30,7 @@ func addDriftTools(s *Server) {
 
 // handleGetDriftSignal returns the drift signal for the active session.
 func (s *Server) handleGetDriftSignal(args json.RawMessage) (any, error) {
-	activePath, err := claude.FindActiveSessionPath(s.claudeHome)
+	activePath, err := claude.FindActiveSessionPathForMCP(s.claudeHome)
 	if err != nil || activePath == "" {
 		return nil, errors.New("no active session found")
 	}

@@ -48,7 +48,7 @@ func addVelocityTools(s *Server) {
 
 // handleGetTokenVelocity returns token throughput rate for the active session.
 func (s *Server) handleGetTokenVelocity(args json.RawMessage) (any, error) {
-	activePath, err := claude.FindActiveSessionPath(s.claudeHome)
+	activePath, err := claude.FindActiveSessionPathForMCP(s.claudeHome)
 	if err != nil || activePath == "" {
 		return nil, errors.New("no active session found")
 	}
@@ -103,7 +103,7 @@ func (s *Server) handleGetTokenVelocity(args json.RawMessage) (any, error) {
 
 // handleGetCommitAttemptRatio returns the commit-to-attempt ratio for the active session.
 func (s *Server) handleGetCommitAttemptRatio(args json.RawMessage) (any, error) {
-	activePath, err := claude.FindActiveSessionPath(s.claudeHome)
+	activePath, err := claude.FindActiveSessionPathForMCP(s.claudeHome)
 	if err != nil || activePath == "" {
 		return nil, errors.New("no active session found")
 	}

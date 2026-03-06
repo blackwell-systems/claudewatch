@@ -48,7 +48,7 @@ func (s *Server) handleGetSessionProjects(args json.RawMessage) (any, error) {
 
 	// If session_id is empty, find active or most-recent session.
 	if sessionID == "" {
-		activePath, err := claude.FindActiveSessionPath(s.claudeHome)
+		activePath, err := claude.FindActiveSessionPathForMCP(s.claudeHome)
 		if err == nil && activePath != "" {
 			meta, parseErr := claude.ParseActiveSession(activePath)
 			if parseErr == nil && meta != nil && meta.SessionID != "" {

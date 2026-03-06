@@ -77,7 +77,7 @@ func (s *Server) handleGetCostSummary(args json.RawMessage) (any, error) {
 	// stale indexed version. The live session has current token counts and up-to-date
 	// UserMessageTimestamps, while the indexed session-meta file may be days old.
 	var liveMeta *claude.SessionMeta
-	activePath, activeErr := claude.FindActiveSessionPath(s.claudeHome)
+	activePath, activeErr := claude.FindActiveSessionPathForMCP(s.claudeHome)
 	if activeErr == nil && activePath != "" {
 		parsed, parseErr := claude.ParseActiveSession(activePath)
 		if parseErr == nil && parsed != nil {

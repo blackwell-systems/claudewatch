@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -104,11 +105,142 @@ func FindActiveSessionPath(claudeHome string) (string, error) {
 	return "", nil
 }
 
+// FindActiveSessionPathForMCP scans for the session file open by the parent
+// process (the Claude session that spawned this MCP server). This is critical
+// for multi-session usage where multiple Claude sessions are running simultaneously.
+// Returns ("", nil) if no active session is found for this process.
+// Returns ("", error) only on unexpected I/O failure.
+func FindActiveSessionPathForMCP(claudeHome string) (string, error) {
+	// Resolve symlinks to match lsof output.
+	resolved, err := filepath.EvalSymlinks(claudeHome)
+	if err == nil {
+		claudeHome = resolved
+	}
+
+	projectsDir := filepath.Join(claudeHome, "projects")
+
+	// Enumerate all .jsonl files under projects/<hash>/<session>.jsonl.
+	entries, err := os.ReadDir(projectsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+
+	var jsonlFiles []string
+	var newestPath string
+	var newestMtime time.Time
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		dirPath := filepath.Join(projectsDir, entry.Name())
+		files, err := os.ReadDir(dirPath)
+		if err != nil {
+			continue
+		}
+		for _, f := range files {
+			if f.IsDir() || !strings.HasSuffix(f.Name(), ".jsonl") {
+				continue
+			}
+			fullPath := filepath.Join(dirPath, f.Name())
+			jsonlFiles = append(jsonlFiles, fullPath)
+
+			// Track the most recently modified file for fallback.
+			fi, err := f.Info()
+			if err != nil {
+				continue
+			}
+			if fi.ModTime().After(newestMtime) {
+				newestMtime = fi.ModTime()
+				newestPath = fullPath
+			}
+		}
+	}
+
+	if len(jsonlFiles) == 0 {
+		return "", nil
+	}
+
+	// Primary detection: use lsof with parent PID to find THIS session's file.
+	if found := findOpenFileForParentProcess(jsonlFiles); found != "" {
+		return found, nil
+	}
+
+	// Fallback: check if the most recently modified file is within 5 minutes.
+	if newestPath != "" && time.Since(newestMtime) < 5*time.Minute {
+		return newestPath, nil
+	}
+
+	return "", nil
+}
+
+// findOpenFileForParentProcess runs lsof -p <ppid> -F n with a 3-second timeout
+// and returns the JSONL file open by the parent process (the Claude session that
+// spawned this MCP server). This solves the multi-session bug where lsof -c claude
+// returns files from ALL Claude sessions instead of just the current one.
+// Returns "" if lsof is unavailable, times out, or no match is found.
+func findOpenFileForParentProcess(jsonlFiles []string) string {
+	ppid := os.Getppid()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// Use -p <ppid> to scope to the parent process only, not all claude processes
+	cmd := exec.CommandContext(ctx, "lsof", "-p", fmt.Sprintf("%d", ppid), "-F", "n")
+	out, err := cmd.Output()
+	if err != nil {
+		// lsof failure is non-fatal; fall through to mtime heuristic.
+		return ""
+	}
+
+	// Build a set of the JSONL paths for O(1) lookup.
+	pathSet := make(map[string]bool, len(jsonlFiles))
+	for _, p := range jsonlFiles {
+		pathSet[p] = true
+	}
+
+	// Collect all JSONL paths that lsof reports as open by the parent process.
+	var matches []string
+	scanner := bufio.NewScanner(bytes.NewReader(out))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "n") {
+			continue
+		}
+		filePath := line[1:] // strip leading 'n'
+		if pathSet[filePath] {
+			matches = append(matches, filePath)
+		}
+	}
+
+	// Should only be one match, but handle multiple gracefully.
+	var bestPath string
+	var bestMtime time.Time
+	for _, p := range matches {
+		fi, err := os.Stat(p)
+		if err != nil {
+			continue
+		}
+		if fi.ModTime().After(bestMtime) {
+			bestMtime = fi.ModTime()
+			bestPath = p
+		}
+	}
+	return bestPath
+}
+
 // findOpenFileWithLsof runs lsof -c claude -F n with a 3-second timeout
 // and returns the most recently modified path from jsonlFiles that appears
 // in the lsof output. Scoped to Claude processes only (-c claude) to avoid
 // false positives from macOS Spotlight/mds indexing stale JSONL files.
 // Returns "" if lsof is unavailable, times out, or no match is found.
+//
+// NOTE: This function has a known bug in multi-session usage - it returns
+// files from ANY Claude session, not necessarily the current one. Use
+// FindActiveSessionPathForMCP() in MCP tools instead.
 func findOpenFileWithLsof(jsonlFiles []string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

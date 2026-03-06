@@ -71,7 +71,7 @@ func (s *Server) handleGetProjectHealth(args json.RawMessage) (any, error) {
 		// Default: prefer the active session's project, fall back to most recent indexed session.
 
 		// Attempt to use the active session.
-		activePath, activeErr := claude.FindActiveSessionPath(s.claudeHome)
+		activePath, activeErr := claude.FindActiveSessionPathForMCP(s.claudeHome)
 		if activeErr == nil && activePath != "" {
 			meta, parseErr := claude.ParseActiveSession(activePath)
 			if parseErr == nil && meta != nil && meta.ProjectPath != "" {

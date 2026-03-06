@@ -98,7 +98,7 @@ func addDashboardTools(s *Server) {
 // handleGetSessionDashboard returns all live metrics in a single response.
 func (s *Server) handleGetSessionDashboard(args json.RawMessage) (any, error) {
 	// Single session discovery — replaces 6 redundant FindActiveSessionPath calls.
-	activePath, err := claude.FindActiveSessionPath(s.claudeHome)
+	activePath, err := claude.FindActiveSessionPathForMCP(s.claudeHome)
 	if err != nil || activePath == "" {
 		return nil, errors.New("no active session found")
 	}
