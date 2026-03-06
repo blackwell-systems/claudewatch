@@ -5,32 +5,31 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/blackwell-systems/claudewatch/internal/claude"
-	"github.com/blackwell-systems/claudewatch/internal/config"
-	"github.com/blackwell-systems/claudewatch/internal/memory"
-	"github.com/blackwell-systems/claudewatch/internal/store"
 	"github.com/spf13/cobra"
 )
 
 var stopCmd = &cobra.Command{
 	Use:   "hook-stop",
-	Short: "Prompt for memory extraction at session close",
-	Long: `Detects significant sessions and prompts Claude to extract memory.
+	Short: "Auto-extract memory from significant sessions",
+	Long: `Automatically extracts memory from significant sessions in the background.
 
 Significant session criteria (any of):
 - Duration > 30 minutes
 - Tool calls > 50
 - Commits made > 0
-- Errors encountered and resolved (>5 errors but friction not critical)
+- Errors encountered and resolved (>5 errors)
 
 Skip conditions:
 - Trivial session (< 10 min AND < 20 tool calls)
 - Already checkpointed (extract_current_session_memory called)
 - Pure research (zero Edit/Write calls)
 
-Exit 0 always (non-blocking). Prints context-aware prompt to stderr if significant.
+Spawns background extraction with 5-second delay to allow AI analysis (facet)
+to be written after session closes. Non-blocking - session closes immediately.
 
 Intended for use as a Claude Code Stop shell hook.`,
 	SilenceUsage:  true,
@@ -86,98 +85,35 @@ func runHookStop(cmd *cobra.Command, args []string) {
 	}
 
 	// Check if session should be skipped or is insignificant
-	if shouldSkipSession(&meta, input.TranscriptPath) || !isSignificant(&meta) {
+	if shouldSkipSession(&meta) || !isSignificant(&meta) {
 		return
 	}
 
-	// Try auto-extraction (never block - facet usually not ready at Stop time)
-	extracted, missingFacet := autoExtractMemory(claudeHome, input.SessionID, &meta)
-
-	if extracted {
-		// Success! Memory extracted automatically
-		fmt.Fprintln(os.Stderr, "✓ Session memory extracted automatically")
-	} else if missingFacet {
-		// Facet not ready yet (expected for fresh sessions) - log gentle reminder
-		fmt.Fprintln(os.Stderr, "ℹ Memory extraction pending (AI analysis not ready). Run 'claudewatch memory extract' after session closes.")
-	} else {
-		// Other error (e.g., git failure) - allow closing but log
-		fmt.Fprintln(os.Stderr, "⚠ Memory extraction skipped (non-critical error)")
-	}
-
-	// Always exit 0 - never block session close
-}
-
-// autoExtractMemory extracts task and blocker memory from the given session.
-// Returns (extracted, missingFacet) where:
-// - extracted: true if memory was successfully extracted
-// - missingFacet: true if extraction failed because facet (AI analysis) doesn't exist yet
-func autoExtractMemory(claudeHome, sessionID string, meta *claude.SessionMeta) (bool, bool) {
-	// Load all sessions for this project to get context
-	allSessions, err := claude.ParseAllSessionMeta(claudeHome)
-	if err != nil {
-		return false, false
-	}
-
+	// Spawn background extraction with 5-second delay
+	// This gives Claude Code time to write the facet (AI analysis) after session closes
 	projectName := filepath.Base(meta.ProjectPath)
 
-	// Filter to project sessions
-	var projectSessions []claude.SessionMeta
-	for _, sess := range allSessions {
-		if filepath.Base(sess.ProjectPath) == projectName {
-			projectSessions = append(projectSessions, sess)
-		}
-	}
-
-	// Load facet (AI analysis) for this session
-	allFacets, err := claude.ParseAllFacets(claudeHome)
+	// Get path to claudewatch binary (use same binary that's running this hook)
+	binaryPath, err := os.Executable()
 	if err != nil {
-		return false, false
+		fmt.Fprintln(os.Stderr, "⚠ Memory extraction failed (can't find binary)")
+		return
 	}
 
-	var sessionFacet *claude.SessionFacet
-	for i := range allFacets {
-		if allFacets[i].SessionID == sessionID {
-			sessionFacet = &allFacets[i]
-			break
-		}
-	}
+	// Spawn: (sleep 5 && claudewatch memory extract --session-id <id> --project <name> >/dev/null 2>&1) &
+	go func() {
+		// Wait 5 seconds for facet to be written
+		cmd := exec.Command("/bin/sh", "-c",
+			fmt.Sprintf("sleep 5 && %s memory extract --session-id %s --project %s >/dev/null 2>&1",
+				binaryPath, input.SessionID, projectName))
+		_ = cmd.Start()
+	}()
 
-	if sessionFacet == nil {
-		// Session too new, facet not written yet - return missingFacet=true
-		return false, true
-	}
-
-	// Extract commits from git
-	commits := memory.GetCommitSHAsSince(meta.ProjectPath, meta.StartTime)
-
-	// Open working memory store
-	storePath := filepath.Join(config.ConfigDir(), "projects", projectName, "working-memory.json")
-	memStore := store.NewWorkingMemoryStore(storePath)
-
-	// Extract task memory
-	task, err := memory.ExtractTaskMemory(*meta, sessionFacet, commits)
-	if err == nil && task != nil {
-		_ = memStore.AddOrUpdateTask(task)
-	}
-
-	// Extract blockers (use last 10 sessions for context)
-	recentSessions := projectSessions
-	if len(recentSessions) > 10 {
-		recentSessions = recentSessions[:10]
-	}
-
-	blockers, err := memory.ExtractBlockers(*meta, sessionFacet, projectName, recentSessions, allFacets)
-	if err == nil && len(blockers) > 0 {
-		for _, blocker := range blockers {
-			_ = memStore.AddBlocker(blocker)
-		}
-	}
-
-	return true, false
+	fmt.Fprintln(os.Stderr, "ℹ Memory extraction scheduled (background, 5s delay)")
 }
 
 // shouldSkipSession returns true if the session should not prompt for extraction.
-func shouldSkipSession(meta *claude.SessionMeta, activePath string) bool {
+func shouldSkipSession(meta *claude.SessionMeta) bool {
 	duration := computeDuration(meta)
 	toolCalls := sumToolCalls(meta.ToolCounts)
 
@@ -187,7 +123,7 @@ func shouldSkipSession(meta *claude.SessionMeta, activePath string) bool {
 	}
 
 	// Already checkpointed: extract called
-	if wasRecentlyCheckpointed(meta, activePath) {
+	if wasRecentlyCheckpointed(meta) {
 		return true
 	}
 
@@ -240,7 +176,7 @@ func sumToolCalls(counts map[string]int) int {
 }
 
 // wasRecentlyCheckpointed returns true if extract_current_session_memory was called.
-func wasRecentlyCheckpointed(meta *claude.SessionMeta, activePath string) bool {
+func wasRecentlyCheckpointed(meta *claude.SessionMeta) bool {
 	// Simple heuristic: if extract was called at all, consider it checkpointed.
 	// Future enhancement: parse JSONL to check if within last 20 minutes.
 	extractCount := meta.ToolCounts["extract_current_session_memory"]
@@ -248,8 +184,8 @@ func wasRecentlyCheckpointed(meta *claude.SessionMeta, activePath string) bool {
 }
 
 // determinePrompt generates a context-aware prompt based on session characteristics.
-func determinePrompt(meta *claude.SessionMeta, activePath string) string {
-	if shouldSkipSession(meta, activePath) {
+func determinePrompt(meta *claude.SessionMeta) string {
+	if shouldSkipSession(meta) {
 		return ""
 	}
 

@@ -41,7 +41,7 @@ func TestShouldSkipSession_Trivial(t *testing.T) {
 		DurationMinutes: 5,
 		ToolCounts:      map[string]int{"Read": 10},
 	}
-	if !shouldSkipSession(meta, "") {
+	if !shouldSkipSession(meta) {
 		t.Error("expected trivial session to be skipped")
 	}
 }
@@ -54,7 +54,7 @@ func TestShouldSkipSession_AlreadyCheckpointed(t *testing.T) {
 			"extract_current_session_memory": 1,
 		},
 	}
-	if !shouldSkipSession(meta, "") {
+	if !shouldSkipSession(meta) {
 		t.Error("expected checkpointed session to be skipped")
 	}
 }
@@ -68,7 +68,7 @@ func TestShouldSkipSession_PureResearch(t *testing.T) {
 			"Glob": 10,
 		},
 	}
-	if !shouldSkipSession(meta, "") {
+	if !shouldSkipSession(meta) {
 		t.Error("expected pure research session to be skipped")
 	}
 }
@@ -81,7 +81,7 @@ func TestShouldSkipSession_SignificantNotSkipped(t *testing.T) {
 			"Read": 15,
 		},
 	}
-	if shouldSkipSession(meta, "") {
+	if shouldSkipSession(meta) {
 		t.Error("expected significant session with edits to not be skipped")
 	}
 }
@@ -146,7 +146,7 @@ func TestDeterminePrompt_Completed(t *testing.T) {
 		DurationMinutes: 25,
 		ToolCounts:      map[string]int{"Edit": 30},
 	}
-	prompt := determinePrompt(meta, "")
+	prompt := determinePrompt(meta)
 	if !strings.Contains(prompt, "✓") {
 		t.Error("expected completed prompt to contain ✓")
 	}
@@ -164,7 +164,7 @@ func TestDeterminePrompt_CompletedNoDuration(t *testing.T) {
 		DurationMinutes: 0,                          // Live session, duration not computed yet
 		ToolCounts:      map[string]int{"Edit": 60}, // Significant via tool count
 	}
-	prompt := determinePrompt(meta, "")
+	prompt := determinePrompt(meta)
 	if !strings.Contains(prompt, "✓") {
 		t.Error("expected completed prompt to contain ✓")
 	}
@@ -184,7 +184,7 @@ func TestDeterminePrompt_Abandoned(t *testing.T) {
 		DurationMinutes: 35,
 		ToolCounts:      map[string]int{"Edit": 20},
 	}
-	prompt := determinePrompt(meta, "")
+	prompt := determinePrompt(meta)
 	if !strings.Contains(prompt, "⚠") {
 		t.Error("expected abandoned prompt to contain ⚠")
 	}
@@ -203,7 +203,7 @@ func TestDeterminePrompt_InProgress(t *testing.T) {
 		DurationMinutes: 40,
 		ToolCounts:      map[string]int{"Edit": 25, "Read": 30},
 	}
-	prompt := determinePrompt(meta, "")
+	prompt := determinePrompt(meta)
 	if !strings.Contains(prompt, "📋") {
 		t.Error("expected in-progress prompt to contain 📋")
 	}
@@ -222,7 +222,7 @@ func TestDeterminePrompt_InProgressNoDuration(t *testing.T) {
 		DurationMinutes: 0,
 		ToolCounts:      map[string]int{"Edit": 60}, // Significant via tool count
 	}
-	prompt := determinePrompt(meta, "")
+	prompt := determinePrompt(meta)
 	if !strings.Contains(prompt, "📋") {
 		t.Error("expected in-progress prompt to contain 📋")
 	}
@@ -240,7 +240,7 @@ func TestDeterminePrompt_SkipsTrivial(t *testing.T) {
 		DurationMinutes: 5,
 		ToolCounts:      map[string]int{"Read": 8},
 	}
-	prompt := determinePrompt(meta, "")
+	prompt := determinePrompt(meta)
 	if prompt != "" {
 		t.Errorf("expected no prompt for trivial session, got: %s", prompt)
 	}
@@ -255,7 +255,7 @@ func TestDeterminePrompt_SkipsCheckpointed(t *testing.T) {
 			"extract_current_session_memory": 1,
 		},
 	}
-	prompt := determinePrompt(meta, "")
+	prompt := determinePrompt(meta)
 	if prompt != "" {
 		t.Errorf("expected no prompt for checkpointed session, got: %s", prompt)
 	}
@@ -269,7 +269,7 @@ func TestDeterminePrompt_SkipsPureResearch(t *testing.T) {
 			"Grep": 30,
 		},
 	}
-	prompt := determinePrompt(meta, "")
+	prompt := determinePrompt(meta)
 	if prompt != "" {
 		t.Errorf("expected no prompt for pure research session, got: %s", prompt)
 	}
@@ -283,7 +283,7 @@ func TestDeterminePrompt_SkipsInsignificant(t *testing.T) {
 			"Read": 10,
 		},
 	}
-	prompt := determinePrompt(meta, "")
+	prompt := determinePrompt(meta)
 	if prompt != "" {
 		t.Errorf("expected no prompt for insignificant session, got: %s", prompt)
 	}
@@ -392,7 +392,7 @@ func TestWasRecentlyCheckpointed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := wasRecentlyCheckpointed(tt.meta, "")
+			result := wasRecentlyCheckpointed(tt.meta)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
