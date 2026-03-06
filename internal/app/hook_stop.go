@@ -90,28 +90,21 @@ func runHookStop(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	// Hybrid approach: Try auto-extraction
+	// Try auto-extraction (never block - facet usually not ready at Stop time)
 	extracted, missingFacet := autoExtractMemory(claudeHome, input.SessionID, &meta)
 
 	if extracted {
 		// Success! Memory extracted automatically
 		fmt.Fprintln(os.Stderr, "✓ Session memory extracted automatically")
-		return
+	} else if missingFacet {
+		// Facet not ready yet (expected for fresh sessions) - log gentle reminder
+		fmt.Fprintln(os.Stderr, "ℹ Memory extraction pending (AI analysis not ready). Run 'claudewatch memory extract' after session closes.")
+	} else {
+		// Other error (e.g., git failure) - allow closing but log
+		fmt.Fprintln(os.Stderr, "⚠ Memory extraction skipped (non-critical error)")
 	}
 
-	if missingFacet {
-		// Facet not ready yet - block and force manual extraction
-		// Claude Code will keep session open and Claude can call extract_current_session_memory
-		blockResponse := map[string]string{
-			"decision": "block",
-			"reason":   "Session is significant but AI analysis not ready. Call extract_current_session_memory to checkpoint this session before closing.",
-		}
-		json.NewEncoder(os.Stdout).Encode(blockResponse)
-		os.Exit(2)
-	}
-
-	// Other error (e.g., git failure) - allow closing but log
-	fmt.Fprintln(os.Stderr, "⚠ Memory extraction failed (non-critical)")
+	// Always exit 0 - never block session close
 }
 
 // autoExtractMemory extracts task and blocker memory from the given session.
