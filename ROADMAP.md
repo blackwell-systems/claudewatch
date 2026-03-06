@@ -428,7 +428,56 @@ Meanwhile, commitmux already has exactly the infrastructure we'd need to build:
 
 ---
 
-## Phase 4: Collective Intelligence (v0.16.0)
+## Phase 3.6: Session-End Memory (v0.16.0) 🚧 IN PROGRESS
+
+**Goal:** Automatic memory extraction when sessions close
+
+### 3.6.1 Stop hook - automated memory extraction ⚠️ BLOCKED BY FACET ISSUE
+**Impact:** 🔥🔥🔥 High - Completes memory lifecycle (SessionStart load → PostToolUse monitor → Stop checkpoint)
+**Effort:** 🛠 Low - Hook implementation complete, waiting on Claude Code facet system
+**Dependencies:** `extract_current_session_memory` (exists), facets (BROKEN)
+**Status:** ⚠️ **Implementation complete but limited by facet unavailability**
+
+**Current state:**
+- Stop hook implemented in `internal/app/hook_stop.go` with full test suite
+- Triggers on significant sessions: >30min OR >50 tools OR commits>0 OR errors>5
+- Skip conditions: trivial (<10min AND <20 tools), already checkpointed, pure research (zero edits)
+- Spawns background extraction immediately (no delay needed)
+- **CRITICAL LIMITATION**: Facets (AI session analysis) not being written since 2026-02-28
+  - Facets contain: `underlying_goal`, `outcome`, `friction_detail`, `brief_summary`
+  - Required by `memory.ExtractTaskMemory` and `memory.ExtractBlockers` for rich context
+  - Without facets: extraction succeeds but only captures commits + tool errors from session-meta
+  - Root cause: Unknown (no debug logs, no documentation, possibly Bedrock-specific issue)
+
+**What works today:**
+- ✓ Hook fires on session close
+- ✓ Significance detection (session-meta based)
+- ✓ Skip conditions (trivial/checkpointed/research)
+- ✓ Background extraction process
+- ✓ Metadata-only extraction (commits, errors, duration, tool counts)
+
+**What's blocked:**
+- ✗ Task goal extraction (needs `facet.underlying_goal`)
+- ✗ Task outcome/status (needs `facet.outcome`)
+- ✗ Solution text (needs `facet.brief_summary`)
+- ✗ Friction detail/blockers (needs `facet.friction_detail`)
+
+**Next steps:**
+1. **Shipped**: Stop hook with metadata-only extraction (v0.16.0-alpha)
+2. **Investigate**: File bug report with Anthropic about missing facets
+3. **Fallback**: Enhance `memory.ExtractTaskMemory` to work better without facets (derive task info from commits, tool patterns)
+4. **Monitor**: When facets return, extraction automatically becomes richer (graceful degradation already built-in)
+
+**Success metric (current):** Memory extraction happens automatically for 100% of significant sessions, captures commits + errors
+**Success metric (target):** Memory extraction includes AI-analyzed goals + outcomes (requires facet system fix)
+
+**Priority:** ⭐⭐⭐ SHIPPED WITH LIMITATION
+
+**Deliverable:** v0.16.0-alpha - "Session-End Memory (Metadata-Only)"
+
+---
+
+## Phase 4: Collective Intelligence (v0.17.0)
 
 **Goal:** Learn from aggregate patterns across users (opt-in)
 
@@ -493,11 +542,11 @@ Meanwhile, commitmux already has exactly the infrastructure we'd need to build:
 
 **Priority:** LONG TERM
 
-**Deliverable:** v0.16.0 - "Collective Intelligence Release"
+**Deliverable:** v0.17.0 - "Collective Intelligence Release"
 
 ---
 
-## Phase 5: Adaptive Behavior (v0.17.0)
+## Phase 5: Adaptive Behavior (v0.18.0)
 
 **Goal:** Personalized nudges based on individual agent patterns
 
@@ -539,7 +588,7 @@ Meanwhile, commitmux already has exactly the infrastructure we'd need to build:
 
 **Priority:** RESEARCH / LONG TERM
 
-**Deliverable:** v0.17.0 - "Adaptive Behavior Release"
+**Deliverable:** v0.18.0 - "Adaptive Behavior Release"
 
 ---
 
@@ -557,10 +606,11 @@ Meanwhile, commitmux already has exactly the infrastructure we'd need to build:
 - 2.3 Auto-extract on compaction (pulled from 3.5.1) ✅
 - ~~2.4 Agent spawn prevention via auto-generated rules~~ DEFERRED
 
-### High Impact, Medium Effort (DO NEXT - v0.15.0-v0.15.5)
+### High Impact, Medium Effort (DO NEXT - v0.15.0-v0.16.0)
 - 3.1 Reflection checkpoints ✅ (commit-triggered nudge shipped in v0.14.0)
 - 3.5.2 Semantic memory search ✅ (shipped in commitmux v0.2.0)
-- ⭐ 3.5.5 Unified context surface (commitmux + claudewatch bridge)
+- 3.5.5 Unified context surface ✅ (shipped in v0.15.0)
+- ⭐ 3.6.1 Stop hook (metadata-only, awaiting facet system fix)
 
 ### Medium Impact (BACKLOG - v0.15.0-v0.16.0)
 - 3.2 Success pattern learning
@@ -569,7 +619,7 @@ Meanwhile, commitmux already has exactly the infrastructure we'd need to build:
 - 3.5.4 Memory consolidation
 - 5.1 Behavioral nudges
 
-### High Effort, Long Term (RESEARCH - v0.16.0+)
+### High Effort, Long Term (RESEARCH - v0.17.0+)
 - 4.1 Anonymized blocker sharing
 - 4.2 Pattern effectiveness benchmarking
 - 5.2 Proactive task history surfacing
@@ -680,6 +730,38 @@ Meanwhile, commitmux already has exactly the infrastructure we'd need to build:
 
 ---
 
+
+### v0.16.0 - "Session-End Memory (Metadata-Only)" (Target: 1 week after v0.15.5) 🚧 IN PROGRESS
+**Deliverables:**
+- Stop hook for automatic memory extraction on session close
+- Significance detection (duration, tool count, commits, errors)
+- Skip conditions (trivial, checkpointed, pure research)
+- Background extraction with graceful degradation (works without facets)
+
+**Known limitations:**
+- **Facets not being written since 2026-02-28** (Claude Code internal issue)
+- Extraction captures commits + errors but lacks AI-analyzed goals/outcomes/solutions
+- Awaiting Anthropic fix for facet system (possibly Bedrock-specific)
+
+**Success metrics:**
+- 100% of significant sessions trigger extraction automatically
+- Metadata (commits, errors, tool counts) captured successfully
+- Zero user action required
+
+**Technical approach:**
+- Stop hook in `internal/app/hook_stop.go`
+- Reads session-meta for full metrics (not facets)
+- Spawns `claudewatch memory extract` in background immediately
+- `memory.ExtractTaskMemory` and `memory.ExtractBlockers` return gracefully when facet is nil
+
+**Next steps:**
+- Ship v0.16.0-alpha with metadata-only extraction
+- File bug report with Anthropic about missing facets
+- Monitor for facet system fix (extraction becomes richer automatically)
+
+
+---
+
 ### v0.17.0 - "Adaptive Behavior" (Target: 12+ weeks after v0.16.0)
 **Deliverables:**
 - Personalized behavioral nudges
@@ -700,7 +782,21 @@ Meanwhile, commitmux already has exactly the infrastructure we'd need to build:
 
 ## Next Actions
 
+### Current State (2026-03-06)
+**v0.16.0 Stop Hook: SHIPPED WITH LIMITATION**
+- ✅ Implementation complete - Stop hook fires on significant sessions
+- ✅ Background extraction working - metadata captured successfully
+- ⚠️ **BLOCKER**: Claude Code facet system not writing files since 2026-02-28
+  - Without facets: no task goals, outcomes, solutions, or friction details
+  - With facets: full AI-analyzed context (when system is fixed)
+- 📋 **Action items**:
+  1. Ship v0.16.0-alpha documentation (note limitations clearly)
+  2. File bug report with Anthropic (facet system + Bedrock investigation)
+  3. Consider fallback: enhance extractors to infer more from metadata (commits, errors, tool patterns)
+
 ### Start Today
+
+
 1. Create GitHub issues for Phase 1 features (1.1, 1.2, 1.3)
 2. Draft technical spec for auto-injected project health format
 3. Design contextual memory surfacing keyword matching algorithm
