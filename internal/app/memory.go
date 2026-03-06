@@ -315,8 +315,9 @@ func runMemoryExtract(cmd *cobra.Command, args []string) error {
 	// Facet is optional - resumed sessions don't have facets yet
 	// Extract what we can from session-meta, facet adds AI analysis when available
 	if sessionFacet == nil {
-		fmt.Fprintf(os.Stderr, "⚠ No AI analysis available yet (session resumed or very recent)\n")
-		fmt.Fprintf(os.Stderr, "  Extracting from session metadata only (commits, errors)\n\n")
+		fmt.Fprintf(os.Stderr, "ℹ No AI analysis (facet) available - using session metadata\n")
+		fmt.Fprintf(os.Stderr, "  Extracting: task status, commits, errors, tool usage patterns\n")
+		fmt.Fprintf(os.Stderr, "  Tip: Run /insights periodically for richer goal/outcome analysis\n\n")
 	}
 
 	// Extract commits

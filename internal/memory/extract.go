@@ -14,37 +14,54 @@ import (
 )
 
 // ExtractTaskMemory converts a completed session into a TaskMemory entry.
-// Returns nil if session has insufficient data (no facet, no identifiable task).
+// Works with or without facets - uses session metadata for inference when facets unavailable.
+// Returns nil only if session has no identifiable task (no FirstPrompt, trivial session).
 func ExtractTaskMemory(session claude.SessionMeta, facet *claude.SessionFacet, commits []string) (*store.TaskMemory, error) {
-	if facet == nil {
+	// Skip trivial sessions with no clear task
+	if session.FirstPrompt == "" && (session.GitCommits == 0 && session.FilesModified == 0 && session.ToolErrors < 3) {
 		return nil, nil
 	}
 
 	taskID := DeriveTaskIdentifier(session, facet)
 
-	// Determine status from outcome.
 	var status string
-	switch facet.Outcome {
-	case "fully_achieved":
-		status = "completed"
-	case "not_achieved":
-		status = "abandoned"
-	default:
-		status = "in_progress"
-	}
-
-	// Extract blockers from friction detail.
 	var blockersHit []string
-	if facet.FrictionDetail != "" {
-		blockersHit = append(blockersHit, facet.FrictionDetail)
-	}
-
-	// Populate solution only if completed AND commits > 0.
 	var solution string
-	if status == "completed" && len(commits) > 0 {
-		solution = facet.BriefSummary
-		if solution == "" {
-			solution = facet.UnderlyingGoal
+
+	// Use facet data if available (rich AI analysis)
+	if facet != nil {
+		switch facet.Outcome {
+		case "fully_achieved":
+			status = "completed"
+		case "not_achieved":
+			status = "abandoned"
+		default:
+			status = "in_progress"
+		}
+
+		if facet.FrictionDetail != "" {
+			blockersHit = append(blockersHit, facet.FrictionDetail)
+		}
+
+		if status == "completed" && len(commits) > 0 {
+			solution = facet.BriefSummary
+			if solution == "" {
+				solution = facet.UnderlyingGoal
+			}
+		}
+	} else {
+		// Fallback: infer status from session metadata
+		if session.GitCommits > 0 && session.FilesModified > 0 {
+			status = "completed"
+			// Infer solution from commit activity
+			if len(commits) > 0 {
+				solution = fmt.Sprintf("Made %d commit(s), modified %d file(s)", session.GitCommits, session.FilesModified)
+			}
+		} else if session.ToolErrors > 5 && session.GitCommits == 0 {
+			status = "abandoned"
+			blockersHit = append(blockersHit, fmt.Sprintf("%d tool errors without commits", session.ToolErrors))
+		} else {
+			status = "in_progress"
 		}
 	}
 
@@ -60,83 +77,119 @@ func ExtractTaskMemory(session claude.SessionMeta, facet *claude.SessionFacet, c
 }
 
 // ExtractBlockers analyzes friction data and returns blocker entries.
+// Works with or without facets - uses session metadata for inference when facets unavailable.
 // Severity thresholds:
-// - Consecutive tool errors >= 3
-// - Outcome == "not_achieved" + friction count > 0
-// - Chronic friction (>30% of recent sessions)
+// - Tool errors >= 5
+// - Outcome == "not_achieved" + friction count > 0 (facet-only)
+// - Chronic friction (>30% of recent sessions, facet-only)
+// - No commits despite high activity (metadata fallback)
+// - Specific tool error categories (metadata fallback)
 func ExtractBlockers(session claude.SessionMeta, facet *claude.SessionFacet, projectName string, recentSessions []claude.SessionMeta, recentFacets []claude.SessionFacet) ([]*store.BlockerMemory, error) {
-	if facet == nil {
-		return nil, nil
-	}
-
 	var blockers []*store.BlockerMemory
 
-	// Threshold 1: High tool errors.
+	// Threshold 1: High tool errors (always check, facet not required)
 	if session.ToolErrors >= 5 {
+		issue := fmt.Sprintf("High tool error rate (%d errors)", session.ToolErrors)
+
+		// Add error category breakdown if available
+		if len(session.ToolErrorCategories) > 0 {
+			var topErrors []string
+			for cat, count := range session.ToolErrorCategories {
+				if count > 0 {
+					topErrors = append(topErrors, fmt.Sprintf("%s (%d)", cat, count))
+				}
+			}
+			if len(topErrors) > 0 {
+				issue = fmt.Sprintf("%s: %s", issue, strings.Join(topErrors, ", "))
+			}
+		}
+
 		blockers = append(blockers, &store.BlockerMemory{
 			File:        "",
-			Issue:       fmt.Sprintf("High tool error rate (%d errors)", session.ToolErrors),
+			Issue:       issue,
 			Solution:    "Review tool inputs and file paths before execution",
 			Encountered: []string{time.Now().Format("2006-01-02")},
 			LastSeen:    time.Now(),
 		})
 	}
 
-	// Threshold 2: Not achieved outcome with friction.
-	if facet.Outcome == "not_achieved" && len(facet.FrictionCounts) > 0 {
-		if facet.FrictionDetail != "" {
+	// Threshold 2: High activity but no commits (metadata-only detection)
+	if facet == nil {
+		totalToolCalls := 0
+		for _, count := range session.ToolCounts {
+			totalToolCalls += count
+		}
+		editWriteCalls := session.ToolCounts["Edit"] + session.ToolCounts["Write"]
+
+		if totalToolCalls > 50 && editWriteCalls > 10 && session.GitCommits == 0 {
 			blockers = append(blockers, &store.BlockerMemory{
 				File:        "",
-				Issue:       fmt.Sprintf("Session abandoned: %s", facet.FrictionDetail),
-				Solution:    "",
+				Issue:       fmt.Sprintf("High activity (%d tools, %d edits) but zero commits", totalToolCalls, editWriteCalls),
+				Solution:    "Review why changes weren't committed - tests failing? Incomplete work?",
 				Encountered: []string{time.Now().Format("2006-01-02")},
 				LastSeen:    time.Now(),
 			})
 		}
 	}
 
-	// Threshold 3: Chronic friction patterns (>30% of recent sessions).
-	if len(recentSessions) >= 3 {
-		// Build session ID map for filtering.
-		sessionIDs := make(map[string]struct{})
-		for _, s := range recentSessions {
-			if filepath.Base(s.ProjectPath) == projectName {
-				sessionIDs[s.SessionID] = struct{}{}
-			}
-		}
-
-		// Count sessions with each friction type.
-		frictionSessionCount := make(map[string]int)
-		for _, f := range recentFacets {
-			if _, ok := sessionIDs[f.SessionID]; !ok {
-				continue
-			}
-			seen := make(map[string]bool)
-			for ft, count := range f.FrictionCounts {
-				if count > 0 && !seen[ft] {
-					seen[ft] = true
-					frictionSessionCount[ft]++
-				}
-			}
-		}
-
-		// Check if current session's friction is chronic.
-		for ft, count := range facet.FrictionCounts {
-			if count == 0 {
-				continue
-			}
-			sessionCount := len(recentSessions)
-			rate := float64(frictionSessionCount[ft]) / float64(sessionCount)
-			if rate > 0.3 {
-				issue := fmt.Sprintf("Chronic friction: %s (%.0f%% of recent sessions)", ft, rate*100)
-				solution := suggestSolutionForFriction(ft)
+	// Facet-only thresholds (richer analysis when available)
+	if facet != nil {
+		// Threshold 3: Not achieved outcome with friction
+		if facet.Outcome == "not_achieved" && len(facet.FrictionCounts) > 0 {
+			if facet.FrictionDetail != "" {
 				blockers = append(blockers, &store.BlockerMemory{
 					File:        "",
-					Issue:       issue,
-					Solution:    solution,
+					Issue:       fmt.Sprintf("Session abandoned: %s", facet.FrictionDetail),
+					Solution:    "",
 					Encountered: []string{time.Now().Format("2006-01-02")},
 					LastSeen:    time.Now(),
 				})
+			}
+		}
+
+		// Threshold 4: Chronic friction patterns (>30% of recent sessions)
+		if len(recentSessions) >= 3 {
+			// Build session ID map for filtering
+			sessionIDs := make(map[string]struct{})
+			for _, s := range recentSessions {
+				if filepath.Base(s.ProjectPath) == projectName {
+					sessionIDs[s.SessionID] = struct{}{}
+				}
+			}
+
+			// Count sessions with each friction type
+			frictionSessionCount := make(map[string]int)
+			for _, f := range recentFacets {
+				if _, ok := sessionIDs[f.SessionID]; !ok {
+					continue
+				}
+				seen := make(map[string]bool)
+				for ft, count := range f.FrictionCounts {
+					if count > 0 && !seen[ft] {
+						seen[ft] = true
+						frictionSessionCount[ft]++
+					}
+				}
+			}
+
+			// Check if current session's friction is chronic
+			for ft, count := range facet.FrictionCounts {
+				if count == 0 {
+					continue
+				}
+				sessionCount := len(recentSessions)
+				rate := float64(frictionSessionCount[ft]) / float64(sessionCount)
+				if rate > 0.3 {
+					issue := fmt.Sprintf("Chronic friction: %s (%.0f%% of recent sessions)", ft, rate*100)
+					solution := suggestSolutionForFriction(ft)
+					blockers = append(blockers, &store.BlockerMemory{
+						File:        "",
+						Issue:       issue,
+						Solution:    solution,
+						Encountered: []string{time.Now().Format("2006-01-02")},
+						LastSeen:    time.Now(),
+					})
+				}
 			}
 		}
 	}
