@@ -14,20 +14,24 @@ import (
 // ExtractTaskMemory converts a completed session into a TaskMemory entry.
 // Works with or without facets - uses session metadata for inference when facets unavailable.
 // Returns nil only if session has no identifiable task (no FirstPrompt, trivial session).
-func ExtractTaskMemory(session claude.SessionMeta, facet *claude.SessionFacet, commits []string) (*store.TaskMemory, error) {
+// ExtractTaskMemory converts a completed session into a TaskMemory entry.
+// Works with or without facets - uses transcript semantic extraction when facets unavailable.
+// Returns nil only if session has no identifiable task.
+func ExtractTaskMemory(session claude.SessionMeta, facet *claude.SessionFacet, commits []string, transcriptPath string) (*store.TaskMemory, error) {
 	// Skip trivial sessions with no clear task
 	if session.FirstPrompt == "" && (session.GitCommits == 0 && session.FilesModified == 0 && session.ToolErrors < 3) {
 		return nil, nil
 	}
 
-	taskID := DeriveTaskIdentifier(session, facet)
-
 	var status string
 	var blockersHit []string
 	var solution string
+	var taskID string
 
 	// Use facet data if available (rich AI analysis)
 	if facet != nil {
+		taskID = DeriveTaskIdentifier(session, facet)
+		
 		switch facet.Outcome {
 		case "fully_achieved":
 			status = "completed"
@@ -47,14 +51,67 @@ func ExtractTaskMemory(session claude.SessionMeta, facet *claude.SessionFacet, c
 				solution = facet.UnderlyingGoal
 			}
 		}
+	} else if transcriptPath != "" {
+		// Fallback: extract semantic content from transcript
+		transcriptCtx, err := ExtractFromTranscript(transcriptPath)
+		if err == nil && transcriptCtx != nil {
+			// Use transcript task description for readable task ID
+			if transcriptCtx.TaskDescription != "" {
+				taskID = strings.ToLower(strings.TrimSpace(transcriptCtx.TaskDescription))
+				if len(taskID) > 100 {
+					taskID = taskID[:100]
+				}
+			} else {
+				taskID = DeriveTaskIdentifier(session, nil)
+			}
+			
+			// Infer status from metadata + transcript context
+			if session.GitCommits > 0 && session.FilesModified > 0 {
+				status = "completed"
+				// Build solution from transcript context
+				if len(commits) > 0 {
+					solution = fmt.Sprintf("%d commit(s): %s", len(commits), transcriptCtx.TaskDescription)
+					if len(transcriptCtx.FilesAccessed) > 0 {
+						solution += fmt.Sprintf(" | Modified %d files", len(transcriptCtx.FilesAccessed))
+					}
+				}
+			} else if session.ToolErrors > 5 && session.GitCommits == 0 {
+				status = "abandoned"
+				// Extract unresolved error patterns as blockers
+				for _, ep := range transcriptCtx.ErrorPatterns {
+					if !ep.Resolved {
+						blockersHit = append(blockersHit, fmt.Sprintf("%s: %s", ep.Tool, ep.ErrorMessage))
+					}
+				}
+			} else {
+				status = "in_progress"
+			}
+			
+			// Add user corrections as context
+			if len(transcriptCtx.UserCorrections) > 0 {
+				for _, correction := range transcriptCtx.UserCorrections {
+					blockersHit = append(blockersHit, "User redirect: "+correction)
+				}
+			}
+		} else {
+			// Transcript parse failed, use basic metadata
+			taskID = DeriveTaskIdentifier(session, nil)
+			if session.GitCommits > 0 && session.FilesModified > 0 {
+				status = "completed"
+				solution = fmt.Sprintf("Made %d commit(s), modified %d file(s)", session.GitCommits, session.FilesModified)
+			} else if session.ToolErrors > 5 && session.GitCommits == 0 {
+				status = "abandoned"
+				blockersHit = append(blockersHit, fmt.Sprintf("%d tool errors without commits", session.ToolErrors))
+			} else {
+				status = "in_progress"
+			}
+		}
 	} else {
-		// Fallback: infer status from session metadata
+		// No transcript path provided, use basic metadata
+		taskID = DeriveTaskIdentifier(session, nil)
 		if session.GitCommits > 0 && session.FilesModified > 0 {
 			status = "completed"
-			// Infer solution from commit activity
-			if len(commits) > 0 {
-				solution = fmt.Sprintf("Made %d commit(s), modified %d file(s)", session.GitCommits, session.FilesModified)
-			}
+			solution = fmt.Sprintf("Made %d commit(s), modified %d file(s)", session.GitCommits, session.FilesModified)
 		} else if session.ToolErrors > 5 && session.GitCommits == 0 {
 			status = "abandoned"
 			blockersHit = append(blockersHit, fmt.Sprintf("%d tool errors without commits", session.ToolErrors))
@@ -73,16 +130,14 @@ func ExtractTaskMemory(session claude.SessionMeta, facet *claude.SessionFacet, c
 		LastUpdated:    time.Now(),
 	}, nil
 }
-
 // ExtractBlockers analyzes friction data and returns blocker entries.
-// Works with or without facets - uses session metadata for inference when facets unavailable.
+// Works with or without facets - uses transcript semantic extraction when facets unavailable.
 // Severity thresholds:
 // - Tool errors >= 5
 // - Outcome == "not_achieved" + friction count > 0 (facet-only)
 // - Chronic friction (>30% of recent sessions, facet-only)
-// - No commits despite high activity (metadata fallback)
-// - Specific tool error categories (metadata fallback)
-func ExtractBlockers(session claude.SessionMeta, facet *claude.SessionFacet, projectName string, recentSessions []claude.SessionMeta, recentFacets []claude.SessionFacet) ([]*store.BlockerMemory, error) {
+// - Error patterns from transcript (2+ retries, metadata fallback)
+func ExtractBlockers(session claude.SessionMeta, facet *claude.SessionFacet, projectName string, recentSessions []claude.SessionMeta, recentFacets []claude.SessionFacet, transcriptPath string) ([]*store.BlockerMemory, error) {
 	var blockers []*store.BlockerMemory
 
 	// Threshold 1: High tool errors (always check, facet not required)
@@ -111,22 +166,45 @@ func ExtractBlockers(session claude.SessionMeta, facet *claude.SessionFacet, pro
 		})
 	}
 
-	// Threshold 2: High activity but no commits (metadata-only detection)
-	if facet == nil {
-		totalToolCalls := 0
-		for _, count := range session.ToolCounts {
-			totalToolCalls += count
-		}
-		editWriteCalls := session.ToolCounts["Edit"] + session.ToolCounts["Write"]
-
-		if totalToolCalls > 50 && editWriteCalls > 10 && session.GitCommits == 0 {
-			blockers = append(blockers, &store.BlockerMemory{
-				File:        "",
-				Issue:       fmt.Sprintf("High activity (%d tools, %d edits) but zero commits", totalToolCalls, editWriteCalls),
-				Solution:    "Review why changes weren't committed - tests failing? Incomplete work?",
-				Encountered: []string{time.Now().Format("2006-01-02")},
-				LastSeen:    time.Now(),
-			})
+	// Threshold 2: Extract error patterns from transcript (when no facet)
+	if facet == nil && transcriptPath != "" {
+		transcriptCtx, err := ExtractFromTranscript(transcriptPath)
+		if err == nil && transcriptCtx != nil {
+			// Extract error patterns as specific blockers
+			for _, ep := range transcriptCtx.ErrorPatterns {
+				issue := fmt.Sprintf("%s failed %dx: %s", ep.Tool, ep.Attempts, ep.ErrorMessage)
+				solution := ""
+				if ep.Resolved {
+					solution = "Eventually succeeded after retries"
+				} else {
+					solution = "Unresolved - check tool inputs and error message"
+				}
+				
+				blockers = append(blockers, &store.BlockerMemory{
+					File:        "",
+					Issue:       issue,
+					Solution:    solution,
+					Encountered: []string{time.Now().Format("2006-01-02")},
+					LastSeen:    time.Now(),
+				})
+			}
+			
+			// Check for high activity but no commits
+			totalToolCalls := 0
+			for _, count := range session.ToolCounts {
+				totalToolCalls += count
+			}
+			editWriteCalls := session.ToolCounts["Edit"] + session.ToolCounts["Write"]
+			
+			if totalToolCalls > 50 && editWriteCalls > 10 && session.GitCommits == 0 {
+				blockers = append(blockers, &store.BlockerMemory{
+					File:        "",
+					Issue:       fmt.Sprintf("High activity (%d tools, %d edits) but zero commits", totalToolCalls, editWriteCalls),
+					Solution:    "Review why changes weren't committed - tests failing? Incomplete work?",
+					Encountered: []string{time.Now().Format("2006-01-02")},
+					LastSeen:    time.Now(),
+				})
+			}
 		}
 	}
 
@@ -194,7 +272,6 @@ func ExtractBlockers(session claude.SessionMeta, facet *claude.SessionFacet, pro
 
 	return blockers, nil
 }
-
 // DeriveTaskIdentifier produces stable task identifier.
 // Priority: facet.UnderlyingGoal > hash(FirstPrompt+ProjectPath) > SessionID
 func DeriveTaskIdentifier(session claude.SessionMeta, facet *claude.SessionFacet) string {

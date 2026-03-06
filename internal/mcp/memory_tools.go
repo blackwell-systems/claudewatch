@@ -302,6 +302,13 @@ func (s *Server) handleExtractCurrentSession(args json.RawMessage) (any, error) 
 	}
 
 	// Extract commits.
+
+	// Build transcript path for semantic extraction
+	transcriptPath := ""
+	if targetSession.ProjectPath != "" {
+		projectHash := filepath.Base(targetSession.ProjectPath)
+		transcriptPath = filepath.Join(s.claudeHome, "projects", projectHash, targetSessionID+".jsonl")
+	}
 	commits := memory.GetCommitSHAsSince(targetSession.ProjectPath, targetSession.StartTime)
 
 	// Open working memory store.
@@ -316,7 +323,7 @@ func (s *Server) handleExtractCurrentSession(args json.RawMessage) (any, error) 
 	}
 
 	// Extract task memory.
-	task, err := memory.ExtractTaskMemory(*targetSession, sessionFacet, commits)
+	task, err := memory.ExtractTaskMemory(*targetSession, sessionFacet, commits, transcriptPath)
 	if err != nil {
 		return ExtractResult{
 			Success:   false,
@@ -346,7 +353,7 @@ func (s *Server) handleExtractCurrentSession(args json.RawMessage) (any, error) 
 
 	// Load all facets for blocker context (reuse allFacets loaded above).
 	if len(allFacets) > 0 {
-		blockers, blockerErr := memory.ExtractBlockers(*targetSession, sessionFacet, projectName, recentSessions, allFacets)
+		blockers, blockerErr := memory.ExtractBlockers(*targetSession, sessionFacet, projectName, recentSessions, allFacets, transcriptPath)
 		if blockerErr == nil && len(blockers) > 0 {
 			for _, blocker := range blockers {
 				_ = memStore.AddBlocker(blocker)

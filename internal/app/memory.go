@@ -321,6 +321,13 @@ func runMemoryExtract(cmd *cobra.Command, args []string) error {
 	}
 
 	// Extract commits
+
+	// Build transcript path for semantic extraction
+	transcriptPath := ""
+	if targetSession.ProjectPath != "" {
+		projectHash := filepath.Base(targetSession.ProjectPath)
+		transcriptPath = filepath.Join(cfg.ClaudeHome, "projects", projectHash, targetSessionID+".jsonl")
+	}
 	commits := memory.GetCommitSHAsSince(targetSession.ProjectPath, targetSession.StartTime)
 
 	// Open working memory store
@@ -328,7 +335,7 @@ func runMemoryExtract(cmd *cobra.Command, args []string) error {
 	memStore := store.NewWorkingMemoryStore(storePath)
 
 	// Extract task memory
-	task, err := memory.ExtractTaskMemory(*targetSession, sessionFacet, commits)
+	task, err := memory.ExtractTaskMemory(*targetSession, sessionFacet, commits, transcriptPath)
 	if err != nil {
 		return fmt.Errorf("extracting task memory: %w", err)
 	}
@@ -358,7 +365,7 @@ func runMemoryExtract(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("reading facets for blocker context: %w", err)
 	}
 
-	blockers, err := memory.ExtractBlockers(*targetSession, sessionFacet, projectName, recentSessions, allFacets)
+	blockers, err := memory.ExtractBlockers(*targetSession, sessionFacet, projectName, recentSessions, allFacets, transcriptPath)
 	if err != nil {
 		return fmt.Errorf("extracting blockers: %w", err)
 	}

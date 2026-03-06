@@ -431,10 +431,17 @@ func updateWorkingMemoryIfNeeded(cfg *config.Config, projectName string, session
 	}
 
 	// Extract commits.
+
+	// Build transcript path for semantic extraction
+	transcriptPath := ""
+	if mostRecent.ProjectPath != "" {
+		projectHash := filepath.Base(mostRecent.ProjectPath)
+		transcriptPath = filepath.Join(cfg.ClaudeHome, "projects", projectHash, mostRecent.SessionID+".jsonl")
+	}
 	commits := memory.GetCommitSHAsSince(mostRecent.ProjectPath, mostRecent.StartTime)
 
 	// Extract task memory.
-	task, err := memory.ExtractTaskMemory(*mostRecent, sessionFacet, commits)
+	task, err := memory.ExtractTaskMemory(*mostRecent, sessionFacet, commits, transcriptPath)
 	if err != nil {
 		return fmt.Errorf("extract task memory: %w", err)
 	}
@@ -449,7 +456,7 @@ func updateWorkingMemoryIfNeeded(cfg *config.Config, projectName string, session
 	if len(recentSessions) > 10 {
 		recentSessions = recentSessions[:10]
 	}
-	blockers, err := memory.ExtractBlockers(*mostRecent, sessionFacet, projectName, recentSessions, facets)
+	blockers, err := memory.ExtractBlockers(*mostRecent, sessionFacet, projectName, recentSessions, facets, transcriptPath)
 	if err != nil {
 		return fmt.Errorf("extract blockers: %w", err)
 	}

@@ -99,15 +99,22 @@ func tryAutoExtract(activePath string, claudeHome string) string {
 
 	commits := memory.GetCommitSHAsSince(meta.ProjectPath, meta.StartTime)
 
+	// Build transcript path for semantic extraction
+	transcriptPath := ""
+	if meta.ProjectPath != "" {
+		projectHash := filepath.Base(meta.ProjectPath)
+		transcriptPath = filepath.Join(claudeHome, "projects", projectHash, sessionID+".jsonl")
+	}
+
 	storePath := filepath.Join(config.ConfigDir(), "projects", projectName, "working-memory.json")
 	memStore := store.NewWorkingMemoryStore(storePath)
 
-	task, _ := memory.ExtractTaskMemory(matchedSession, matchedFacet, commits)
+	task, _ := memory.ExtractTaskMemory(matchedSession, matchedFacet, commits, transcriptPath)
 	if task != nil {
 		_ = memStore.AddOrUpdateTask(task)
 	}
 
-	blockers, _ := memory.ExtractBlockers(matchedSession, matchedFacet, projectName, allSessions, allFacets)
+	blockers, _ := memory.ExtractBlockers(matchedSession, matchedFacet, projectName, allSessions, allFacets, transcriptPath)
 	for _, b := range blockers {
 		_ = memStore.AddBlocker(b)
 	}
